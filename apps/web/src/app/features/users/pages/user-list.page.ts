@@ -1,0 +1,287 @@
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { TableModule } from 'primeng/table';
+import { ButtonModule } from 'primeng/button';
+import { DialogModule } from 'primeng/dialog';
+import { InputText } from 'primeng/inputtext';
+import { Password } from 'primeng/password';
+import { MultiSelect } from 'primeng/multiselect';
+import { ToggleSwitch } from 'primeng/toggleswitch';
+import { ConfirmDialog } from 'primeng/confirmdialog';
+import { ConfirmationService, MessageService } from 'primeng/api';
+import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
+import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
+import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
+import { UsersApi, type Role, type User } from '../data/users.api';
+import { applyServerErrors } from '../../../shared/utils/form-errors';
+
+@Component({
+  selector: 'app-user-list-page',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [ConfirmationService],
+  imports: [
+    ReactiveFormsModule,
+    TableModule, ButtonModule, DialogModule, InputText, Password, MultiSelect, ToggleSwitch, ConfirmDialog,
+    AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, ThDatePipe,
+  ],
+  template: `
+    <p-confirm-dialog />
+
+    <app-page-header title="ผู้ใช้งาน" subtitle="จัดการผู้ใช้งานในระบบ">
+      <p-button label="เพิ่มผู้ใช้" icon="pi pi-plus" (onClick)="openCreate()" />
+    </app-page-header>
+
+    @if (state() === 'loading') { <app-state state="loading" /> }
+    @else if (state() === 'error') { <app-state state="error" /> }
+    @else {
+      <p-table [value]="users()" styleClass="p-datatable-sm p-datatable-striped">
+        <ng-template #header>
+          <tr>
+            <th>ชื่อผู้ใช้</th>
+            <th>ชื่อ-นามสกุล</th>
+            <th>อีเมล</th>
+            <th>Role</th>
+            <th style="width:80px">สถานะ</th>
+            <th style="width:140px">เข้าสู่ระบบล่าสุด</th>
+            <th style="width:120px"></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-user>
+          <tr>
+            <td><strong>{{ user.username }}</strong></td>
+            <td>{{ user.fullName }}</td>
+            <td>{{ user.email }}</td>
+            <td>
+              @for (r of user.roles; track r.id) {
+                <span class="badge-role">{{ r.code }}</span>
+              }
+            </td>
+            <td>
+              <span [class]="user.isActive ? 'badge-active' : 'badge-inactive'">
+                {{ user.isActive ? 'ใช้งาน' : 'ไม่ใช้งาน' }}
+              </span>
+            </td>
+            <td>{{ user.lastLoginAt ? (user.lastLoginAt | thDate) : '-' }}</td>
+            <td>
+              <div class="action-buttons">
+                <p-button icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(user)" pTooltip="แก้ไข" />
+                <p-button icon="pi pi-key" [text]="true" size="small" severity="warn" (onClick)="openResetPw(user)" pTooltip="รีเซ็ตรหัสผ่าน" />
+                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDeactivate(user)" [disabled]="!user.isActive" pTooltip="ยกเลิกใช้งาน" />
+              </div>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบผู้ใช้งาน</td></tr>
+        </ng-template>
+      </p-table>
+    }
+
+    <!-- Create / Edit User Dialog -->
+    <p-dialog [(visible)]="userDialogVisible" [header]="editUserId() ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน'"
+      [modal]="true" [style]="{width:'520px'}">
+      <form [formGroup]="userForm" (ngSubmit)="saveUser()" class="dialog-form">
+        @if (!editUserId()) {
+          <div class="field">
+            <label for="u-username">ชื่อผู้ใช้ <span class="required">*</span></label>
+            <input pInputText id="u-username" formControlName="username" class="w-full" autocomplete="off" />
+            <app-field-error [control]="userForm.get('username')" />
+          </div>
+        }
+        <div class="field">
+          <label for="u-fullname">ชื่อ-นามสกุล <span class="required">*</span></label>
+          <input pInputText id="u-fullname" formControlName="fullName" class="w-full" />
+          <app-field-error [control]="userForm.get('fullName')" />
+        </div>
+        <div class="field">
+          <label for="u-email">อีเมล <span class="required">*</span></label>
+          <input pInputText id="u-email" formControlName="email" type="email" class="w-full" />
+          <app-field-error [control]="userForm.get('email')" />
+        </div>
+        @if (!editUserId()) {
+          <div class="field">
+            <label for="u-password">รหัสผ่าน <span class="required">*</span></label>
+            <p-password id="u-password" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" styleClass="w-full" />
+            <app-field-error [control]="userForm.get('password')" />
+          </div>
+        }
+        <div class="field">
+          <label>Role</label>
+          <p-multiselect formControlName="roleIds" [options]="roles()" optionLabel="name" optionValue="id"
+            placeholder="เลือก Role" display="chip" class="w-full" />
+        </div>
+        @if (editUserId()) {
+          <div class="field-row">
+            <p-toggleswitch formControlName="isActive" />
+            <label>ใช้งาน</label>
+          </div>
+        }
+        <div class="dialog-actions">
+          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="userDialogVisible=false" />
+          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+        </div>
+      </form>
+    </p-dialog>
+
+    <!-- Reset Password Dialog -->
+    <p-dialog [(visible)]="resetPwDialogVisible" header="รีเซ็ตรหัสผ่าน"
+      [modal]="true" [style]="{width:'400px'}">
+      <form [formGroup]="resetPwForm" (ngSubmit)="saveResetPw()" class="dialog-form">
+        <div class="field">
+          <label>ผู้ใช้: <strong>{{ resetPwUsername() }}</strong></label>
+        </div>
+        <div class="field">
+          <label for="rp-pw">รหัสผ่านใหม่ <span class="required">*</span></label>
+          <p-password id="rp-pw" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" styleClass="w-full" />
+          <app-field-error [control]="resetPwForm.get('password')" />
+        </div>
+        <div class="dialog-actions">
+          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="resetPwDialogVisible=false" />
+          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+        </div>
+      </form>
+    </p-dialog>
+  `,
+  styles: [`
+    .action-buttons { display:flex; gap:0.25rem; }
+    .badge-role { font-size:0.72rem; background:var(--primary-100); color:var(--primary-700); padding:0.1rem 0.4rem; border-radius:4px; margin-right:0.25rem; }
+    .badge-active { background:var(--green-100); color:var(--green-700); padding:0.15rem 0.5rem; border-radius:4px; font-size:0.8rem; }
+    .badge-inactive { background:var(--surface-200); color:var(--text-color-secondary); padding:0.15rem 0.5rem; border-radius:4px; font-size:0.8rem; }
+    .dialog-form { display:flex; flex-direction:column; gap:0.75rem; padding-top:0.5rem; }
+    .field { display:flex; flex-direction:column; gap:0.25rem; }
+    .field-row { display:flex; align-items:center; gap:0.75rem; }
+    label { font-size:0.875rem; font-weight:500; }
+    .required { color:var(--red-500); }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.5rem; }
+  `],
+})
+export class UserListPage implements OnInit {
+  private readonly api = inject(UsersApi);
+  private readonly toast = inject(MessageService);
+  private readonly confirm = inject(ConfirmationService);
+  private readonly fb = inject(FormBuilder);
+
+  readonly users = signal<User[]>([]);
+  readonly roles = signal<Role[]>([]);
+  readonly state = signal<'loading' | 'error' | 'none'>('loading');
+  readonly saving = signal(false);
+  readonly editUserId = signal<string | null>(null);
+  readonly resetPwUserId = signal<string | null>(null);
+  readonly resetPwUsername = signal('');
+
+  userDialogVisible = false;
+  resetPwDialogVisible = false;
+
+  readonly userForm = this.fb.nonNullable.group({
+    username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(50)]],
+    fullName: ['', [Validators.required, Validators.maxLength(200)]],
+    email: ['', [Validators.required, Validators.email, Validators.maxLength(200)]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
+    roleIds: [[] as string[]],
+    isActive: [true],
+  });
+
+  readonly resetPwForm = this.fb.nonNullable.group({
+    password: ['', [Validators.required, Validators.minLength(8)]],
+  });
+
+  ngOnInit() {
+    this.load();
+    this.api.listRoles().subscribe({ next: (res) => this.roles.set(res.data) });
+  }
+
+  load() {
+    this.state.set('loading');
+    this.api.listUsers().subscribe({
+      next: (res) => { this.users.set(res.data); this.state.set('none'); },
+      error: () => this.state.set('error'),
+    });
+  }
+
+  openCreate() {
+    this.editUserId.set(null);
+    this.userForm.reset({ roleIds: [], isActive: true });
+    this.userForm.get('username')!.enable();
+    this.userForm.get('password')!.setValidators([Validators.required, Validators.minLength(8)]);
+    this.userForm.get('password')!.updateValueAndValidity();
+    this.userDialogVisible = true;
+  }
+
+  openEdit(user: User) {
+    this.editUserId.set(user.id);
+    this.userForm.reset({
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      password: '',
+      roleIds: user.roles.map((r) => r.id),
+      isActive: user.isActive,
+    });
+    this.userForm.get('username')!.disable();
+    this.userForm.get('password')!.clearValidators();
+    this.userForm.get('password')!.updateValueAndValidity();
+    this.userDialogVisible = true;
+  }
+
+  openResetPw(user: User) {
+    this.resetPwUserId.set(user.id);
+    this.resetPwUsername.set(user.username);
+    this.resetPwForm.reset();
+    this.resetPwDialogVisible = true;
+  }
+
+  confirmDeactivate(user: User) {
+    this.confirm.confirm({
+      message: `ต้องการยกเลิกการใช้งานของ "${user.username}" ใช่หรือไม่?`,
+      header: 'ยืนยัน',
+      icon: 'pi pi-exclamation-triangle',
+      accept: () => {
+        this.api.deactivateUser(user.id).subscribe({
+          next: () => { this.toast.add({ severity: 'success', summary: 'ยกเลิกใช้งานสำเร็จ' }); this.load(); },
+          error: () => this.toast.add({ severity: 'error', summary: 'ผิดพลาด' }),
+        });
+      },
+    });
+  }
+
+  saveUser() {
+    this.userForm.markAllAsTouched();
+    if (this.userForm.invalid) return;
+    this.saving.set(true);
+    const id = this.editUserId();
+    const val = this.userForm.getRawValue();
+
+    if (id) {
+      const { username: _u, password: _p, ...updateData } = val;
+      this.api.updateUser(id, updateData).subscribe({
+        next: () => { this.toast.add({ severity: 'success', summary: 'บันทึกสำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
+        error: (err) => this.handleSaveError(err),
+      });
+    } else {
+      this.api.createUser({ username: val.username, fullName: val.fullName, email: val.email, password: val.password, roleIds: val.roleIds }).subscribe({
+        next: () => { this.toast.add({ severity: 'success', summary: 'สร้างผู้ใช้สำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
+        error: (err) => this.handleSaveError(err),
+      });
+    }
+  }
+
+  saveResetPw() {
+    this.resetPwForm.markAllAsTouched();
+    if (this.resetPwForm.invalid) return;
+    this.saving.set(true);
+    const id = this.resetPwUserId()!;
+    this.api.resetPassword(id, this.resetPwForm.value.password!).subscribe({
+      next: () => { this.toast.add({ severity: 'success', summary: 'รีเซ็ตรหัสผ่านสำเร็จ' }); this.resetPwDialogVisible = false; this.saving.set(false); },
+      error: () => { this.saving.set(false); this.toast.add({ severity: 'error', summary: 'ผิดพลาด' }); },
+    });
+  }
+
+  private handleSaveError(err: unknown) {
+    this.saving.set(false);
+    const errObj = err as { error?: { errors?: unknown } };
+    if (errObj?.error?.errors) applyServerErrors(this.userForm, errObj.error as Parameters<typeof applyServerErrors>[1]);
+    else this.toast.add({ severity: 'error', summary: 'ผิดพลาด', detail: 'ไม่สามารถบันทึกได้' });
+  }
+}

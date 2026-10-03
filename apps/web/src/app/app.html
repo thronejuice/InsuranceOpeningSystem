@@ -1,0 +1,13 @@
+<main class="placeholder">
+  <h1>{{ title() }}</h1>
+
+  @if (health(); as h) {
+    <p class="ok">API health: {{ h.status }} · database: {{ h.database }}</p>
+  } @else if (healthError(); as err) {
+    <p class="error">{{ err }}</p>
+  } @else {
+    <p>กำลังตรวจสอบ API…</p>
+  }
+
+  <router-outlet />
+</main>

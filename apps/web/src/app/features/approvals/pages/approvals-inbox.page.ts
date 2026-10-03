@@ -1,0 +1,191 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  OnInit,
+  signal,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ButtonModule } from 'primeng/button';
+import { Dialog } from 'primeng/dialog';
+import { Textarea } from 'primeng/textarea';
+import { Message } from 'primeng/message';
+import { FormsModule } from '@angular/forms';
+import { MessageService } from 'primeng/api';
+import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
+import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
+import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
+import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
+
+@Component({
+  selector: 'app-approvals-inbox-page',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    RouterLink,
+    FormsModule,
+    ButtonModule,
+    Dialog, Textarea, Message,
+    AppPageHeaderComponent,
+    AppStateComponent,
+    AppStatusBadgeComponent,
+    ThDatePipe,
+  ],
+  template: `
+    <app-page-header title="กล่องอนุมัติ" subtitle="รายการรอการอนุมัติ" />
+
+    @if (state() === 'loading') {
+      <app-state state="loading" />
+    } @else if (state() === 'error') {
+      <app-state state="error" />
+    } @else if (approvals().length === 0) {
+      <app-state state="empty" emptyMessage="ไม่มีรายการรอการอนุมัติ" />
+    } @else {
+      <div class="card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>งานประกัน</th>
+              <th>ประเภทอนุมัติ</th>
+              <th>สถานะ</th>
+              <th>วันที่ขอ</th>
+              <th>เหตุผล</th>
+              <th style="width:160px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of approvals(); track a.id) {
+              <tr>
+                <td>
+                  <a [routerLink]="['/jobs', a.jobId]" class="job-link">{{ a.jobId }}</a>
+                </td>
+                <td>{{ a.approvalType }}</td>
+                <td><app-status-badge [status]="a.status" /></td>
+                <td>{{ a.createdAt | thDate }}</td>
+                <td>{{ a.reason ?? '-' }}</td>
+                <td>
+                  @if (a.status === 'PENDING') {
+                    <div class="row-actions">
+                      <p-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
+                      <p-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openReject(a)" />
+                    </div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (error()) {
+      <p-message severity="error" class="mt-2 block">{{ error() }}</p-message>
+    }
+
+    <!-- Reject Dialog -->
+    <p-dialog
+      [(visible)]="showRejectDialog"
+      header="ปฏิเสธการอนุมัติ"
+      [modal]="true"
+      [style]="{ width: '420px' }"
+    >
+      <div class="reason-form">
+        <label for="reject-reason">เหตุผล <span class="required">*</span></label>
+        <textarea pTextarea id="reject-reason" [(ngModel)]="rejectReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        @if (rejectError()) {
+          <small class="error-text">{{ rejectError() }}</small>
+        }
+      </div>
+      <ng-template #footer>
+        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRejectDialog = false" [disabled]="rejecting()" />
+        <p-button label="ปฏิเสธ" severity="danger" (onClick)="confirmReject()" [loading]="rejecting()" [disabled]="rejecting()" />
+      </ng-template>
+    </p-dialog>
+  `,
+  styles: [`
+    .card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: 8px; padding: 1.25rem; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .data-table th { text-align: left; padding: 0.5rem 0.75rem; background: var(--surface-ground); border-bottom: 1px solid var(--surface-border); font-size: 0.8rem; color: var(--text-color-secondary); }
+    .data-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--surface-border); vertical-align: middle; }
+    .data-table tr:hover td { background: var(--surface-hover); }
+    .row-actions { display: flex; gap: 0.25rem; }
+    .job-link { color: var(--primary-color); text-decoration: none; font-size: 0.82rem; }
+    .job-link:hover { text-decoration: underline; }
+    .reason-form { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0; }
+    .required { color: var(--red-500); }
+    .error-text { color: var(--red-500); font-size: 0.8rem; }
+    .mt-2 { margin-top: 0.5rem; }
+  `],
+})
+export class ApprovalsInboxPage implements OnInit {
+  private readonly api = inject(JobsApi);
+  private readonly toast = inject(MessageService);
+
+  readonly state = signal<'loading' | 'error' | 'none'>('none');
+  readonly approvals = signal<ApprovalResponse[]>([]);
+  readonly error = signal<string | null>(null);
+  readonly approvingId = signal<string | null>(null);
+
+  showRejectDialog = false;
+  rejectTarget: ApprovalResponse | null = null;
+  rejectReason = '';
+  readonly rejectError = signal<string | null>(null);
+  readonly rejecting = signal(false);
+
+  ngOnInit(): void { this.load(); }
+
+  private load(): void {
+    this.state.set('loading');
+    this.api.listApprovals({ status: 'PENDING' }).subscribe({
+      next: (list) => { this.approvals.set(list); this.state.set('none'); },
+      error: () => this.state.set('error'),
+    });
+  }
+
+  doApprove(a: ApprovalResponse): void {
+    this.approvingId.set(a.id);
+    this.error.set(null);
+    this.api.approveApproval(a.id).subscribe({
+      next: () => {
+        this.approvingId.set(null);
+        this.approvals.update((list) => list.filter((x) => x.id !== a.id));
+        this.toast.add({ severity: 'success', summary: 'อนุมัติแล้ว' });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.approvingId.set(null);
+        const body = e.error as { message?: string } | null;
+        this.error.set(body?.message ?? 'เกิดข้อผิดพลาด');
+      },
+    });
+  }
+
+  openReject(a: ApprovalResponse): void {
+    this.rejectTarget = a;
+    this.rejectReason = '';
+    this.rejectError.set(null);
+    this.showRejectDialog = true;
+  }
+
+  confirmReject(): void {
+    if (!this.rejectReason.trim()) { this.rejectError.set('กรุณากรอกเหตุผล'); return; }
+    const a = this.rejectTarget;
+    if (!a) return;
+    this.rejecting.set(true);
+    this.rejectError.set(null);
+    this.api.rejectApproval(a.id, { reason: this.rejectReason.trim() }).subscribe({
+      next: () => {
+        this.rejecting.set(false);
+        this.showRejectDialog = false;
+        this.approvals.update((list) => list.filter((x) => x.id !== a.id));
+        this.toast.add({ severity: 'info', summary: 'ปฏิเสธแล้ว' });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.rejecting.set(false);
+        const body = e.error as { message?: string } | null;
+        this.rejectError.set(body?.message ?? 'เกิดข้อผิดพลาด');
+      },
+    });
+  }
+}

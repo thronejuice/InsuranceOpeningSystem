@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+.angular/
+
+# env
+.env
+.env.*
+!.env.example
+
+# uploads (local storage driver)
+uploads/
+
+# logs
+*.log
+npm-debug.log*
+
+# test / coverage
+coverage/
+
+# ide
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# os
+.DS_Store
+Thumbs.db

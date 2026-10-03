@@ -1,0 +1,1127 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity & Access (spec §4, §35, DESIGN §8) ───────────────────────────
+
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  username     String    @unique
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdById  String?   @map("created_by_id") @db.Uuid
+  updatedById  String?   @map("updated_by_id") @db.Uuid
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  roles         UserRole[]
+  refreshTokens RefreshToken[]
+  activityLogs  ActivityLog[]
+  agentJobs              Job[]              @relation("job_agent")
+  assigneeJobs           Job[]              @relation("job_assignee")
+  changedStatusHistories JobStatusHistory[]
+  uploadedDocuments      Document[]         @relation("document_uploader")
+  requestedQuotations    Quotation[]        @relation("quotation_requester")
+  createdProposals       Proposal[]         @relation("proposal_creator")
+  requestedApprovals     Approval[]         @relation("approval_requester")
+  approvedApprovals      Approval[]         @relation("approval_approver")
+  confirmedBindings      Binding[]          @relation("binding_confirmer")
+  createdPolicies        Policy[]           @relation("policy_creator")
+  createdPayments        Payment[]          @relation("payment_creator")
+  agentCommissions       Commission[]       @relation("commission_agent")
+  createdCommissions     Commission[]       @relation("commission_creator")
+  assignedTasks          Task[]             @relation("task_assignee")
+  createdTasks           Task[]             @relation("task_creator")
+  completedTasks         Task[]             @relation("task_completer")
+  assignedRenewals       Renewal[]          @relation("renewal_assignee")
+  notifications          Notification[]     @relation("notification_user")
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// DESIGN §5.1 — stores only the hash so a leaked DB cannot replay tokens
+model RefreshToken {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─── Audit (spec §22) ──────────────────────────────────────────────────────
+
+model ActivityLog {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// FK to jobs is added once the jobs table exists (Phase 2)
+  jobId       String?  @map("job_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  description String?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  job  Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+// ─── Customer (spec §7) ────────────────────────────────────────────────────
+
+enum CustomerType {
+  INDIVIDUAL
+  CORPORATE
+
+  @@map("customer_type")
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("customer_status")
+}
+
+enum AddressType {
+  HOME
+  OFFICE
+  BILLING
+  SHIPPING
+  OTHER
+
+  @@map("address_type")
+}
+
+model Customer {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  customerCode String         @unique @map("customer_code")
+  customerType CustomerType   @map("customer_type")
+  firstName    String?        @map("first_name")
+  lastName     String?        @map("last_name")
+  companyName  String?        @map("company_name")
+  taxId        String?        @map("tax_id")
+  citizenId    String?        @map("citizen_id")
+  phone        String?
+  mobile       String?
+  email        String?
+  status       CustomerStatus @default(ACTIVE)
+  remark       String?
+  createdById  String?        @map("created_by_id") @db.Uuid
+  updatedById  String?        @map("updated_by_id") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt    DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  addresses  CustomerAddress[]
+  contacts   CustomerContact[]
+  jobs       Job[]
+  proposals  Proposal[]
+
+  @@index([customerType])
+  @@index([status])
+  @@index([email])
+  @@index([taxId])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  customerId  String      @map("customer_id") @db.Uuid
+  addressType AddressType @map("address_type")
+  addressLine String      @map("address_line")
+  subDistrict String?     @map("sub_district")
+  district    String?
+  province    String?
+  postalCode  String?     @map("postal_code")
+  country     String?     @default("Thailand")
+  isPrimary   Boolean     @default(false) @map("is_primary")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+model CustomerContact {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  contactName String   @map("contact_name")
+  position    String?
+  department  String?
+  phone       String?
+  mobile      String?
+  email       String?
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_contacts")
+}
+
+// ─── Master Data (spec §8, §10, §11, §12.2, §16.2) ──────────────────────────
+
+model InsuranceType {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  products InsuranceProduct[]
+  jobs     Job[]
+
+  @@map("insurance_types")
+}
+
+model InsuranceProduct {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  insuranceTypeId     String   @map("insurance_type_id") @db.Uuid
+  code                String   @unique
+  name                String
+  description         String?
+  requireDocsOnSubmit Boolean  @default(false) @map("require_docs_on_submit")
+  requireDocsOnBind   Boolean  @default(false) @map("require_docs_on_bind")
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  insuranceType     InsuranceType         @relation(fields: [insuranceTypeId], references: [id])
+  riskFields        RiskFieldDefinition[]
+  coverages         InsuranceCoverage[]
+  documentChecklist DocumentChecklist[]
+  jobs              Job[]
+
+  @@index([insuranceTypeId])
+  @@map("insurance_products")
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("company_status")
+}
+
+model InsuranceCompany {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  code        String        @unique
+  name        String
+  taxId       String?       @map("tax_id")
+  contactName String?       @map("contact_name")
+  phone       String?
+  email       String?
+  address     String?
+  status      CompanyStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt   DateTime?     @map("deleted_at") @db.Timestamptz(3)
+
+  quotations Quotation[]
+  policies   Policy[]
+
+  @@index([status])
+  @@map("insurance_companies")
+}
+
+model InsuranceCoverage {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  code              String
+  name              String
+  description       String?
+  defaultSumInsured Decimal? @map("default_sum_insured") @db.Decimal(15, 2)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product        InsuranceProduct @relation(fields: [productId], references: [id])
+  jobCoverages   JobCoverage[]
+  quotationItems QuotationItem[]
+
+  @@unique([productId, code])
+  @@index([productId])
+  @@map("insurance_coverages")
+}
+
+enum RiskFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+  FILE
+  JSON
+
+  @@map("risk_field_type")
+}
+
+model RiskFieldDefinition {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  productId      String        @map("product_id") @db.Uuid
+  fieldCode      String        @map("field_code")
+  fieldName      String        @map("field_name")
+  fieldType      RiskFieldType @map("field_type")
+  isRequired     Boolean       @default(false) @map("is_required")
+  validationRule String?       @map("validation_rule")
+  sortOrder      Int           @default(0) @map("sort_order")
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product InsuranceProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, fieldCode])
+  @@index([productId, sortOrder])
+  @@map("risk_field_definitions")
+}
+
+enum DocumentType {
+  ID_CARD
+  COMPANY_REGISTRATION
+  TAX_DOCUMENT
+  VEHICLE_BOOK
+  PREVIOUS_POLICY
+  VEHICLE_PHOTO
+  RISK_SURVEY
+  QUOTATION
+  PROPOSAL
+  POLICY
+  INVOICE
+  RECEIPT
+  OTHER
+
+  @@map("document_type")
+}
+
+model DocumentChecklist {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  productId    String       @map("product_id") @db.Uuid
+  documentType DocumentType @map("document_type")
+  isRequired   Boolean      @default(true) @map("is_required")
+  sortOrder    Int          @default(0) @map("sort_order")
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product InsuranceProduct @relation(fields: [productId], references: [id])
+
+  @@unique([productId, documentType])
+  @@index([productId])
+  @@map("document_checklists")
+}
+
+enum ApprovalConditionField {
+  PREMIUM
+  DISCOUNT
+  SUM_INSURED
+
+  @@map("approval_condition_field")
+}
+
+enum ApprovalConditionOperator {
+  LT
+  LTE
+  GT
+  GTE
+  EQ
+
+  @@map("approval_condition_operator")
+}
+
+enum ApprovalRoleTarget {
+  SUPERVISOR
+  MANAGER
+  ADMIN
+
+  @@map("approval_role_target")
+}
+
+model ApprovalRule {
+  id                String                    @id @default(uuid(7)) @db.Uuid
+  name              String
+  conditionField    ApprovalConditionField    @map("condition_field")
+  conditionOperator ApprovalConditionOperator @map("condition_operator")
+  thresholdValue    Decimal                   @map("threshold_value") @db.Decimal(15, 2)
+  approverRole      ApprovalRoleTarget        @map("approver_role")
+  active            Boolean                   @default(true)
+  sortOrder         Int                       @default(0) @map("sort_order")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("approval_rules")
+}
+
+// ─── Running number (DESIGN §5.2) ──────────────────────────────────────────
+
+model DocumentSequence {
+  prefix    String
+  /// 0 = sequence that does not reset yearly (e.g. CUS)
+  year      Int
+  lastValue Int      @map("last_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([prefix, year])
+  @@map("document_sequences")
+}
+
+// ─── Job (spec §9, §6, DESIGN §7) ────────────────────────────────────────────
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  WAITING_INFORMATION
+  QUOTATION_REQUESTED
+  QUOTATION_RECEIVED
+  QUOTATION_SELECTED
+  PROPOSAL_SENT
+  WAITING_CUSTOMER
+  CUSTOMER_ACCEPTED
+  CUSTOMER_REJECTED
+  WAITING_APPROVAL
+  APPROVED
+  BINDING
+  POLICY_PENDING
+  POLICY_ISSUED
+  CANCELLED
+  CLOSED
+  EXPIRED
+  RENEWAL
+
+  @@map("job_status")
+}
+
+enum JobPriority {
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("job_priority")
+}
+
+model Job {
+  id                  String      @id @default(uuid(7)) @db.Uuid
+  jobNo               String      @unique @map("job_no")
+  customerId          String      @map("customer_id") @db.Uuid
+  insuranceTypeId     String      @map("insurance_type_id") @db.Uuid
+  productId           String      @map("product_id") @db.Uuid
+  agentId             String      @map("agent_id") @db.Uuid
+  assignedTo          String?     @map("assigned_to") @db.Uuid
+  source              String?
+  priority            JobPriority @default(NORMAL)
+  status              JobStatus   @default(DRAFT)
+  effectiveDate       DateTime    @map("effective_date") @db.Date
+  expiryDate          DateTime?   @map("expiry_date") @db.Date
+  remark              String?
+  version             Int         @default(1)
+  selectedQuotationId String?     @unique @map("selected_quotation_id") @db.Uuid
+  previousPolicyId    String?     @map("previous_policy_id") @db.Uuid
+  createdById         String?     @map("created_by_id") @db.Uuid
+  updatedById         String?     @map("updated_by_id") @db.Uuid
+  deletedAt           DateTime?   @map("deleted_at") @db.Timestamptz(3)
+  createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  insuranceType     InsuranceType      @relation(fields: [insuranceTypeId], references: [id])
+  product           InsuranceProduct   @relation(fields: [productId], references: [id])
+  agent             User               @relation("job_agent", fields: [agentId], references: [id])
+  assignee          User?              @relation("job_assignee", fields: [assignedTo], references: [id])
+  statusHistories   JobStatusHistory[]
+  activityLogs      ActivityLog[]
+  risk              JobRisk?
+  coverages         JobCoverage[]
+  documents         Document[]
+  quotations        Quotation[]        @relation("job_quotations")
+  selectedQuotation Quotation?         @relation("job_selected_quotation", fields: [selectedQuotationId], references: [id])
+  proposals         Proposal[]
+  approvals         Approval[]
+  binding           Binding?
+  policy            Policy?
+  tasks             Task[]
+  renewalAsNew      Renewal?           @relation("renewal_new_job")
+
+  @@index([customerId])
+  @@index([agentId])
+  @@index([status])
+  @@index([productId])
+  @@index([effectiveDate])
+  @@index([deletedAt])
+  @@map("jobs")
+}
+
+model JobStatusHistory {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  jobId       String    @map("job_id") @db.Uuid
+  fromStatus  JobStatus @map("from_status")
+  toStatus    JobStatus @map("to_status")
+  reason      String?
+  changedById String?   @map("changed_by_id") @db.Uuid
+  changedAt   DateTime  @default(now()) @map("changed_at") @db.Timestamptz(3)
+
+  job       Job   @relation(fields: [jobId], references: [id])
+  changedBy User? @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@map("job_status_histories")
+}
+
+// ─── Job Risk (spec §10) ──────────────────────────────────────────────────────
+
+model JobRisk {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  jobId     String   @unique @map("job_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job    Job            @relation(fields: [jobId], references: [id])
+  values JobRiskValue[]
+
+  @@map("job_risks")
+}
+
+model JobRiskValue {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  jobRiskId  String   @map("job_risk_id") @db.Uuid
+  fieldCode  String   @map("field_code")
+  fieldValue String?  @map("field_value")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  jobRisk JobRisk @relation(fields: [jobRiskId], references: [id], onDelete: Cascade)
+
+  @@unique([jobRiskId, fieldCode])
+  @@index([jobRiskId])
+  @@map("job_risk_values")
+}
+
+model JobCoverage {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  jobId      String   @map("job_id") @db.Uuid
+  coverageId String   @map("coverage_id") @db.Uuid
+  sumInsured Decimal? @map("sum_insured") @db.Decimal(15, 2)
+  deductible Decimal? @db.Decimal(15, 2)
+  remark     String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job      Job               @relation(fields: [jobId], references: [id])
+  coverage InsuranceCoverage @relation(fields: [coverageId], references: [id])
+
+  @@unique([jobId, coverageId])
+  @@index([jobId])
+  @@map("job_coverages")
+}
+
+// ─── Documents (spec §36) ─────────────────────────────────────────────────────
+
+enum DocumentStatus {
+  ACTIVE
+  DELETED
+
+  @@map("document_status")
+}
+
+model Document {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  jobId        String         @map("job_id") @db.Uuid
+  documentType DocumentType   @map("document_type")
+  originalName String         @map("original_name")
+  storedName   String         @map("stored_name")
+  mimeType     String         @map("mime_type")
+  size         Int
+  storagePath  String         @map("storage_path")
+  version      Int            @default(1)
+  status       DocumentStatus @default(ACTIVE)
+  uploadedById String?        @map("uploaded_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job        Job   @relation(fields: [jobId], references: [id])
+  uploadedBy User? @relation("document_uploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([jobId, status])
+  @@index([jobId, documentType])
+  @@map("documents")
+}
+
+// ─── Quotation (spec §13, §14, DESIGN Q5) ────────────────────────────────────
+
+enum QuotationStatus {
+  REQUESTED
+  RECEIVED
+  SELECTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+
+  @@map("quotation_status")
+}
+
+model Quotation {
+  id                 String          @id @default(uuid(7)) @db.Uuid
+  jobId              String          @map("job_id") @db.Uuid
+  insuranceCompanyId String          @map("insurance_company_id") @db.Uuid
+  quotationNo        String          @unique @map("quotation_no")
+  quotationDate      DateTime?       @map("quotation_date") @db.Date
+  validUntil         DateTime?       @map("valid_until") @db.Date
+  status             QuotationStatus @default(REQUESTED)
+  grossPremium       Decimal         @default(0) @map("gross_premium") @db.Decimal(15, 2)
+  discount           Decimal         @default(0) @db.Decimal(15, 2)
+  netPremium         Decimal         @default(0) @map("net_premium") @db.Decimal(15, 2)
+  tax                Decimal         @default(0) @db.Decimal(15, 2)
+  stampDuty          Decimal         @default(0) @map("stamp_duty") @db.Decimal(15, 2)
+  totalAmount        Decimal         @default(0) @map("total_amount") @db.Decimal(15, 2)
+  remark             String?
+  version            Int             @default(1)
+  requestedById      String?         @map("requested_by_id") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job              Job              @relation("job_quotations", fields: [jobId], references: [id])
+  insuranceCompany InsuranceCompany @relation(fields: [insuranceCompanyId], references: [id])
+  requestedBy      User?            @relation("quotation_requester", fields: [requestedById], references: [id], onDelete: SetNull)
+  items            QuotationItem[]
+  selectedByJob    Job?             @relation("job_selected_quotation")
+  proposals        Proposal[]
+  bindings         Binding[]
+  policies         Policy[]
+
+  @@index([jobId])
+  @@index([status])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  quotationId  String   @map("quotation_id") @db.Uuid
+  coverageId   String?  @map("coverage_id") @db.Uuid
+  coverageName String   @map("coverage_name")
+  sumInsured   Decimal  @map("sum_insured") @db.Decimal(15, 2)
+  rate         Decimal? @db.Decimal(10, 6)
+  deductible   Decimal? @db.Decimal(15, 2)
+  premium      Decimal  @db.Decimal(15, 2)
+  remark       String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  quotation Quotation          @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  coverage  InsuranceCoverage? @relation(fields: [coverageId], references: [id], onDelete: SetNull)
+
+  @@index([quotationId])
+  @@map("quotation_items")
+}
+
+// ─── Proposal (spec §15, DESIGN §29.7) ───────────────────────────────────────
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+
+  @@map("proposal_status")
+}
+
+enum ProposalRejectReason {
+  PRICE
+  COVERAGE
+  COMPETITOR
+  CUSTOMER_CANCELLED
+  NO_RESPONSE
+  OTHER
+
+  @@map("proposal_reject_reason")
+}
+
+model Proposal {
+  id           String                @id @default(uuid(7)) @db.Uuid
+  proposalNo   String                @unique @map("proposal_no")
+  jobId        String                @map("job_id") @db.Uuid
+  quotationId  String                @map("quotation_id") @db.Uuid
+  customerId   String                @map("customer_id") @db.Uuid
+  proposalDate DateTime?             @map("proposal_date") @db.Date
+  validUntil   DateTime?             @map("valid_until") @db.Date
+  status       ProposalStatus        @default(DRAFT)
+  sentAt       DateTime?             @map("sent_at") @db.Timestamptz(3)
+  acceptedAt   DateTime?             @map("accepted_at") @db.Timestamptz(3)
+  rejectedAt   DateTime?             @map("rejected_at") @db.Timestamptz(3)
+  rejectReason ProposalRejectReason? @map("reject_reason")
+  remark       String?
+  version      Int                   @default(1)
+  createdById  String?               @map("created_by_id") @db.Uuid
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job        Job        @relation(fields: [jobId], references: [id])
+  quotation  Quotation  @relation(fields: [quotationId], references: [id])
+  customer   Customer   @relation(fields: [customerId], references: [id])
+  createdBy  User?      @relation("proposal_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvals  Approval[]
+
+  @@index([jobId])
+  @@index([status])
+  @@map("proposals")
+}
+
+// ─── Approval (spec §16) ─────────────────────────────────────────────────────
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("approval_status")
+}
+
+model Approval {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  jobId         String             @map("job_id") @db.Uuid
+  proposalId    String             @map("proposal_id") @db.Uuid
+  approvalType  ApprovalRoleTarget @map("approval_type")
+  requestedById String?            @map("requested_by_id") @db.Uuid
+  approverId    String?            @map("approver_id") @db.Uuid
+  status        ApprovalStatus     @default(PENDING)
+  requestedAt   DateTime           @default(now()) @map("requested_at") @db.Timestamptz(3)
+  approvedAt    DateTime?          @map("approved_at") @db.Timestamptz(3)
+  rejectedAt    DateTime?          @map("rejected_at") @db.Timestamptz(3)
+  reason        String?
+  remark        String?
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job         Job      @relation(fields: [jobId], references: [id])
+  proposal    Proposal @relation(fields: [proposalId], references: [id])
+  requestedBy User?    @relation("approval_requester", fields: [requestedById], references: [id], onDelete: SetNull)
+  approver    User?    @relation("approval_approver", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([status])
+  @@map("approvals")
+}
+
+// ─── Idempotency (DESIGN §5.1) ───────────────────────────────────────────────
+
+model IdempotencyKey {
+  key        String   @id
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entityType, entityId])
+  @@map("idempotency_keys")
+}
+
+// ─── Binding (spec §17) ──────────────────────────────────────────────────────
+
+model Binding {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  jobId          String    @unique @map("job_id") @db.Uuid
+  quotationId    String    @map("quotation_id") @db.Uuid
+  bindingDate    DateTime  @map("binding_date") @db.Date
+  effectiveDate  DateTime  @map("effective_date") @db.Date
+  expiryDate     DateTime? @map("expiry_date") @db.Date
+  confirmedById  String?   @map("confirmed_by_id") @db.Uuid
+  remark         String?
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job         Job       @relation(fields: [jobId], references: [id])
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  confirmedBy User?     @relation("binding_confirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([quotationId])
+  @@map("bindings")
+}
+
+// ─── Policy (spec §18) ───────────────────────────────────────────────────────
+
+enum PolicyStatus {
+  PENDING
+  ISSUED
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  RENEWED
+
+  @@map("policy_status")
+}
+
+model Policy {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  policyNo           String       @unique @map("policy_no")
+  jobId              String       @unique @map("job_id") @db.Uuid
+  quotationId        String       @map("quotation_id") @db.Uuid
+  insuranceCompanyId String       @map("insurance_company_id") @db.Uuid
+  policyType         String?      @map("policy_type")
+  effectiveDate      DateTime     @map("effective_date") @db.Date
+  expiryDate         DateTime?    @map("expiry_date") @db.Date
+  sumInsured         Decimal?     @map("sum_insured") @db.Decimal(15, 2)
+  grossPremium       Decimal      @default(0) @map("gross_premium") @db.Decimal(15, 2)
+  discount           Decimal      @default(0) @db.Decimal(15, 2)
+  netPremium         Decimal      @default(0) @map("net_premium") @db.Decimal(15, 2)
+  tax                Decimal      @default(0) @db.Decimal(15, 2)
+  stampDuty          Decimal      @default(0) @map("stamp_duty") @db.Decimal(15, 2)
+  totalPremium       Decimal      @default(0) @map("total_premium") @db.Decimal(15, 2)
+  status             PolicyStatus @default(PENDING)
+  paymentDueDate     DateTime?    @map("payment_due_date") @db.Date
+  issuedAt           DateTime?    @map("issued_at") @db.Timestamptz(3)
+  remark             String?
+  version            Int          @default(1)
+  createdById        String?      @map("created_by_id") @db.Uuid
+  updatedById        String?      @map("updated_by_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job              Job              @relation(fields: [jobId], references: [id])
+  quotation        Quotation        @relation(fields: [quotationId], references: [id])
+  insuranceCompany InsuranceCompany @relation(fields: [insuranceCompanyId], references: [id])
+  createdBy        User?            @relation("policy_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  coverages        PolicyCoverage[]
+  payments         Payment[]
+  commissions      Commission[]
+  renewals         Renewal[]        @relation("renewal_previous_policy")
+
+  @@index([status])
+  @@map("policies")
+}
+
+model PolicyCoverage {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  policyId     String   @map("policy_id") @db.Uuid
+  coverageId   String?  @map("coverage_id") @db.Uuid
+  coverageName String   @map("coverage_name")
+  sumInsured   Decimal  @map("sum_insured") @db.Decimal(15, 2)
+  rate         Decimal? @db.Decimal(10, 6)
+  deductible   Decimal? @db.Decimal(15, 2)
+  premium      Decimal  @db.Decimal(15, 2)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@index([policyId])
+  @@map("policy_coverages")
+}
+
+// ─── Payment (spec §19) ──────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CREDIT_CARD
+  CHEQUE
+  ONLINE
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  ACTIVE
+  CANCELLED
+
+  @@map("payment_status")
+}
+
+model Payment {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  paymentNo     String        @unique @map("payment_no")
+  policyId      String        @map("policy_id") @db.Uuid
+  paymentDate   DateTime      @map("payment_date") @db.Date
+  amount        Decimal       @db.Decimal(15, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  referenceNo   String?       @map("reference_no")
+  status        PaymentStatus @default(ACTIVE)
+  cancelReason  String?       @map("cancel_reason")
+  remark        String?
+  createdById   String?       @map("created_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  policy    Policy @relation(fields: [policyId], references: [id])
+  createdBy User?  @relation("payment_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([policyId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ─── Commission (spec §20) ───────────────────────────────────────────────────
+
+enum CommissionType {
+  COMPANY
+  AGENT
+  TEAM
+  REFERRAL
+  OTHER
+
+  @@map("commission_type")
+}
+
+enum CommissionStatus {
+  PENDING
+  CALCULATED
+  APPROVED
+  PAID
+  CANCELLED
+
+  @@map("commission_status")
+}
+
+model Commission {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  policyId         String           @map("policy_id") @db.Uuid
+  agentId          String?          @map("agent_id") @db.Uuid
+  commissionType   CommissionType   @map("commission_type")
+  commissionRate   Decimal          @map("commission_rate") @db.Decimal(10, 4)
+  commissionBase   Decimal          @map("commission_base") @db.Decimal(15, 2)
+  commissionAmount Decimal          @map("commission_amount") @db.Decimal(15, 2)
+  status           CommissionStatus @default(CALCULATED)
+  paidDate         DateTime?        @map("paid_date") @db.Date
+  remark           String?
+  createdById      String?          @map("created_by_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  policy    Policy @relation(fields: [policyId], references: [id])
+  agent     User?  @relation("commission_agent", fields: [agentId], references: [id], onDelete: SetNull)
+  createdBy User?  @relation("commission_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([policyId])
+  @@index([agentId])
+  @@index([status])
+  @@map("commissions")
+}
+
+// ─── Task / Follow-up (spec §21) ─────────────────────────────────────────────
+
+enum TaskType {
+  CALL_CUSTOMER
+  REQUEST_DOCUMENT
+  REQUEST_QUOTATION
+  FOLLOW_UP_QUOTATION
+  SEND_PROPOSAL
+  FOLLOW_UP_CUSTOMER
+  FOLLOW_UP_PAYMENT
+  FOLLOW_UP_POLICY
+  RENEWAL
+  OTHER
+
+  @@map("task_type")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("task_priority")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+
+  @@map("task_status")
+}
+
+model Task {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  jobId       String       @map("job_id") @db.Uuid
+  assignedTo  String?      @map("assigned_to") @db.Uuid
+  taskType    TaskType     @map("task_type")
+  subject     String
+  description String?
+  dueDate     DateTime?    @map("due_date") @db.Timestamptz(3)
+  priority    TaskPriority @default(MEDIUM) @map("priority")
+  status      TaskStatus   @default(TODO) @map("status")
+  completedAt DateTime?    @map("completed_at") @db.Timestamptz(3)
+  completedById String?    @map("completed_by_id") @db.Uuid
+  createdById String?      @map("created_by_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job         Job   @relation(fields: [jobId], references: [id])
+  assignee    User? @relation("task_assignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  completedBy User? @relation("task_completer", fields: [completedById], references: [id], onDelete: SetNull)
+  createdBy   User? @relation("task_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([assignedTo])
+  @@index([status])
+  @@index([dueDate])
+  @@map("tasks")
+}
+
+// ─── Renewal (spec §23) ──────────────────────────────────────────────────────
+
+enum RenewalStatus {
+  PENDING
+  IN_PROGRESS
+  QUOTATION
+  CUSTOMER_CONTACTED
+  ACCEPTED
+  REJECTED
+  RENEWED
+  LOST
+  CANCELLED
+
+  @@map("renewal_status")
+}
+
+model Renewal {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  previousPolicyId String        @map("previous_policy_id") @db.Uuid
+  newJobId         String?       @unique @map("new_job_id") @db.Uuid
+  renewalDate      DateTime      @map("renewal_date") @db.Date
+  targetExpiryDate DateTime      @map("target_expiry_date") @db.Date
+  status           RenewalStatus @default(PENDING)
+  assignedTo       String?       @map("assigned_to") @db.Uuid
+  remark           String?
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  previousPolicy Policy @relation("renewal_previous_policy", fields: [previousPolicyId], references: [id])
+  newJob         Job?   @relation("renewal_new_job", fields: [newJobId], references: [id])
+  assignee       User?  @relation("renewal_assignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([previousPolicyId])
+  @@index([status])
+  @@map("renewals")
+}
+
+// ─── Notification (spec §24) ─────────────────────────────────────────────────
+
+enum NotificationType {
+  JOB_ASSIGNED
+  DOCUMENT_MISSING
+  QUOTATION_RECEIVED
+  APPROVAL_REQUIRED
+  PROPOSAL_SENT
+  CUSTOMER_ACCEPTED
+  POLICY_ISSUED
+  PAYMENT_OVERDUE
+  TASK_DUE
+  RENEWAL_DUE
+
+  @@map("notification_type")
+}
+
+model Notification {
+  id         String           @id @default(uuid(7)) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  type       NotificationType
+  title      String
+  message    String
+  entityType String?          @map("entity_type")
+  entityId   String?          @map("entity_id") @db.Uuid
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation("notification_user", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@map("notifications")
+}

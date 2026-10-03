@@ -1,0 +1,193 @@
+import { hash } from 'argon2';
+import { config } from 'dotenv';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PrismaClient } from '../src/generated/prisma/client.js';
+import {
+  APPROVAL_RULES,
+  INSURANCE_PRODUCTS,
+  INSURANCE_TYPES,
+  MOTOR_COVERAGES,
+  MOTOR_DOCUMENT_CHECKLIST,
+  MOTOR_RISK_FIELDS,
+  PERMISSIONS,
+  PROPERTY_COVERAGES,
+  PROPERTY_DOCUMENT_CHECKLIST,
+  PROPERTY_RISK_FIELDS,
+  ROLE_PERMISSIONS,
+  ROLES,
+  SAMPLE_COMPANIES,
+  SAMPLE_USERS,
+  type RoleCode,
+} from './seed-data.js';
+
+config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
+
+const password = process.env.SEED_USER_PASSWORD ?? 'Password@123';
+const prisma = new PrismaClient();
+
+/** Idempotent: safe to re-run, keeps role → permission links in sync with seed-data.ts */
+async function main() {
+  // ─── Auth ──────────────────────────────────────────────────────────────
+  for (const [code, description] of Object.entries(PERMISSIONS)) {
+    await prisma.permission.upsert({ where: { code }, update: { description }, create: { code, description } });
+  }
+  const permissionIds = new Map((await prisma.permission.findMany()).map((p) => [p.code, p.id]));
+
+  for (const [code, name] of Object.entries(ROLES)) {
+    const role = await prisma.role.upsert({ where: { code }, update: { name }, create: { code, name } });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+    await prisma.rolePermission.createMany({
+      data: [...new Set(ROLE_PERMISSIONS[code as RoleCode])].map((permission) => ({
+        roleId: role.id,
+        permissionId: permissionIds.get(permission)!,
+      })),
+    });
+  }
+  const roleIds = new Map((await prisma.role.findMany()).map((r) => [r.code, r.id]));
+
+  const passwordHash = await hash(password);
+  for (const sample of SAMPLE_USERS) {
+    const user = await prisma.user.upsert({
+      where: { username: sample.username },
+      update: {},
+      create: {
+        username: sample.username,
+        email: `${sample.username}@example.com`,
+        fullName: sample.fullName,
+        passwordHash,
+      },
+    });
+    const roleId = roleIds.get(sample.role)!;
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: user.id, roleId } },
+      update: {},
+      create: { userId: user.id, roleId },
+    });
+  }
+
+  // ─── Insurance Types ───────────────────────────────────────────────────
+  for (const t of INSURANCE_TYPES) {
+    await prisma.insuranceType.upsert({
+      where: { code: t.code },
+      update: { name: t.name, description: t.description },
+      create: { code: t.code, name: t.name, description: t.description },
+    });
+  }
+  const typeMap = new Map((await prisma.insuranceType.findMany()).map((t) => [t.code, t.id]));
+
+  // ─── Insurance Products ────────────────────────────────────────────────
+  for (const p of INSURANCE_PRODUCTS) {
+    await prisma.insuranceProduct.upsert({
+      where: { code: p.code },
+      update: { name: p.name, description: p.description, requireDocsOnSubmit: p.requireDocsOnSubmit, requireDocsOnBind: p.requireDocsOnBind },
+      create: {
+        code: p.code,
+        name: p.name,
+        description: p.description,
+        requireDocsOnSubmit: p.requireDocsOnSubmit,
+        requireDocsOnBind: p.requireDocsOnBind,
+        insuranceTypeId: typeMap.get(p.typeCode)!,
+      },
+    });
+  }
+  const productMap = new Map((await prisma.insuranceProduct.findMany()).map((p) => [p.code, p.id]));
+
+  // ─── Risk Fields ───────────────────────────────────────────────────────
+  for (const f of MOTOR_RISK_FIELDS) {
+    const productId = productMap.get('MOTOR-001')!;
+    await prisma.riskFieldDefinition.upsert({
+      where: { productId_fieldCode: { productId, fieldCode: f.fieldCode } },
+      update: { fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
+      create: { productId, fieldCode: f.fieldCode, fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
+    });
+  }
+  for (const f of PROPERTY_RISK_FIELDS) {
+    for (const productCode of ['FIRE-001', 'PROPERTY-001'] as const) {
+      const productId = productMap.get(productCode)!;
+      await prisma.riskFieldDefinition.upsert({
+        where: { productId_fieldCode: { productId, fieldCode: f.fieldCode } },
+        update: { fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
+        create: { productId, fieldCode: f.fieldCode, fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
+      });
+    }
+  }
+
+  // ─── Coverages ─────────────────────────────────────────────────────────
+  for (const c of MOTOR_COVERAGES) {
+    const productId = productMap.get('MOTOR-001')!;
+    await prisma.insuranceCoverage.upsert({
+      where: { productId_code: { productId, code: c.code } },
+      update: { name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+      create: { productId, code: c.code, name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+    });
+  }
+  for (const c of PROPERTY_COVERAGES) {
+    for (const productCode of ['FIRE-001', 'PROPERTY-001'] as const) {
+      const productId = productMap.get(productCode)!;
+      await prisma.insuranceCoverage.upsert({
+        where: { productId_code: { productId, code: c.code } },
+        update: { name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+        create: { productId, code: c.code, name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+      });
+    }
+  }
+
+  // ─── Document Checklists ───────────────────────────────────────────────
+  for (const d of MOTOR_DOCUMENT_CHECKLIST) {
+    const productId = productMap.get('MOTOR-001')!;
+    await prisma.documentChecklist.upsert({
+      where: { productId_documentType: { productId, documentType: d.documentType as never } },
+      update: { isRequired: d.isRequired, sortOrder: d.sortOrder },
+      create: { productId, documentType: d.documentType as never, isRequired: d.isRequired, sortOrder: d.sortOrder },
+    });
+  }
+  for (const d of PROPERTY_DOCUMENT_CHECKLIST) {
+    for (const productCode of ['FIRE-001', 'PROPERTY-001'] as const) {
+      const productId = productMap.get(productCode)!;
+      await prisma.documentChecklist.upsert({
+        where: { productId_documentType: { productId, documentType: d.documentType as never } },
+        update: { isRequired: d.isRequired, sortOrder: d.sortOrder },
+        create: { productId, documentType: d.documentType as never, isRequired: d.isRequired, sortOrder: d.sortOrder },
+      });
+    }
+  }
+
+  // ─── Sample Insurance Companies ────────────────────────────────────────
+  for (const co of SAMPLE_COMPANIES) {
+    await prisma.insuranceCompany.upsert({
+      where: { code: co.code },
+      update: { name: co.name, phone: co.phone, email: co.email },
+      create: { code: co.code, name: co.name, phone: co.phone, email: co.email },
+    });
+  }
+
+  // ─── Approval Rules ────────────────────────────────────────────────────
+  for (const rule of APPROVAL_RULES) {
+    const existing = await prisma.approvalRule.findFirst({ where: { name: rule.name } });
+    if (!existing) {
+      await prisma.approvalRule.create({
+        data: {
+          name: rule.name,
+          conditionField: rule.conditionField as never,
+          conditionOperator: rule.conditionOperator as never,
+          thresholdValue: rule.thresholdValue,
+          approverRole: rule.approverRole as never,
+          sortOrder: rule.sortOrder,
+        },
+      });
+    }
+  }
+
+  console.log(
+    `Seeded ${Object.keys(PERMISSIONS).length} permissions, ${Object.keys(ROLES).length} roles, ${SAMPLE_USERS.length} users,`,
+    `${INSURANCE_TYPES.length} insurance types, ${INSURANCE_PRODUCTS.length} products,`,
+    `${SAMPLE_COMPANIES.length} companies, ${APPROVAL_RULES.length} approval rules`,
+  );
+}
+
+try {
+  await main();
+} finally {
+  await prisma.$disconnect();
+}
