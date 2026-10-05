@@ -87,15 +87,15 @@ export class CommissionService {
 }
 
 function toResponse(c: {
-  commissionRate: { toString(): string };
-  commissionBase: { toString(): string };
-  commissionAmount: { toString(): string };
+  commissionRate: { toFixed(dp: number): string };
+  commissionBase: { toFixed(dp: number): string };
+  commissionAmount: { toFixed(dp: number): string };
   [key: string]: unknown;
 }): CommissionResponse {
   return {
     ...c,
-    commissionRate: c.commissionRate.toString(),
-    commissionBase: c.commissionBase.toString(),
-    commissionAmount: c.commissionAmount.toString(),
+    commissionRate: c.commissionRate.toFixed(4),
+    commissionBase: c.commissionBase.toFixed(2),
+    commissionAmount: c.commissionAmount.toFixed(2),
   } as CommissionResponse;
 }

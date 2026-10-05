@@ -106,7 +106,7 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('job.submit'), upsertPerm('job.update'),
       upsertPerm('customer.view'), upsertPerm('customer.create'),
-      upsertPerm('job.manage_quotation'), upsertPerm('job.view_all'),
+      upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'), upsertPerm('job.view_all'),
       upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
       upsertPerm('approval.approve'),
@@ -126,7 +126,7 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
             { permission: { connect: { code: 'job.update' } } },
             { permission: { connect: { code: 'customer.view' } } },
             { permission: { connect: { code: 'customer.create' } } },
-            { permission: { connect: { code: 'job.manage_quotation' } } },
+            { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
             { permission: { connect: { code: 'proposal.create' } } },
             { permission: { connect: { code: 'proposal.send' } } },
             { permission: { connect: { code: 'proposal.accept' } } },

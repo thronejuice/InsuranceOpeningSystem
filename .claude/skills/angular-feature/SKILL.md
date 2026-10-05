@@ -1,6 +1,6 @@
 ---
 name: angular-feature
-description: สร้างหน้าจอ/feature ใน apps/web (Angular standalone + signals + PrimeNG) เช่น list/table, create/edit form, detail page, tab ใน Job detail โดยใช้ type จาก OpenAPI, จัดการ loading/empty/error state, map 422 errors ลงฟอร์ม และซ่อนปุ่มตาม permission/allowedActions ใช้เมื่อทำ UI ของ feature ใดก็ได้
+description: สร้างหน้าจอ/feature ใน apps/web (Angular standalone + signals + Angular Material (ผ่าน wrapper ใน shared/ui)) เช่น list/table, create/edit form, detail page, tab ใน Job detail โดยใช้ type จาก OpenAPI, จัดการ loading/empty/error state, map 422 errors ลงฟอร์ม และซ่อนปุ่มตาม permission/allowedActions ใช้เมื่อทำ UI ของ feature ใดก็ได้
 argument-hint: "<feature> [list|form|detail|tab:<name>]"
 ---
 

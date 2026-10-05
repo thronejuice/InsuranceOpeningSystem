@@ -52,7 +52,7 @@ describe('Quotation Select & Comparison (e2e)', () => {
 
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'),
-      upsertPerm('customer.view'), upsertPerm('job.manage_quotation'),
+      upsertPerm('customer.view'), upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'),
     ]);
 
     const agentRole = await prisma.role.create({
@@ -64,7 +64,7 @@ describe('Quotation Select & Comparison (e2e)', () => {
             { permission: { connect: { code: 'job.view' } } },
             { permission: { connect: { code: 'job.create' } } },
             { permission: { connect: { code: 'customer.view' } } },
-            { permission: { connect: { code: 'job.manage_quotation' } } },
+            { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
           ],
         },
       },
@@ -84,8 +84,8 @@ describe('Quotation Select & Comparison (e2e)', () => {
     const loginRes = await http().post('/api/auth/login').send({ username: `${PREFIX}agent`, password: PASSWORD });
     agentToken = loginRes.body.data.accessToken;
 
-    const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
-    const product = await prisma.insuranceProduct.findFirst({ where: { insuranceTypeId: iType?.id, active: true } });
+    const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
 
     const customer = await prisma.customer.create({
       data: { customerCode: `${PREFIX.toUpperCase()}C001`, customerType: 'INDIVIDUAL', firstName: 'Sel', lastName: 'Test' },
@@ -199,8 +199,8 @@ describe('Quotation Select & Comparison (e2e)', () => {
 
   it('POST /quotations/:id/select — expired quotation → 422', async () => {
     // Create a new job and quotation with past validUntil
-    const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
-    const product = await prisma.insuranceProduct.findFirst({ where: { insuranceTypeId: iType?.id, active: true } });
+    const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
     const customer = await prisma.customer.findFirst({ where: { customerCode: `${PREFIX.toUpperCase()}C001` } });
 
     const jobRes = await http()

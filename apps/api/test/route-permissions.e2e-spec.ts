@@ -34,6 +34,9 @@ describe('Security: route permission coverage', () => {
         const handler = (proto as Record<string, unknown>)[methodName];
         if (typeof handler !== 'function') continue;
 
+        // Only HTTP route handlers (@Get/@Post/…) carry Nest's `path` metadata; skip private helpers
+        if (Reflect.getMetadata('path', handler) === undefined) continue;
+
         // Check both handler-level and controller-level decorators (class overrides handler)
         const isPublic = reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler, metatype]);
         const perms = reflector.getAllAndOverride<string[] | undefined>(PERMISSIONS_KEY, [handler, metatype]);

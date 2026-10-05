@@ -5,10 +5,9 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { Select } from 'primeng/select';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
-import { ImportsApi, type ImportResult, type ImportType, type RowError } from '../data/imports.api';
+import { ImportsApi, type ImportResult, type ImportType } from '../data/imports.api';
+import { UiButton, UiSelect } from '../../../shared/ui';
 
 const IMPORT_TYPES: { label: string; value: ImportType }[] = [
   { label: 'ลูกค้า (Customers)', value: 'customers' },
@@ -22,7 +21,7 @@ type Step = 'upload' | 'preview' | 'done';
   selector: 'app-import-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, ButtonModule, Select, AppPageHeaderComponent],
+  imports: [FormsModule, UiButton, UiSelect, AppPageHeaderComponent],
   template: `
     <app-page-header title="นำเข้าข้อมูล" subtitle="Import ข้อมูลจากไฟล์ Excel" />
 
@@ -31,7 +30,7 @@ type Step = 'upload' | 'preview' | 'done';
       <div class="card">
         <div class="form-row">
           <label class="form-label">ประเภทข้อมูล *</label>
-          <p-select
+          <ui-select
             [(ngModel)]="selectedType"
             [options]="importTypes"
             optionLabel="label"
@@ -39,7 +38,7 @@ type Step = 'upload' | 'preview' | 'done';
             placeholder="เลือกประเภทข้อมูล"
             style="width:320px"
           />
-          <p-button
+          <ui-button
             label="ดาวน์โหลด Template"
             icon="pi pi-download"
             severity="secondary"
@@ -83,7 +82,7 @@ type Step = 'upload' | 'preview' | 'done';
         }
 
         <div class="action-row">
-          <p-button
+          <ui-button
             label="ตรวจสอบข้อมูล"
             icon="pi pi-search"
             [disabled]="!selectedFile() || !selectedType || loading()"
@@ -119,7 +118,7 @@ type Step = 'upload' | 'preview' | 'done';
           </div>
 
           <div class="action-row">
-            <p-button label="กลับแก้ไขไฟล์" icon="pi pi-arrow-left" severity="secondary" (onClick)="reset()" />
+            <ui-button label="กลับแก้ไขไฟล์" icon="pi pi-arrow-left" severity="secondary" (onClick)="reset()" />
           </div>
         } @else {
           <div class="preview-header success">
@@ -129,8 +128,8 @@ type Step = 'upload' | 'preview' | 'done';
           <p class="preview-note">ไม่พบข้อผิดพลาด สามารถดำเนินการ Import ได้เลย</p>
 
           <div class="action-row">
-            <p-button label="ย้อนกลับ" icon="pi pi-arrow-left" severity="secondary" (onClick)="reset()" />
-            <p-button
+            <ui-button label="ย้อนกลับ" icon="pi pi-arrow-left" severity="secondary" (onClick)="reset()" />
+            <ui-button
               label="Import ข้อมูล"
               icon="pi pi-upload"
               [loading]="loading()"
@@ -147,7 +146,7 @@ type Step = 'upload' | 'preview' | 'done';
         <i class="pi pi-check-circle done-icon"></i>
         <h2>Import สำเร็จ</h2>
         <p>นำเข้าข้อมูลจำนวน <strong>{{ result()!.importedCount }}</strong> รายการ</p>
-        <p-button label="Import ข้อมูลเพิ่มเติม" icon="pi pi-plus" (onClick)="reset()" />
+        <ui-button label="Import ข้อมูลเพิ่มเติม" icon="pi pi-plus" (onClick)="reset()" />
       </div>
     }
   `,

@@ -29,3 +29,6 @@ coverage/
 # os
 .DS_Store
 Thumbs.db
+
+# TypeScript incremental build cache
+*.tsbuildinfo

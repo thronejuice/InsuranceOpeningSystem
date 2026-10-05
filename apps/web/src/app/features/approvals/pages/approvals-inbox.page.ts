@@ -7,32 +7,19 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ButtonModule } from 'primeng/button';
-import { Dialog } from 'primeng/dialog';
-import { Textarea } from 'primeng/textarea';
-import { Message } from 'primeng/message';
 import { FormsModule } from '@angular/forms';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
+import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../../shared/ui';
 
 @Component({
   selector: 'app-approvals-inbox-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    FormsModule,
-    ButtonModule,
-    Dialog, Textarea, Message,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    ThDatePipe,
-  ],
+  imports: [RouterLink, FormsModule, UiButton, UiDialog, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
   template: `
     <app-page-header title="กล่องอนุมัติ" subtitle="รายการรอการอนุมัติ" />
 
@@ -66,11 +53,13 @@ import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
                 <td>{{ a.createdAt | thDate }}</td>
                 <td>{{ a.reason ?? '-' }}</td>
                 <td>
-                  @if (a.status === 'PENDING') {
+                  @if (a.canDecide) {
                     <div class="row-actions">
-                      <p-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
-                      <p-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openReject(a)" />
+                      <ui-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
+                      <ui-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openReject(a)" />
                     </div>
+                  } @else if (a.status === 'PENDING') {
+                    <small class="text-secondary">รอผู้อนุมัติท่านอื่น</small>
                   }
                 </td>
               </tr>
@@ -81,11 +70,11 @@ import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
     }
 
     @if (error()) {
-      <p-message severity="error" class="mt-2 block">{{ error() }}</p-message>
+      <ui-message severity="error" class="mt-2 block">{{ error() }}</ui-message>
     }
 
-    <!-- Reject Dialog -->
-    <p-dialog
+    <!-- Reject UiDialog -->
+    <ui-dialog
       [(visible)]="showRejectDialog"
       header="ปฏิเสธการอนุมัติ"
       [modal]="true"
@@ -93,16 +82,16 @@ import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
     >
       <div class="reason-form">
         <label for="reject-reason">เหตุผล <span class="required">*</span></label>
-        <textarea pTextarea id="reject-reason" [(ngModel)]="rejectReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        <textarea uiInput id="reject-reason" [(ngModel)]="rejectReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
         @if (rejectError()) {
           <small class="error-text">{{ rejectError() }}</small>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRejectDialog = false" [disabled]="rejecting()" />
-        <p-button label="ปฏิเสธ" severity="danger" (onClick)="confirmReject()" [loading]="rejecting()" [disabled]="rejecting()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectDialog = false" [disabled]="rejecting()" />
+        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmReject()" [loading]="rejecting()" [disabled]="rejecting()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: 8px; padding: 1.25rem; }

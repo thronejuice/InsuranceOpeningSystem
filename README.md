@@ -7,7 +7,7 @@
 | Layer | Technology |
 |---|---|
 | API | NestJS 12 · Prisma 6 · PostgreSQL 16 · Redis 7 (BullMQ) |
-| Frontend | Angular 22 · PrimeNG 22 · Signals |
+| Frontend | Angular 22 · Angular Material 22 · Signals |
 | Storage | Local (dev) · MinIO/S3-compatible (prod) |
 | Auth | JWT (access + refresh cookie) · RBAC |
 

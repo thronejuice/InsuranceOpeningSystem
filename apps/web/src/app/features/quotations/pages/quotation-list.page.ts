@@ -10,16 +10,14 @@ import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SlicePipe } from '@angular/common';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
-import { ButtonModule } from 'primeng/button';
-import { Select } from 'primeng/select';
 import { ExportService } from '../../../core/api/export.service';
-import { InputText } from 'primeng/inputtext';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
-import { JobsApi, type Quotation, type QuotationStatus } from '../../jobs/data/jobs.api';
+import { JobsApi, type Quotation } from '../../jobs/data/jobs.api';
 import { MasterApi, type InsuranceCompany } from '../../master/data/master.api';
+import { UiButton, UiInput, UiSelect } from '../../../shared/ui';
 
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'ทั้งหมด', value: '' },
@@ -35,26 +33,15 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
   selector: 'app-quotation-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    FormsModule,
-    ButtonModule,
-    Select,
-    InputText,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    ThDatePipe,
-    SlicePipe,
-  ],
+  imports: [RouterLink, FormsModule, UiButton, UiSelect, UiInput, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, SlicePipe],
   template: `
     <app-page-header title="ใบเสนอราคาทั้งหมด" subtitle="รายการใบเสนอราคาทุกงาน">
-      <p-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
+      <ui-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
     </app-page-header>
 
     <!-- Filters -->
     <div class="filter-bar">
-      <p-select
+      <ui-select
         [(ngModel)]="filterCompanyId"
         [options]="[{ label: 'ทุกบริษัท', value: '' }, ...companyOptions()]"
         optionLabel="label"
@@ -63,7 +50,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
         style="width:200px"
         (ngModelChange)="onFilterChange()"
       />
-      <p-select
+      <ui-select
         [(ngModel)]="filterStatus"
         [options]="statusOptions"
         optionLabel="label"
@@ -74,11 +61,11 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
       />
       <div class="date-range">
         <span class="filter-label">วันหมดอายุ</span>
-        <input pInputText type="date" [(ngModel)]="filterValidFrom" style="width:150px" (ngModelChange)="debouncedLoad()" />
+        <input uiInput type="date" [(ngModel)]="filterValidFrom" style="width:150px" (ngModelChange)="debouncedLoad()" />
         <span>ถึง</span>
-        <input pInputText type="date" [(ngModel)]="filterValidTo" style="width:150px" (ngModelChange)="debouncedLoad()" />
+        <input uiInput type="date" [(ngModel)]="filterValidTo" style="width:150px" (ngModelChange)="debouncedLoad()" />
       </div>
-      <p-button label="ล้างตัวกรอง" severity="secondary" [outlined]="true" size="small" (onClick)="clearFilters()" />
+      <ui-button label="ล้างตัวกรอง" severity="secondary" [outlined]="true" size="small" (onClick)="clearFilters()" />
     </div>
 
     @if (state() === 'loading') {

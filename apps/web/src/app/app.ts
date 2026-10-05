@@ -1,14 +1,14 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { ToastModule } from 'primeng/toast';
+import { UiToast } from './shared/ui';
 
 @Component({
-  imports: [RouterOutlet, ToastModule],
+  imports: [RouterOutlet, UiToast],
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <router-outlet />
-    <p-toast position="top-right" />
+    <ui-toast position="top-right" />
   `,
   styles: [`
     :host {

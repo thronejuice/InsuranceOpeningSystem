@@ -10,10 +10,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { interval, startWith, switchMap } from 'rxjs';
-import { Popover } from 'primeng/popover';
-import { ButtonModule } from 'primeng/button';
-import { Divider } from 'primeng/divider';
 import { NotificationsApi, type NotificationRecord } from '../data/notifications.api';
+import { UiButton, UiDivider, UiPopover } from '../../../shared/ui';
 
 const ENTITY_ROUTES: Record<string, string> = {
   JOB: '/jobs',
@@ -26,10 +24,10 @@ const ENTITY_ROUTES: Record<string, string> = {
   selector: 'app-notification-bell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Popover, ButtonModule, Divider, DatePipe],
+  imports: [UiPopover, UiButton, UiDivider, DatePipe],
   template: `
     <div class="bell-wrapper">
-      <p-button
+      <ui-button
         icon="pi pi-bell"
         severity="secondary"
         [text]="true"
@@ -42,11 +40,11 @@ const ENTITY_ROUTES: Record<string, string> = {
       }
     </div>
 
-    <p-popover #panel>
+    <ui-popover #panel>
       <div class="notif-header">
         <span class="notif-title">การแจ้งเตือน</span>
         @if (unreadCount() > 0) {
-          <p-button
+          <ui-button
             label="อ่านทั้งหมด"
             [text]="true"
             size="small"
@@ -55,7 +53,7 @@ const ENTITY_ROUTES: Record<string, string> = {
         }
       </div>
 
-      <p-divider styleClass="m-0" />
+      <ui-divider styleClass="m-0" />
 
       <div class="notif-list">
         @if (items().length === 0) {
@@ -79,7 +77,7 @@ const ENTITY_ROUTES: Record<string, string> = {
           </div>
         }
       </div>
-    </p-popover>
+    </ui-popover>
   `,
   styles: [`
     .bell-wrapper { position: relative; display: inline-flex; }

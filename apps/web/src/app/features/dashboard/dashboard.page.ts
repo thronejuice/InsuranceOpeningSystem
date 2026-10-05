@@ -225,7 +225,7 @@ export class DashboardPage implements OnInit {
   readonly managerData = signal<ManagerDashboard | null>(null);
   readonly funnelData = signal<FunnelData | null>(null);
 
-  readonly isManager = computed(() => this.store.hasPermission('dashboard.view_all'));
+  readonly isManager = computed(() => this.store.hasPermission('report.view') || this.store.hasPermission('dashboard.view_all'));
 
   ngOnInit(): void {
     const isManager = this.isManager();
@@ -235,19 +235,19 @@ export class DashboardPage implements OnInit {
     calls.push(
       this.api.agentDashboard().toPromise()
         .then((d) => { if (d) this.agentData.set(d); })
-        .catch(() => {}),
+        .catch(() => undefined),
     );
 
     if (isManager) {
       calls.push(
         this.api.managerDashboard().toPromise()
           .then((d) => { if (d) this.managerData.set(d); })
-          .catch(() => {}),
+          .catch(() => undefined),
       );
       calls.push(
         this.api.funnel().toPromise()
           .then((d) => { if (d) this.funnelData.set(d); })
-          .catch(() => {}),
+          .catch(() => undefined),
       );
     }
 

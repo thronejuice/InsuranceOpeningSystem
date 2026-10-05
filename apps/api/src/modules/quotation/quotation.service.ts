@@ -4,6 +4,7 @@ import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapt
 import { ClsService } from 'nestjs-cls';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
 import type { JobStatus } from '../../generated/prisma/enums.js';
+import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -25,10 +26,11 @@ export class QuotationService {
     private readonly audit: AuditService,
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
   ) {}
 
-  async listAll(dto: ListQuotationDto): Promise<{ data: QuotationResponse[] }> {
-    const where: Record<string, unknown> = {};
+  async listAll(dto: ListQuotationDto): Promise<QuotationResponse[]> {
+    const where: Record<string, unknown> = { job: { deletedAt: null, ...this.scope.jobViewScope() } };
     if (dto.insuranceCompanyId) where['insuranceCompanyId'] = dto.insuranceCompanyId;
     if (dto.status) where['status'] = dto.status;
     if (dto.validUntilFrom || dto.validUntilTo) {
@@ -38,7 +40,7 @@ export class QuotationService {
       };
     }
     const items = await this.repo.findAll(where as Parameters<typeof this.repo.findAll>[0]);
-    return { data: items.map(toQuotationResponse) };
+    return items.map(toQuotationResponse);
   }
 
   async listByJob(jobId: string): Promise<QuotationResponse[]> {

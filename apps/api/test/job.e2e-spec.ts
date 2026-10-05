@@ -264,8 +264,8 @@ describe('Job (e2e)', () => {
           model: 'Camry',
           year: '2022',
           license_plate: 'กก-1234',
-          vehicle_type: 'SEDAN',
-          usage_type: 'PERSONAL',
+          vehicle_type: 'รถเก๋ง',
+          usage_type: 'ส่วนบุคคล',
           sum_insured: '500000',
         },
       });
@@ -322,7 +322,7 @@ describe('Job (e2e)', () => {
       const res = await http()
         .put(`/api/jobs/${jobId}/risk`)
         .set('Authorization', `Bearer ${agentAToken}`)
-        .send({ values: { year: 'not-a-number', brand: 'Toyota', model: 'Camry', license_plate: 'กก-1234', vehicle_type: 'SEDAN', usage_type: 'PERSONAL', sum_insured: '500000' } });
+        .send({ values: { year: 'not-a-number', brand: 'Toyota', model: 'Camry', license_plate: 'กก-1234', vehicle_type: 'รถเก๋ง', usage_type: 'ส่วนบุคคล', sum_insured: '500000' } });
       expect(res.status).toBe(422);
       expect(res.body.errors).toHaveProperty('year');
     });
@@ -455,7 +455,7 @@ describe('Job (e2e)', () => {
       await http()
         .put(`/api/jobs/${id}/risk`)
         .set('Authorization', `Bearer ${agentAToken}`)
-        .send({ values: { brand: 'Honda', model: 'Civic', year: '2021', license_plate: 'ขข-5678', vehicle_type: 'SEDAN', usage_type: 'PERSONAL', sum_insured: '400000' } });
+        .send({ values: { brand: 'Honda', model: 'Civic', year: '2021', license_plate: 'ขข-5678', vehicle_type: 'รถเก๋ง', usage_type: 'ส่วนบุคคล', sum_insured: '400000' } });
       await fillRequiredDocs(id);
       await http().post(`/api/jobs/${id}/submit`).set('Authorization', `Bearer ${agentAToken}`).send({});
       const cancelRes = await http().post(`/api/jobs/${id}/cancel`).set('Authorization', `Bearer ${agentAToken}`).send({ reason: 'test cancellation' });

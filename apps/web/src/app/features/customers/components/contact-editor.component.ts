@@ -13,30 +13,20 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
-import { Divider } from 'primeng/divider';
-import { Checkbox } from 'primeng/checkbox';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import type { CustomerContact } from '../data/customers.api';
+import { UiButton, UiCheckbox, UiDivider, UiInput } from '../../../shared/ui';
 
 @Component({
   selector: 'app-contact-editor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    ButtonModule,
-    InputText,
-    Divider,
-    Checkbox,
-    AppFieldErrorComponent,
-  ],
+  imports: [ReactiveFormsModule, UiButton, UiInput, UiDivider, UiCheckbox, AppFieldErrorComponent],
   template: `
     <div class="contact-editor">
       <div class="editor-header">
         <span class="font-semibold">ผู้ติดต่อ</span>
-        <p-button
+        <ui-button
           label="เพิ่มผู้ติดต่อ"
           icon="pi pi-plus"
           size="small"
@@ -49,7 +39,7 @@ import type { CustomerContact } from '../data/customers.api';
         <div [formGroup]="asGroup(group)" class="contact-item">
           <div class="contact-item-header">
             <span class="contact-index">ผู้ติดต่อที่ {{ $index + 1 }}</span>
-            <p-button
+            <ui-button
               icon="pi pi-trash"
               severity="danger"
               [text]="true"
@@ -61,7 +51,7 @@ import type { CustomerContact } from '../data/customers.api';
             <div class="field">
               <label [attr.for]="'con-name-' + $index">ชื่อผู้ติดต่อ <span class="required">*</span></label>
               <input
-                pInputText
+                uiInput
                 [id]="'con-name-' + $index"
                 formControlName="contactName"
                 placeholder="ชื่อ-นามสกุล"
@@ -71,31 +61,31 @@ import type { CustomerContact } from '../data/customers.api';
             </div>
             <div class="field">
               <label [attr.for]="'con-pos-' + $index">ตำแหน่ง</label>
-              <input pInputText [id]="'con-pos-' + $index" formControlName="position" class="w-full" />
+              <input uiInput [id]="'con-pos-' + $index" formControlName="position" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'con-dept-' + $index">แผนก</label>
-              <input pInputText [id]="'con-dept-' + $index" formControlName="department" class="w-full" />
+              <input uiInput [id]="'con-dept-' + $index" formControlName="department" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'con-phone-' + $index">โทรศัพท์</label>
-              <input pInputText [id]="'con-phone-' + $index" formControlName="phone" class="w-full" />
+              <input uiInput [id]="'con-phone-' + $index" formControlName="phone" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'con-mobile-' + $index">มือถือ</label>
-              <input pInputText [id]="'con-mobile-' + $index" formControlName="mobile" class="w-full" />
+              <input uiInput [id]="'con-mobile-' + $index" formControlName="mobile" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'con-email-' + $index">อีเมล</label>
-              <input pInputText [id]="'con-email-' + $index" formControlName="email" type="email" class="w-full" />
+              <input uiInput [id]="'con-email-' + $index" formControlName="email" type="email" class="w-full" />
               <app-field-error [control]="group.get('email')" />
             </div>
           </div>
           <div class="field">
-            <p-checkbox formControlName="isPrimary" [binary]="true" label="ผู้ติดต่อหลัก" />
+            <ui-checkbox formControlName="isPrimary" [binary]="true" label="ผู้ติดต่อหลัก" />
           </div>
           @if ($index < formArray.length - 1) {
-            <p-divider />
+            <ui-divider />
           }
         </div>
       }

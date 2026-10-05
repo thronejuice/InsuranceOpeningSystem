@@ -25,10 +25,15 @@ export class ProposalService {
     private readonly cls: ClsService<AppClsStore>,
   ) {}
 
+  private viewer() {
+    return { userId: this.cls.get('userId'), permissions: this.cls.get('permissions') ?? [] };
+  }
+
   async listByJob(jobId: string): Promise<ProposalResponse[]> {
     await this.assertJobAccess(jobId);
     const items = await this.repo.findByJob(jobId);
-    return items.map(toProposalResponse);
+    const viewer = this.viewer();
+    return items.map((p) => toProposalResponse(p, viewer));
   }
 
   @Transactional()
@@ -64,7 +69,7 @@ export class ProposalService {
 
     await this.audit.log({ action: 'CREATE_PROPOSAL', entityType: 'PROPOSAL', entityId: proposal.id, jobId });
 
-    return toProposalResponse(proposal);
+    return toProposalResponse(proposal, this.viewer());
   }
 
   @Transactional()
@@ -97,7 +102,7 @@ export class ProposalService {
 
     await this.audit.log({ action: 'SEND_PROPOSAL', entityType: 'PROPOSAL', entityId: id, jobId: proposal.jobId });
 
-    return toProposalResponse(updated);
+    return toProposalResponse(updated, this.viewer());
   }
 
   @Transactional()
@@ -153,7 +158,7 @@ export class ProposalService {
 
     // Reload to include new approval
     const final = await this.repo.findById(id);
-    return toProposalResponse(final!);
+    return toProposalResponse(final!, this.viewer());
   }
 
   @Transactional()
@@ -187,7 +192,7 @@ export class ProposalService {
       description: dto.rejectReason,
     });
 
-    return toProposalResponse(updated);
+    return toProposalResponse(updated, this.viewer());
   }
 
   private async evaluateRules(quotation: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateApprovalRules, type ApprovalRuleInput } from './approval-rules.js';
+import { canDecideApproval, evaluateApprovalRules, isSelfDecisionBlocked, type ApprovalRuleInput } from './approval-rules.js';
 
 // Mirrors seed-data.ts APPROVAL_RULES (3 canonical rules)
 const RULES: ApprovalRuleInput[] = [
@@ -71,5 +71,48 @@ describe('evaluateApprovalRules', () => {
       active: true,
     };
     expect(evaluateApprovalRules('50000.00', '0', [weirdRule])).toBeNull();
+  });
+});
+
+describe('canDecideApproval', () => {
+  const pending = { status: 'PENDING', requestedById: 'maker' };
+  const checker = { userId: 'checker', permissions: ['approval.approve'] };
+
+  it('allows another user with approval.approve on a PENDING request', () => {
+    expect(canDecideApproval(pending, checker)).toBe(true);
+  });
+
+  it('blocks the requester from deciding their own request', () => {
+    expect(canDecideApproval(pending, { ...checker, userId: 'maker' })).toBe(false);
+  });
+
+  it('blocks a viewer without approval.approve', () => {
+    expect(canDecideApproval(pending, { userId: 'checker', permissions: [] })).toBe(false);
+  });
+
+  it('blocks when the request is no longer PENDING', () => {
+    expect(canDecideApproval({ ...pending, status: 'APPROVED' }, checker)).toBe(false);
+  });
+
+  it('lets a requester holding approval.approve_own decide their own request', () => {
+    expect(canDecideApproval(pending, { userId: 'maker', permissions: ['approval.approve', 'approval.approve_own'] })).toBe(true);
+  });
+
+  it('blocks when there is no current user', () => {
+    expect(canDecideApproval(pending, { permissions: ['approval.approve'] })).toBe(false);
+  });
+});
+
+describe('isSelfDecisionBlocked', () => {
+  it('blocks the requester without approval.approve_own', () => {
+    expect(isSelfDecisionBlocked('u1', { userId: 'u1', permissions: ['approval.approve'] })).toBe(true);
+  });
+
+  it('allows the requester with approval.approve_own', () => {
+    expect(isSelfDecisionBlocked('u1', { userId: 'u1', permissions: ['approval.approve_own'] })).toBe(false);
+  });
+
+  it('never blocks a different user', () => {
+    expect(isSelfDecisionBlocked('u1', { userId: 'u2', permissions: [] })).toBe(false);
   });
 });

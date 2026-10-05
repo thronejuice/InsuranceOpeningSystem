@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { RedactedLogger } from './common/audit/redacted-logger.js';
@@ -9,8 +10,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: new RedactedLogger() });
   app.setGlobalPrefix('api');
 
-  // Security headers — applied before anything else
+  // Security headers & cookies
   app.use(helmet());
+  app.use(cookieParser());
 
   // CORS whitelist: comma-separated origins from env (e.g. "http://localhost:4200,https://app.example.com")
   const configService = app.get(ConfigService);

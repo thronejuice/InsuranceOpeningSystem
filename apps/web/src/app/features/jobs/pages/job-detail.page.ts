@@ -11,15 +11,6 @@ import {
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ButtonModule } from 'primeng/button';
-import { Tabs, TabList, Tab, TabPanels, TabPanel } from 'primeng/tabs';
-import { Dialog } from 'primeng/dialog';
-import { Textarea } from 'primeng/textarea';
-import { Timeline } from 'primeng/timeline';
-import { Message } from 'primeng/message';
-import { InputText } from 'primeng/inputtext';
-import { Select } from 'primeng/select';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
@@ -55,6 +46,8 @@ import {
   type PaymentMethod,
 } from '../data/jobs.api';
 import { MasterApi, type InsuranceCoverage, type InsuranceCompany } from '../../master/data/master.api';
+import { MessageService, UiButton, UiDialog, UiInput, UiMessage, UiSelect, UiTab, UiTabList, UiTabPanel, UiTabPanels, UiTabs, UiTimeline } from '../../../shared/ui';
+import { MatTooltip } from '@angular/material/tooltip';
 
 const ACTION_LABELS: Record<JobAction, string> = {
   submit: 'ส่งงาน (Submit)',
@@ -75,6 +68,8 @@ const ACTION_LABELS: Record<JobAction, string> = {
 
 const ACTIONS_REQUIRING_REASON: JobAction[] = ['cancel'];
 const EDITABLE_STATUSES = new Set(['DRAFT', 'OPEN', 'WAITING_INFORMATION']);
+// Documents are still needed after OPEN (bind checks requireDocsOnBind), so only closed jobs lock them
+const DOCS_LOCKED_STATUSES = new Set(['CANCELLED', 'CLOSED', 'EXPIRED']);
 const QUOTATION_MANAGEABLE_STATUSES = new Set(['OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_RECEIVED', 'QUOTATION_SELECTED']);
 
 const DOC_TYPE_OPTIONS = [
@@ -108,17 +103,7 @@ interface RecordItem {
   selector: 'app-job-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    FormsModule,
-    ReactiveFormsModule,
-    ButtonModule,
-    Tabs, TabList, Tab, TabPanels, TabPanel,
-    Dialog, Textarea, Timeline, Message, InputText, Select,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    ThDatePipe,
-  ],
+  imports: [MatTooltip, FormsModule, ReactiveFormsModule, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiDialog, UiInput, UiTimeline, UiMessage, UiSelect, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -165,7 +150,7 @@ interface RecordItem {
         @if (job()!.allowedActions.length > 0) {
           <div class="action-bar">
             @for (act of job()!.allowedActions; track act) {
-              <p-button
+              <ui-button
                 [label]="actionLabel(act)"
                 [severity]="act === 'cancel' ? 'danger' : act === 'close' ? 'secondary' : 'primary'"
                 [outlined]="act === 'cancel' || act === 'close'"
@@ -179,33 +164,33 @@ interface RecordItem {
         }
 
         @if (actionError()) {
-          <p-message severity="error" class="mt-2 block">{{ actionError() }}</p-message>
+          <ui-message severity="error" class="mt-2 block">{{ actionError() }}</ui-message>
         }
       </div>
 
-      <!-- Tabs -->
-      <p-tabs [value]="activeTab()" (valueChange)="onTabChange($event)">
-        <p-tablist>
-          <p-tab [value]="0">ข้อมูลงาน</p-tab>
-          <p-tab [value]="1">ข้อมูลความเสี่ยง</p-tab>
-          <p-tab [value]="2">ความคุ้มครอง</p-tab>
-          <p-tab [value]="3">เอกสาร</p-tab>
-          <p-tab [value]="4">ประวัติ</p-tab>
-          <p-tab [value]="5">ใบเสนอราคา</p-tab>
-          <p-tab [value]="6">เปรียบเทียบ</p-tab>
-          <p-tab [value]="7">ใบเสนอ</p-tab>
-          <p-tab [value]="8">อนุมัติ</p-tab>
-          <p-tab [value]="9">Binding</p-tab>
-          <p-tab [value]="10">กรมธรรม์</p-tab>
-          <p-tab [value]="11">การชำระเงิน</p-tab>
-          <p-tab [value]="12">ค่าคอมมิชชัน</p-tab>
-          <p-tab [value]="13">งาน</p-tab>
-        </p-tablist>
+      <!-- UiTabs -->
+      <ui-tabs [value]="activeTab()" (valueChange)="onTabChange($event)">
+        <ui-tablist>
+          <ui-tab [value]="0">ข้อมูลงาน</ui-tab>
+          <ui-tab [value]="1">ข้อมูลความเสี่ยง</ui-tab>
+          <ui-tab [value]="2">ความคุ้มครอง</ui-tab>
+          <ui-tab [value]="3">เอกสาร</ui-tab>
+          <ui-tab [value]="4">ประวัติ</ui-tab>
+          <ui-tab [value]="5">ใบเสนอราคา</ui-tab>
+          <ui-tab [value]="6">เปรียบเทียบ</ui-tab>
+          <ui-tab [value]="7">ใบเสนอ</ui-tab>
+          <ui-tab [value]="8">อนุมัติ</ui-tab>
+          <ui-tab [value]="9">Binding</ui-tab>
+          <ui-tab [value]="10">กรมธรรม์</ui-tab>
+          <ui-tab [value]="11">การชำระเงิน</ui-tab>
+          <ui-tab [value]="12">ค่าคอมมิชชัน</ui-tab>
+          <ui-tab [value]="13">งาน</ui-tab>
+        </ui-tablist>
 
-        <p-tabpanels>
+        <ui-tabpanels>
 
-          <!-- Tab 0: Info -->
-          <p-tabpanel [value]="0">
+          <!-- UiTab 0: Info -->
+          <ui-tabpanel [value]="0">
             <div class="info-grid">
               <div class="info-item"><span class="info-label">เลขงาน</span><span class="info-value">{{ job()!.jobNo }}</span></div>
               <div class="info-item"><span class="info-label">สถานะ</span><span class="info-value"><app-status-badge [status]="job()!.status" /></span></div>
@@ -219,10 +204,10 @@ interface RecordItem {
                 <div class="info-item info-item-full"><span class="info-label">หมายเหตุ</span><span class="info-value">{{ job()!.remark }}</span></div>
               }
             </div>
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 1: Risk -->
-          <p-tabpanel [value]="1">
+          <!-- UiTab 1: Risk -->
+          <ui-tabpanel [value]="1">
             @if (riskState() === 'loading') {
               <app-state state="loading" />
             } @else if (risk()) {
@@ -230,7 +215,7 @@ interface RecordItem {
                 <app-state state="empty" emptyMessage="ผลิตภัณฑ์นี้ไม่มีข้อมูลความเสี่ยง" />
               } @else {
                 @if (riskError()) {
-                  <p-message severity="error" class="mb-3 block">{{ riskError() }}</p-message>
+                  <ui-message severity="error" class="mb-3 block">{{ riskError() }}</ui-message>
                 }
                 <div class="risk-form">
                   @for (field of risk()!.fieldDefs; track field.fieldCode) {
@@ -241,27 +226,27 @@ interface RecordItem {
                       </label>
 
                       @if (field.fieldType === 'SELECT') {
-                        <p-select
+                        <ui-select class="w-full"
                           [inputId]="'risk-' + field.fieldCode"
                           [options]="getSelectOptions(field)"
                           [(ngModel)]="riskValues[field.fieldCode]"
                           [disabled]="!canEditRisk()"
                           placeholder="เลือก..."
-                          styleClass="w-full"
+                         
                         />
                       } @else if (field.fieldType === 'BOOLEAN') {
-                        <p-select
+                        <ui-select class="w-full"
                           [inputId]="'risk-' + field.fieldCode"
                           [options]="boolOptions"
                           optionLabel="label"
                           optionValue="value"
                           [(ngModel)]="riskValues[field.fieldCode]"
                           [disabled]="!canEditRisk()"
-                          styleClass="w-full"
+                         
                         />
                       } @else if (field.fieldType === 'DATE') {
                         <input
-                          pInputText
+                          uiInput
                           [id]="'risk-' + field.fieldCode"
                           type="date"
                           [(ngModel)]="riskValues[field.fieldCode]"
@@ -270,7 +255,7 @@ interface RecordItem {
                         />
                       } @else if (field.fieldType === 'NUMBER') {
                         <input
-                          pInputText
+                          uiInput
                           [id]="'risk-' + field.fieldCode"
                           type="number"
                           [(ngModel)]="riskValues[field.fieldCode]"
@@ -279,7 +264,7 @@ interface RecordItem {
                         />
                       } @else {
                         <input
-                          pInputText
+                          uiInput
                           [id]="'risk-' + field.fieldCode"
                           [(ngModel)]="riskValues[field.fieldCode]"
                           [disabled]="!canEditRisk()"
@@ -291,21 +276,21 @@ interface RecordItem {
                 </div>
                 @if (canEditRisk()) {
                   <div class="form-actions">
-                    <p-button label="บันทึกข้อมูลความเสี่ยง" icon="pi pi-save" [loading]="savingRisk()" [disabled]="savingRisk()" (onClick)="saveRisk()" />
+                    <ui-button label="บันทึกข้อมูลความเสี่ยง" icon="pi pi-save" [loading]="savingRisk()" [disabled]="savingRisk()" (onClick)="saveRisk()" />
                   </div>
                 }
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 2: Coverage -->
-          <p-tabpanel [value]="2">
+          <!-- UiTab 2: Coverage -->
+          <ui-tabpanel [value]="2">
             @if (coverageState() === 'loading') {
               <app-state state="loading" />
             } @else {
               @if (canEditRisk()) {
                 <div class="tab-action-bar">
-                  <p-button label="เพิ่มความคุ้มครอง" icon="pi pi-plus" size="small" (onClick)="openAddCoverage()" />
+                  <ui-button label="เพิ่มความคุ้มครอง" icon="pi pi-plus" size="small" (onClick)="openAddCoverage()" />
                 </div>
               }
               @if (coverages().length === 0) {
@@ -328,13 +313,13 @@ interface RecordItem {
                         @if (editingCoverageId() === cov.id) {
                           <td>{{ cov.coverageCode }}</td>
                           <td>{{ cov.coverageName }}</td>
-                          <td><input pInputText [(ngModel)]="editCovSumInsured" class="w-full" placeholder="0.00" /></td>
-                          <td><input pInputText [(ngModel)]="editCovDeductible" class="w-full" placeholder="0.00" /></td>
-                          <td><input pInputText [(ngModel)]="editCovRemark" class="w-full" /></td>
+                          <td><input uiInput [(ngModel)]="editCovSumInsured" class="w-full" placeholder="0.00" /></td>
+                          <td><input uiInput [(ngModel)]="editCovDeductible" class="w-full" placeholder="0.00" /></td>
+                          <td><input uiInput [(ngModel)]="editCovRemark" class="w-full" /></td>
                           <td>
                             <div class="row-actions">
-                              <p-button icon="pi pi-check" severity="success" [text]="true" size="small" [loading]="savingCoverage()" (onClick)="saveCoverage(cov)" />
-                              <p-button icon="pi pi-times" severity="secondary" [text]="true" size="small" (onClick)="cancelEditCoverage()" />
+                              <ui-button icon="pi pi-check" severity="success" [text]="true" size="small" [loading]="savingCoverage()" (onClick)="saveCoverage(cov)" />
+                              <ui-button icon="pi pi-times" severity="secondary" [text]="true" size="small" (onClick)="cancelEditCoverage()" />
                             </div>
                           </td>
                         } @else {
@@ -346,8 +331,8 @@ interface RecordItem {
                           <td>
                             @if (canEditRisk()) {
                               <div class="row-actions">
-                                <p-button icon="pi pi-pencil" severity="secondary" [text]="true" size="small" (onClick)="startEditCoverage(cov)" />
-                                <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="removeCoverage(cov)" />
+                                <ui-button icon="pi pi-pencil" severity="secondary" [text]="true" size="small" (onClick)="startEditCoverage(cov)" />
+                                <ui-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="removeCoverage(cov)" />
                               </div>
                             }
                           </td>
@@ -358,10 +343,10 @@ interface RecordItem {
                 </table>
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 3: Documents -->
-          <p-tabpanel [value]="3">
+          <!-- UiTab 3: Documents -->
+          <ui-tabpanel [value]="3">
             @if (docState() === 'loading') {
               <app-state state="loading" />
             } @else {
@@ -383,11 +368,11 @@ interface RecordItem {
               }
 
               <!-- Upload area -->
-              @if (canEditRisk()) {
+              @if (canManageDocs()) {
                 <div class="upload-section">
                   <h4 class="section-title">อัปโหลดเอกสาร</h4>
                   <div class="upload-row">
-                    <p-select
+                    <ui-select
                       [(ngModel)]="uploadDocType"
                       [options]="docTypeOptions"
                       optionLabel="label"
@@ -395,7 +380,7 @@ interface RecordItem {
                       placeholder="เลือกประเภทเอกสาร"
                       style="width:220px"
                     />
-                    <p-button label="เลือกไฟล์" icon="pi pi-upload" severity="secondary" size="small" (onClick)="fileInput.click()" />
+                    <ui-button label="เลือกไฟล์" icon="pi pi-upload" severity="secondary" size="small" (onClick)="fileInput.click()" />
                     <input #fileInput type="file" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp" (change)="onFileSelected($event)" />
                     @if (uploading()) {
                       <span class="upload-status"><i class="pi pi-spin pi-spinner"></i> กำลังอัปโหลด...</span>
@@ -430,10 +415,10 @@ interface RecordItem {
                         <td>
                           <div class="row-actions">
                             <a [href]="downloadUrl(doc.id)" target="_blank">
-                              <p-button icon="pi pi-download" severity="secondary" [text]="true" size="small" pTooltip="ดาวน์โหลด" />
+                              <ui-button icon="pi pi-download" severity="secondary" [text]="true" size="small" matTooltip="ดาวน์โหลด" />
                             </a>
-                            @if (canEditRisk()) {
-                              <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="deleteDoc(doc)" />
+                            @if (canManageDocs()) {
+                              <ui-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="deleteDoc(doc)" />
                             }
                           </div>
                         </td>
@@ -443,16 +428,16 @@ interface RecordItem {
                 </table>
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 4: Timeline -->
-          <p-tabpanel [value]="4">
+          <!-- UiTab 4: UiTimeline -->
+          <ui-tabpanel [value]="4">
             @if (activitiesState() === 'loading') {
               <app-state state="loading" />
             } @else if (activities().length === 0) {
               <app-state state="empty" emptyMessage="ยังไม่มีประวัติการดำเนินงาน" />
             } @else {
-              <p-timeline [value]="activities()" styleClass="pt-2">
+              <ui-timeline [value]="activities()" styleClass="pt-2">
                 <ng-template #content let-item>
                   <div class="activity-item">
                     <div class="activity-time">{{ item.occurredAt | thDate }}</div>
@@ -464,18 +449,18 @@ interface RecordItem {
                     <i [class]="item.type === 'STATUS_CHANGE' ? 'pi pi-refresh' : 'pi pi-circle-fill'"></i>
                   </span>
                 </ng-template>
-              </p-timeline>
+              </ui-timeline>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 5: Quotations -->
-          <p-tabpanel [value]="5">
+          <!-- UiTab 5: Quotations -->
+          <ui-tabpanel [value]="5">
             @if (quotationState() === 'loading') {
               <app-state state="loading" />
             } @else {
               @if (canManageQuotation()) {
                 <div class="tab-action-bar">
-                  <p-button label="ขอราคา" icon="pi pi-plus" size="small" (onClick)="openRequestQuotation()" />
+                  <ui-button label="ขอราคา" icon="pi pi-plus" size="small" (onClick)="openRequestQuotation()" />
                 </div>
               }
               @if (quotations().length === 0) {
@@ -504,7 +489,7 @@ interface RecordItem {
                         <td>{{ q.validUntil ? (q.validUntil | thDate) : '-' }}</td>
                         <td>
                           @if (q.status === 'REQUESTED' && canManageQuotation()) {
-                            <p-button label="บันทึกราคา" size="small" severity="secondary" [outlined]="true" (onClick)="openRecordPrice(q)" />
+                            <ui-button label="บันทึกราคา" size="small" severity="secondary" [outlined]="true" (onClick)="openRecordPrice(q)" />
                           }
                         </td>
                       </tr>
@@ -513,10 +498,10 @@ interface RecordItem {
                 </table>
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 6: Comparison -->
-          <p-tabpanel [value]="6">
+          <!-- UiTab 6: Comparison -->
+          <ui-tabpanel [value]="6">
             @if (comparisonState() === 'loading') {
               <app-state state="loading" />
             } @else if (!comparison() || comparison()!.companies.length === 0) {
@@ -534,7 +519,7 @@ interface RecordItem {
                           <div class="comp-total">รวม {{ c.totalAmount }}</div>
                           <app-status-badge [status]="c.status" />
                           @if (c.status === 'RECEIVED' && canManageQuotation()) {
-                            <p-button label="เลือก" size="small" icon="pi pi-check" styleClass="mt-1 w-full" (onClick)="openSelectQuotation(c)" />
+                            <ui-button label="เลือก" size="small" icon="pi pi-check" styleClass="mt-1 w-full" (onClick)="openSelectQuotation(c)" />
                           }
                           @if (c.status === 'SELECTED') {
                             <div class="selected-mark"><i class="pi pi-check-circle"></i> เลือกแล้ว</div>
@@ -566,16 +551,16 @@ interface RecordItem {
                 </table>
               </div>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 7: Proposal -->
-          <p-tabpanel [value]="7">
+          <!-- UiTab 7: Proposal -->
+          <ui-tabpanel [value]="7">
             @if (proposalState() === 'loading') {
               <app-state state="loading" />
             } @else {
               @if (job()!.allowedActions.includes('sendProposal') && proposals().length === 0) {
                 <div class="tab-action-bar">
-                  <p-button label="สร้างใบเสนอ" icon="pi pi-plus" size="small" (onClick)="openCreateProposal()" />
+                  <ui-button label="สร้างใบเสนอ" icon="pi pi-plus" size="small" (onClick)="openCreateProposal()" />
                 </div>
               }
               @if (proposals().length === 0) {
@@ -590,14 +575,14 @@ interface RecordItem {
                       </div>
                       <div class="proposal-actions">
                         @if (prop.status === 'DRAFT' && job()!.allowedActions.includes('sendProposal')) {
-                          <p-button label="ส่งใบเสนอ" size="small" icon="pi pi-send" [loading]="sendingProposal()" (onClick)="doSendProposal(prop)" />
+                          <ui-button label="ส่งใบเสนอ" size="small" icon="pi pi-send" [loading]="sendingProposal()" (onClick)="doSendProposal(prop)" />
                         }
                         @if (prop.status === 'SENT' || prop.status === 'VIEWED') {
                           @if (job()!.allowedActions.includes('acceptProposal')) {
-                            <p-button label="ยอมรับ" size="small" severity="success" icon="pi pi-check" [loading]="acceptingProposal()" (onClick)="doAcceptProposal(prop)" />
+                            <ui-button label="ยอมรับ" size="small" severity="success" icon="pi pi-check" [loading]="acceptingProposal()" (onClick)="doAcceptProposal(prop)" />
                           }
                           @if (job()!.allowedActions.includes('rejectProposal')) {
-                            <p-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" icon="pi pi-times" (onClick)="openRejectProposal(prop)" />
+                            <ui-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" icon="pi pi-times" (onClick)="openRejectProposal(prop)" />
                           }
                         }
                       </div>
@@ -620,16 +605,16 @@ interface RecordItem {
                       }
                     </div>
                     @if (proposalError()) {
-                      <p-message severity="error" class="mt-2 block">{{ proposalError() }}</p-message>
+                      <ui-message severity="error" class="mt-2 block">{{ proposalError() }}</ui-message>
                     }
                   </div>
                 }
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 8: Approval -->
-          <p-tabpanel [value]="8">
+          <!-- UiTab 8: Approval -->
+          <ui-tabpanel [value]="8">
             @if (proposalState() === 'loading') {
               <app-state state="loading" />
             } @else {
@@ -657,11 +642,13 @@ interface RecordItem {
                         <td>{{ (a.approvedAt ?? a.rejectedAt) ? ((a.approvedAt ?? a.rejectedAt)! | thDate) : '-' }}</td>
                         <td>{{ a.reason ?? '-' }}</td>
                         <td>
-                          @if (a.status === 'PENDING' && job()!.allowedActions.includes('approve')) {
+                          @if (a.canDecide && job()!.allowedActions.includes('approve')) {
                             <div class="row-actions">
-                              <p-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
-                              <p-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openRejectApproval(a)" />
+                              <ui-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
+                              <ui-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openRejectApproval(a)" />
                             </div>
+                          } @else if (a.status === 'PENDING') {
+                            <small class="text-secondary">รอผู้อนุมัติท่านอื่น</small>
                           }
                         </td>
                       </tr>
@@ -669,14 +656,14 @@ interface RecordItem {
                   </tbody>
                 </table>
                 @if (approvalError()) {
-                  <p-message severity="error" class="mt-2 block">{{ approvalError() }}</p-message>
+                  <ui-message severity="error" class="mt-2 block">{{ approvalError() }}</ui-message>
                 }
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 9: Binding -->
-          <p-tabpanel [value]="9">
+          <!-- UiTab 9: Binding -->
+          <ui-tabpanel [value]="9">
             @if (preconditionState() === 'loading') {
               <app-state state="loading" />
             } @else {
@@ -695,18 +682,18 @@ interface RecordItem {
                 }
                 @if (binding()) {
                   <div class="binding-result">
-                    <p-message severity="success">Binding สำเร็จ — {{ binding()!.bindingDate | thDate }}</p-message>
+                    <ui-message severity="success">Binding สำเร็จ — {{ binding()!.bindingDate | thDate }}</ui-message>
                   </div>
                 } @else if (job()!.allowedActions.includes('bind')) {
                   <div class="form-actions" style="margin-top:1rem">
                     <div class="field" style="max-width:320px">
                       <label for="bind-remark">หมายเหตุ (ไม่บังคับ)</label>
-                      <input pInputText id="bind-remark" [(ngModel)]="bindRemark" class="w-full" />
+                      <input uiInput id="bind-remark" [(ngModel)]="bindRemark" class="w-full" />
                     </div>
                     @if (bindError()) {
-                      <p-message severity="error" class="my-2 block">{{ bindError() }}</p-message>
+                      <ui-message severity="error" class="my-2 block">{{ bindError() }}</ui-message>
                     }
-                    <p-button
+                    <ui-button
                       label="ออกกรมธรรม์ (Bind)"
                       icon="pi pi-shield"
                       [loading]="binding_() "
@@ -718,10 +705,10 @@ interface RecordItem {
                 }
               </div>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 10: Policy -->
-          <p-tabpanel [value]="10">
+          <!-- UiTab 10: Policy -->
+          <ui-tabpanel [value]="10">
             @if (policyState() === 'loading') {
               <app-state state="loading" />
             } @else if (!policy()) {
@@ -729,12 +716,12 @@ interface RecordItem {
                 <div class="form-actions">
                   <div class="field" style="max-width:320px">
                     <label for="policy-remark">หมายเหตุ (ไม่บังคับ)</label>
-                    <input pInputText id="policy-remark" [(ngModel)]="issuePolicyRemark" class="w-full" />
+                    <input uiInput id="policy-remark" [(ngModel)]="issuePolicyRemark" class="w-full" />
                   </div>
                   @if (policyError()) {
-                    <p-message severity="error" class="my-2 block">{{ policyError() }}</p-message>
+                    <ui-message severity="error" class="my-2 block">{{ policyError() }}</ui-message>
                   }
-                  <p-button
+                  <ui-button
                     label="ยืนยันกรมธรรม์"
                     icon="pi pi-check-circle"
                     [loading]="issuingPolicy()"
@@ -788,10 +775,10 @@ interface RecordItem {
                 }
               </div>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 11: Payment -->
-          <p-tabpanel [value]="11">
+          <!-- UiTab 11: Payment -->
+          <ui-tabpanel [value]="11">
             @if (paymentState() === 'loading') {
               <app-state state="loading" />
             } @else if (paymentState() === 'error') {
@@ -816,25 +803,25 @@ interface RecordItem {
                 <div class="form-row">
                   <div class="field">
                     <label>จำนวนเงิน <span class="required">*</span></label>
-                    <input pInputText type="text" [(ngModel)]="payAmount" placeholder="0.00" style="max-width:160px" />
+                    <input uiInput type="text" [(ngModel)]="payAmount" placeholder="0.00" style="max-width:160px" />
                   </div>
                   <div class="field">
                     <label>วิธีชำระ <span class="required">*</span></label>
-                    <p-select [(ngModel)]="payMethod" [options]="payMethodOptions" optionLabel="label" optionValue="value" placeholder="เลือก" styleClass="w-full" style="max-width:180px" />
+                    <ui-select class="w-full" [(ngModel)]="payMethod" [options]="payMethodOptions" optionLabel="label" optionValue="value" placeholder="เลือก" style="max-width:180px" />
                   </div>
                   <div class="field">
                     <label>วันที่ชำระ</label>
-                    <input pInputText type="date" [(ngModel)]="payDate" style="max-width:160px" />
+                    <input uiInput type="date" [(ngModel)]="payDate" style="max-width:160px" />
                   </div>
                   <div class="field">
                     <label>เลขอ้างอิง</label>
-                    <input pInputText type="text" [(ngModel)]="payRef" style="max-width:180px" />
+                    <input uiInput type="text" [(ngModel)]="payRef" style="max-width:180px" />
                   </div>
                 </div>
                 @if (payError()) {
-                  <p-message severity="error" class="my-2 block">{{ payError() }}</p-message>
+                  <ui-message severity="error" class="my-2 block">{{ payError() }}</ui-message>
                 }
-                <p-button label="บันทึก" icon="pi pi-plus" [loading]="savingPayment()" [disabled]="savingPayment()" (onClick)="doAddPayment()" styleClass="mt-2" />
+                <ui-button label="บันทึก" icon="pi pi-plus" [loading]="savingPayment()" [disabled]="savingPayment()" (onClick)="doAddPayment()" styleClass="mt-2" />
               </div>
 
               <!-- Payment list -->
@@ -860,7 +847,7 @@ interface RecordItem {
                         <td><app-status-badge [status]="p.status" /></td>
                         <td>
                           @if (p.status === 'ACTIVE') {
-                            <p-button label="ยกเลิก" severity="danger" size="small" [text]="true" (onClick)="doCancelPayment(p)" />
+                            <ui-button label="ยกเลิก" severity="danger" size="small" [text]="true" (onClick)="doCancelPayment(p)" />
                           }
                         </td>
                       </tr>
@@ -871,10 +858,10 @@ interface RecordItem {
                 <app-state state="empty" emptyMessage="ยังไม่มีการชำระเงิน" />
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 12: Commission -->
-          <p-tabpanel [value]="12">
+          <!-- UiTab 12: Commission -->
+          <ui-tabpanel [value]="12">
             @if (commissionState() === 'loading') {
               <app-state state="loading" />
             } @else if (commissionState() === 'error') {
@@ -888,24 +875,24 @@ interface RecordItem {
                 <div class="form-row">
                   <div class="field">
                     <label>ประเภทคอมมิชชัน <span class="required">*</span></label>
-                    <p-select [(ngModel)]="commType" [options]="commTypeOptions" optionLabel="label" optionValue="value" placeholder="เลือก" styleClass="w-full" style="max-width:200px" />
+                    <ui-select class="w-full" [(ngModel)]="commType" [options]="commTypeOptions" optionLabel="label" optionValue="value" placeholder="เลือก" style="max-width:200px" />
                   </div>
                   <div class="field">
                     <label>ฐานคำนวณ <span class="required">*</span></label>
-                    <input pInputText type="text" [(ngModel)]="commBase" placeholder="0.00" style="max-width:160px" />
+                    <input uiInput type="text" [(ngModel)]="commBase" placeholder="0.00" style="max-width:160px" />
                   </div>
                   <div class="field">
                     <label>อัตรา (%) <span class="required">*</span></label>
-                    <input pInputText type="text" [(ngModel)]="commRate" placeholder="0.00" style="max-width:120px" />
+                    <input uiInput type="text" [(ngModel)]="commRate" placeholder="0.00" style="max-width:120px" />
                   </div>
                 </div>
                 @if (commBase && commRate) {
                   <small class="commission-preview">จำนวนที่คำนวณ: {{ calcCommissionPreview() }}</small>
                 }
                 @if (commError()) {
-                  <p-message severity="error" class="my-2 block">{{ commError() }}</p-message>
+                  <ui-message severity="error" class="my-2 block">{{ commError() }}</ui-message>
                 }
-                <p-button label="บันทึก" icon="pi pi-calculator" [loading]="savingCommission()" [disabled]="savingCommission()" (onClick)="doAddCommission()" styleClass="mt-2" />
+                <ui-button label="บันทึก" icon="pi pi-calculator" [loading]="savingCommission()" [disabled]="savingCommission()" (onClick)="doAddCommission()" styleClass="mt-2" />
               </div>
 
               <!-- Commission list -->
@@ -936,10 +923,10 @@ interface RecordItem {
                 <app-state state="empty" emptyMessage="ยังไม่มีค่าคอมมิชชัน" />
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <!-- Tab 13: Tasks -->
-          <p-tabpanel [value]="13">
+          <!-- UiTab 13: Tasks -->
+          <ui-tabpanel [value]="13">
             @if (taskState() === 'loading') {
               <app-state state="loading" />
             } @else if (taskState() === 'error') {
@@ -951,22 +938,22 @@ interface RecordItem {
                 <div class="form-row">
                   <div class="field">
                     <label>ประเภทงาน <span class="required">*</span></label>
-                    <p-select [(ngModel)]="taskType" [options]="taskTypeOptions" optionLabel="label" optionValue="value" placeholder="เลือก" styleClass="w-full" style="max-width:220px" />
+                    <ui-select class="w-full" [(ngModel)]="taskType" [options]="taskTypeOptions" optionLabel="label" optionValue="value" placeholder="เลือก" style="max-width:220px" />
                   </div>
                   <div class="field" style="flex:1">
                     <label>หัวข้อ <span class="required">*</span></label>
-                    <input pInputText type="text" [(ngModel)]="taskSubject" placeholder="หัวข้องาน" class="w-full" />
+                    <input uiInput type="text" [(ngModel)]="taskSubject" placeholder="หัวข้องาน" class="w-full" />
                   </div>
                   <div class="field">
                     <label>กำหนด</label>
-                    <input pInputText type="date" [(ngModel)]="taskDueDate" style="max-width:160px" />
+                    <input uiInput type="date" [(ngModel)]="taskDueDate" style="max-width:160px" />
                   </div>
                   <div class="field">
                     <label>ความสำคัญ</label>
-                    <p-select [(ngModel)]="taskPriority" [options]="taskPriorityOptions" optionLabel="label" optionValue="value" styleClass="w-full" style="max-width:130px" />
+                    <ui-select class="w-full" [(ngModel)]="taskPriority" [options]="taskPriorityOptions" optionLabel="label" optionValue="value" style="max-width:130px" />
                   </div>
                 </div>
-                <button pButton type="button" label="สร้างงาน" icon="pi pi-plus" (click)="doAddTask()" [loading]="savingTask()" [disabled]="!taskSubject || !taskType" class="p-button-sm"></button>
+                <ui-button label="สร้างงาน" icon="pi pi-plus" size="small" (onClick)="doAddTask()" [loading]="savingTask()" [disabled]="!taskSubject || !taskType" />
                 @if (taskError()) { <small class="error-msg">{{ taskError() }}</small> }
               </div>
 
@@ -992,8 +979,8 @@ interface RecordItem {
                         <td><app-status-badge [status]="task.status" /></td>
                         <td>
                           @if (task.status === 'TODO' || task.status === 'IN_PROGRESS') {
-                            <button pButton type="button" label="เสร็จ" icon="pi pi-check" class="p-button-sm p-button-success p-button-outlined mr-1" (click)="doCompleteTask(task)"></button>
-                            <button pButton type="button" icon="pi pi-times" class="p-button-sm p-button-danger p-button-outlined" (click)="doCancelTask(task)"></button>
+                            <ui-button label="เสร็จ" icon="pi pi-check" size="small" severity="success" [outlined]="true" class="mr-1" (onClick)="doCompleteTask(task)" />
+                            <ui-button icon="pi pi-times" aria-label="ยกเลิกงาน" size="small" severity="danger" [outlined]="true" (onClick)="doCancelTask(task)" />
                           }
                         </td>
                       </tr>
@@ -1004,14 +991,14 @@ interface RecordItem {
                 <app-state state="empty" emptyMessage="ยังไม่มีงานในงานนี้" />
               }
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-        </p-tabpanels>
-      </p-tabs>
+        </ui-tabpanels>
+      </ui-tabs>
     }
 
-    <!-- Cancel / Reason Dialog -->
-    <p-dialog
+    <!-- Cancel / Reason UiDialog -->
+    <ui-dialog
       [(visible)]="showReasonDialog"
       [header]="reasonDialogTitle()"
       [modal]="true"
@@ -1020,14 +1007,14 @@ interface RecordItem {
     >
       <div class="reason-form">
         <label for="reason-text">เหตุผล <span class="required">*</span></label>
-        <textarea pTextarea id="reason-text" [(ngModel)]="reasonText" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        <textarea uiInput id="reason-text" [(ngModel)]="reasonText" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
         @if (reasonError()) {
           <small class="error-text">{{ reasonError() }}</small>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="closeReasonDialog()" [disabled]="!!executing()" />
-        <p-button
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="closeReasonDialog()" [disabled]="!!executing()" />
+        <ui-button
           [label]="reasonDialogTitle()"
           severity="danger"
           (onClick)="confirmAction()"
@@ -1035,10 +1022,10 @@ interface RecordItem {
           [disabled]="!!executing()"
         />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Add Coverage Dialog -->
-    <p-dialog
+    <!-- Add Coverage UiDialog -->
+    <ui-dialog
       [(visible)]="showAddCoverageDialog"
       header="เพิ่มความคุ้มครอง"
       [modal]="true"
@@ -1047,40 +1034,40 @@ interface RecordItem {
       <div class="add-cov-form">
         <div class="field">
           <label for="add-cov-select">ความคุ้มครอง <span class="required">*</span></label>
-          <p-select
+          <ui-select class="w-full"
             inputId="add-cov-select"
             [(ngModel)]="addCovId"
             [options]="availableCoverages()"
             optionLabel="name"
             optionValue="id"
             placeholder="เลือกความคุ้มครอง"
-            styleClass="w-full"
+           
           />
         </div>
         <div class="field">
           <label for="add-cov-sum">วงเงินคุ้มครอง</label>
-          <input pInputText id="add-cov-sum" [(ngModel)]="addCovSumInsured" class="w-full" placeholder="0.00" />
+          <input uiInput id="add-cov-sum" [(ngModel)]="addCovSumInsured" class="w-full" placeholder="0.00" />
         </div>
         <div class="field">
           <label for="add-cov-ded">ค่าลดหย่อน</label>
-          <input pInputText id="add-cov-ded" [(ngModel)]="addCovDeductible" class="w-full" placeholder="0.00" />
+          <input uiInput id="add-cov-ded" [(ngModel)]="addCovDeductible" class="w-full" placeholder="0.00" />
         </div>
         <div class="field">
           <label for="add-cov-rem">หมายเหตุ</label>
-          <input pInputText id="add-cov-rem" [(ngModel)]="addCovRemark" class="w-full" />
+          <input uiInput id="add-cov-rem" [(ngModel)]="addCovRemark" class="w-full" />
         </div>
         @if (addCovError()) {
-          <p-message severity="error">{{ addCovError() }}</p-message>
+          <ui-message severity="error">{{ addCovError() }}</ui-message>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showAddCoverageDialog = false" [disabled]="savingCoverage()" />
-        <p-button label="เพิ่ม" (onClick)="confirmAddCoverage()" [loading]="savingCoverage()" [disabled]="savingCoverage()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showAddCoverageDialog = false" [disabled]="savingCoverage()" />
+        <ui-button label="เพิ่ม" (onClick)="confirmAddCoverage()" [loading]="savingCoverage()" [disabled]="savingCoverage()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Request Quotation Dialog -->
-    <p-dialog
+    <!-- Request Quotation UiDialog -->
+    <ui-dialog
       [(visible)]="showRequestQuoDialog"
       header="ขอใบเสนอราคา"
       [modal]="true"
@@ -1089,44 +1076,44 @@ interface RecordItem {
       <div class="dialog-form">
         <div class="field">
           <label for="req-company">บริษัทประกัน <span class="required">*</span></label>
-          <p-select
+          <ui-select class="w-full"
             inputId="req-company"
             [(ngModel)]="reqCompanyId"
             [options]="companies()"
             optionLabel="name"
             optionValue="id"
             placeholder="เลือกบริษัท"
-            styleClass="w-full"
+           
           />
         </div>
         <div class="field">
           <label for="req-gross">เบี้ยรวม (เริ่มต้น) <span class="required">*</span></label>
-          <input pInputText id="req-gross" [(ngModel)]="reqGross" class="w-full" placeholder="0.00" />
+          <input uiInput id="req-gross" [(ngModel)]="reqGross" class="w-full" placeholder="0.00" />
         </div>
         <div class="field">
           <label for="req-discount">ส่วนลด</label>
-          <input pInputText id="req-discount" [(ngModel)]="reqDiscount" class="w-full" placeholder="0.00" />
+          <input uiInput id="req-discount" [(ngModel)]="reqDiscount" class="w-full" placeholder="0.00" />
         </div>
         <div class="field">
           <label for="req-valid">วันหมดอายุใบเสนอ</label>
-          <input pInputText id="req-valid" type="date" [(ngModel)]="reqValidUntil" class="w-full" />
+          <input uiInput id="req-valid" type="date" [(ngModel)]="reqValidUntil" class="w-full" />
         </div>
         <div class="field">
           <label for="req-remark">หมายเหตุ</label>
-          <input pInputText id="req-remark" [(ngModel)]="reqRemark" class="w-full" />
+          <input uiInput id="req-remark" [(ngModel)]="reqRemark" class="w-full" />
         </div>
         @if (reqError()) {
-          <p-message severity="error">{{ reqError() }}</p-message>
+          <ui-message severity="error">{{ reqError() }}</ui-message>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRequestQuoDialog = false" [disabled]="savingReqQuo()" />
-        <p-button label="ส่งคำขอ" (onClick)="confirmRequestQuotation()" [loading]="savingReqQuo()" [disabled]="savingReqQuo()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRequestQuoDialog = false" [disabled]="savingReqQuo()" />
+        <ui-button label="ส่งคำขอ" (onClick)="confirmRequestQuotation()" [loading]="savingReqQuo()" [disabled]="savingReqQuo()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Record Price Dialog -->
-    <p-dialog
+    <!-- Record Price UiDialog -->
+    <ui-dialog
       [(visible)]="showRecordPriceDialog"
       header="บันทึกราคา"
       [modal]="true"
@@ -1136,33 +1123,33 @@ interface RecordItem {
         <div class="field-row">
           <div class="field">
             <label for="rec-gross">เบี้ยรวม <span class="required">*</span></label>
-            <input pInputText id="rec-gross" [(ngModel)]="recGross" class="w-full" placeholder="0.00" />
+            <input uiInput id="rec-gross" [(ngModel)]="recGross" class="w-full" placeholder="0.00" />
           </div>
           <div class="field">
             <label for="rec-discount">ส่วนลด</label>
-            <input pInputText id="rec-discount" [(ngModel)]="recDiscount" class="w-full" placeholder="0.00" />
+            <input uiInput id="rec-discount" [(ngModel)]="recDiscount" class="w-full" placeholder="0.00" />
           </div>
         </div>
         <div class="field-row">
           <div class="field">
             <label for="rec-quo-date">วันที่ใบเสนอ</label>
-            <input pInputText id="rec-quo-date" type="date" [(ngModel)]="recQuoDate" class="w-full" />
+            <input uiInput id="rec-quo-date" type="date" [(ngModel)]="recQuoDate" class="w-full" />
           </div>
           <div class="field">
             <label for="rec-valid">วันหมดอายุ</label>
-            <input pInputText id="rec-valid" type="date" [(ngModel)]="recValidUntil" class="w-full" />
+            <input uiInput id="rec-valid" type="date" [(ngModel)]="recValidUntil" class="w-full" />
           </div>
         </div>
         <div class="field">
           <label for="rec-remark">หมายเหตุ</label>
-          <input pInputText id="rec-remark" [(ngModel)]="recRemark" class="w-full" />
+          <input uiInput id="rec-remark" [(ngModel)]="recRemark" class="w-full" />
         </div>
 
         <!-- Items editor -->
         <div class="items-section">
           <div class="items-header">
             <span class="section-title">รายการความคุ้มครอง</span>
-            <p-button label="เพิ่มรายการ" icon="pi pi-plus" size="small" severity="secondary" (onClick)="addRecordItem()" />
+            <ui-button label="เพิ่มรายการ" icon="pi pi-plus" size="small" severity="secondary" (onClick)="addRecordItem()" />
           </div>
           @if (recItems.length > 0) {
             <table class="data-table items-table">
@@ -1178,11 +1165,11 @@ interface RecordItem {
               <tbody>
                 @for (item of recItems; let i = $index; track i) {
                   <tr>
-                    <td><input pInputText [(ngModel)]="item.coverageName" class="w-full" placeholder="ชื่อความคุ้มครอง" /></td>
-                    <td><input pInputText [(ngModel)]="item.sumInsured" class="w-full" placeholder="0.00" /></td>
-                    <td><input pInputText [(ngModel)]="item.premium" class="w-full" placeholder="0.00" /></td>
-                    <td><input pInputText [(ngModel)]="item.deductible" class="w-full" placeholder="0.00" /></td>
-                    <td><p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="removeRecordItem(i)" /></td>
+                    <td><input uiInput [(ngModel)]="item.coverageName" class="w-full" placeholder="ชื่อความคุ้มครอง" /></td>
+                    <td><input uiInput [(ngModel)]="item.sumInsured" class="w-full" placeholder="0.00" /></td>
+                    <td><input uiInput [(ngModel)]="item.premium" class="w-full" placeholder="0.00" /></td>
+                    <td><input uiInput [(ngModel)]="item.deductible" class="w-full" placeholder="0.00" /></td>
+                    <td><ui-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="removeRecordItem(i)" /></td>
                   </tr>
                 }
               </tbody>
@@ -1191,17 +1178,17 @@ interface RecordItem {
         </div>
 
         @if (recError()) {
-          <p-message severity="error">{{ recError() }}</p-message>
+          <ui-message severity="error">{{ recError() }}</ui-message>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRecordPriceDialog = false" [disabled]="savingRecord()" />
-        <p-button label="บันทึกราคา" (onClick)="confirmRecordPrice()" [loading]="savingRecord()" [disabled]="savingRecord()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRecordPriceDialog = false" [disabled]="savingRecord()" />
+        <ui-button label="บันทึกราคา" (onClick)="confirmRecordPrice()" [loading]="savingRecord()" [disabled]="savingRecord()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Select Quotation Dialog -->
-    <p-dialog
+    <!-- UiSelect Quotation UiDialog -->
+    <ui-dialog
       [(visible)]="showSelectQuoDialog"
       header="เลือกใบเสนอราคา"
       [modal]="true"
@@ -1216,20 +1203,20 @@ interface RecordItem {
         }
         <div class="field">
           <label for="select-reason">เหตุผลในการเลือก <span class="required">*</span></label>
-          <textarea pTextarea id="select-reason" [(ngModel)]="selectReason" rows="3" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+          <textarea uiInput id="select-reason" [(ngModel)]="selectReason" rows="3" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
         </div>
         @if (selectError()) {
-          <p-message severity="error">{{ selectError() }}</p-message>
+          <ui-message severity="error">{{ selectError() }}</ui-message>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showSelectQuoDialog = false" [disabled]="selectingQuo()" />
-        <p-button label="ยืนยันเลือก" (onClick)="confirmSelectQuotation()" [loading]="selectingQuo()" [disabled]="selectingQuo()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showSelectQuoDialog = false" [disabled]="selectingQuo()" />
+        <ui-button label="ยืนยันเลือก" (onClick)="confirmSelectQuotation()" [loading]="selectingQuo()" [disabled]="selectingQuo()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Create Proposal Dialog -->
-    <p-dialog
+    <!-- Create Proposal UiDialog -->
+    <ui-dialog
       [(visible)]="showCreateProposalDialog"
       header="สร้างใบเสนอ"
       [modal]="true"
@@ -1238,24 +1225,24 @@ interface RecordItem {
       <div class="dialog-form">
         <div class="field">
           <label for="prop-valid">วันหมดอายุใบเสนอ</label>
-          <input pInputText id="prop-valid" type="date" [(ngModel)]="propValidUntil" class="w-full" />
+          <input uiInput id="prop-valid" type="date" [(ngModel)]="propValidUntil" class="w-full" />
         </div>
         <div class="field">
           <label for="prop-remark">หมายเหตุ</label>
-          <input pInputText id="prop-remark" [(ngModel)]="propRemark" class="w-full" />
+          <input uiInput id="prop-remark" [(ngModel)]="propRemark" class="w-full" />
         </div>
         @if (createProposalError()) {
-          <p-message severity="error">{{ createProposalError() }}</p-message>
+          <ui-message severity="error">{{ createProposalError() }}</ui-message>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showCreateProposalDialog = false" [disabled]="creatingProposal()" />
-        <p-button label="สร้างใบเสนอ" (onClick)="confirmCreateProposal()" [loading]="creatingProposal()" [disabled]="creatingProposal()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showCreateProposalDialog = false" [disabled]="creatingProposal()" />
+        <ui-button label="สร้างใบเสนอ" (onClick)="confirmCreateProposal()" [loading]="creatingProposal()" [disabled]="creatingProposal()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Reject Proposal Dialog -->
-    <p-dialog
+    <!-- Reject Proposal UiDialog -->
+    <ui-dialog
       [(visible)]="showRejectProposalDialog"
       header="ปฏิเสธใบเสนอ"
       [modal]="true"
@@ -1263,19 +1250,19 @@ interface RecordItem {
     >
       <div class="reason-form">
         <label for="reject-prop-reason">เหตุผล <span class="required">*</span></label>
-        <textarea pTextarea id="reject-prop-reason" [(ngModel)]="rejectProposalReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        <textarea uiInput id="reject-prop-reason" [(ngModel)]="rejectProposalReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
         @if (rejectProposalError()) {
           <small class="error-text">{{ rejectProposalError() }}</small>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRejectProposalDialog = false" [disabled]="rejectingProposal()" />
-        <p-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectProposal()" [loading]="rejectingProposal()" [disabled]="rejectingProposal()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectProposalDialog = false" [disabled]="rejectingProposal()" />
+        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectProposal()" [loading]="rejectingProposal()" [disabled]="rejectingProposal()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Reject Approval Dialog -->
-    <p-dialog
+    <!-- Reject Approval UiDialog -->
+    <ui-dialog
       [(visible)]="showRejectApprovalDialog"
       header="ปฏิเสธการอนุมัติ"
       [modal]="true"
@@ -1283,16 +1270,16 @@ interface RecordItem {
     >
       <div class="reason-form">
         <label for="reject-appr-reason">เหตุผล <span class="required">*</span></label>
-        <textarea pTextarea id="reject-appr-reason" [(ngModel)]="rejectApprovalReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        <textarea uiInput id="reject-appr-reason" [(ngModel)]="rejectApprovalReason" rows="4" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
         @if (rejectApprovalError()) {
           <small class="error-text">{{ rejectApprovalError() }}</small>
         }
       </div>
       <ng-template #footer>
-        <p-button label="ยกเลิก" severity="secondary" (onClick)="showRejectApprovalDialog = false" [disabled]="rejectingApproval()" />
-        <p-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectApproval()" [loading]="rejectingApproval()" [disabled]="rejectingApproval()" />
+        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectApprovalDialog = false" [disabled]="rejectingApproval()" />
+        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectApproval()" [loading]="rejectingApproval()" [disabled]="rejectingApproval()" />
       </ng-template>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .job-header-card {
@@ -1394,6 +1381,7 @@ export class JobDetailPage implements OnInit {
   readonly activeTab = signal(0);
 
   readonly canEditRisk = computed(() => EDITABLE_STATUSES.has(this.job()?.status ?? ''));
+  readonly canManageDocs = computed(() => !!this.job() && !DOCS_LOCKED_STATUSES.has(this.job()!.status));
 
   // ─── Workflow actions ─────────────────────────────────────────────────────
   readonly executing = signal<JobAction | null>(null);
@@ -1559,7 +1547,7 @@ export class JobDetailPage implements OnInit {
   uploadDocType = '';
   readonly docTypeOptions = DOC_TYPE_OPTIONS;
 
-  // ─── Timeline tab ─────────────────────────────────────────────────────────
+  // ─── UiTimeline tab ─────────────────────────────────────────────────────────
   readonly activitiesState = signal<'loading' | 'none'>('none');
   readonly activities = signal<ActivityItem[]>([]);
 
@@ -1593,7 +1581,7 @@ export class JobDetailPage implements OnInit {
   readonly recError = signal<string | null>(null);
   readonly savingRecord = signal(false);
 
-  // Select quotation dialog
+  // UiSelect quotation dialog
   showSelectQuoDialog = false;
   readonly selectingCompany = signal<CompanyColumn | null>(null);
   selectReason = '';
@@ -1675,6 +1663,20 @@ export class JobDetailPage implements OnInit {
   onAction(action: JobAction): void {
     this.actionError.set(null);
     // Navigate to the relevant tab for complex actions requiring context
+    if (action === 'requestQuotation') {
+      // No dedicated endpoint: creating the first quotation moves the job to QUOTATION_REQUESTED
+      this.onTabChange(5);
+      this.openRequestQuotation();
+      return;
+    }
+    if (action === 'recordQuotation') {
+      this.onTabChange(5);
+      return;
+    }
+    if (action === 'selectQuotation') {
+      this.onTabChange(6);
+      return;
+    }
     if (action === 'sendProposal' || action === 'acceptProposal' || action === 'rejectProposal') {
       this.onTabChange(7);
       return;
@@ -1925,7 +1927,7 @@ export class JobDetailPage implements OnInit {
     });
   }
 
-  // ─── Timeline ─────────────────────────────────────────────────────────────
+  // ─── UiTimeline ─────────────────────────────────────────────────────────────
 
   private loadActivities(): void {
     this.activitiesState.set('loading');
@@ -2462,7 +2464,7 @@ export class JobDetailPage implements OnInit {
     this.api.completeTask(task.id).subscribe({
       next: (updated) => {
         this.taskData.update((prev) => prev.map((t) => t.id === updated.id ? updated : t));
-        this.toast.add({ severity: 'success', summary: 'งานเสร็จสิ้นและบันทึกลง Timeline แล้ว' });
+        this.toast.add({ severity: 'success', summary: 'งานเสร็จสิ้นและบันทึกลง UiTimeline แล้ว' });
       },
       error: () => this.toast.add({ severity: 'error', summary: 'ไม่สามารถอัปเดตงานได้' }),
     });

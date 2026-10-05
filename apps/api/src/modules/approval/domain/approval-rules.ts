@@ -56,3 +56,32 @@ export function evaluateApprovalRules(
   }
   return highest;
 }
+
+export interface ApprovalViewer {
+  userId?: string;
+  permissions: string[];
+}
+
+/**
+ * Maker-checker: the requester may not decide their own request,
+ * unless they hold `approval.approve_own` (ADMIN by default).
+ */
+export function isSelfDecisionBlocked(requestedById: string | null, viewer: ApprovalViewer): boolean {
+  return requestedById === viewer.userId && !viewer.permissions.includes('approval.approve_own');
+}
+
+/**
+ * Whether the viewer may approve/reject: the request is still PENDING, the viewer holds
+ * `approval.approve`, and maker-checker does not block them.
+ */
+export function canDecideApproval(
+  approval: { status: string; requestedById: string | null },
+  viewer: ApprovalViewer,
+): boolean {
+  return (
+    approval.status === 'PENDING' &&
+    viewer.permissions.includes('approval.approve') &&
+    !!viewer.userId &&
+    !isSelfDecisionBlocked(approval.requestedById, viewer)
+  );
+}

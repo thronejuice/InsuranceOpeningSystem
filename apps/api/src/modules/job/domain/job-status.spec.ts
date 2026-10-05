@@ -52,11 +52,19 @@ describe('canTransition — cancel (→ CANCELLED)', () => {
 
 // ─── getAllowedActions ────────────────────────────────────────────────────────
 
-const FULL_PERMS = ['job.submit', 'job.cancel', 'job.update'];
+const FULL_PERMS = ['job.submit', 'job.cancel', 'job.update', 'quotation.create', 'quotation.update', 'quotation.select'];
 
 describe('getAllowedActions', () => {
   it('returns empty when canWrite=false', () => {
     expect(getAllowedActions('OPEN', FULL_PERMS, false)).toEqual([]);
+  });
+
+  it('approve is offered to a checker without write access to the job', () => {
+    expect(getAllowedActions('WAITING_APPROVAL', ['approval.approve'], false)).toEqual(['approve']);
+  });
+
+  it('approve requires approval.approve', () => {
+    expect(getAllowedActions('WAITING_APPROVAL', FULL_PERMS, true)).not.toContain('approve');
   });
 
   it('DRAFT with write + submit perm → contains submit and cancel', () => {
@@ -92,5 +100,13 @@ describe('getAllowedActions', () => {
   it('CANCELLED → no actions', () => {
     const actions = getAllowedActions('CANCELLED', FULL_PERMS, true);
     expect(actions).toHaveLength(0);
+  });
+
+  it('quotation actions require their quotation.* permission', () => {
+    const noQuotePerms = ['job.cancel', 'job.update'];
+    expect(getAllowedActions('OPEN', noQuotePerms, true)).not.toContain('requestQuotation');
+    expect(getAllowedActions('QUOTATION_REQUESTED', noQuotePerms, true)).not.toContain('recordQuotation');
+    expect(getAllowedActions('QUOTATION_RECEIVED', noQuotePerms, true)).not.toContain('selectQuotation');
+    expect(getAllowedActions('OPEN', [...noQuotePerms, 'quotation.create'], true)).toContain('requestQuotation');
   });
 });

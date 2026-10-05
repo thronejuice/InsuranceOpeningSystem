@@ -1,3 +1,5 @@
+import { canDecideApproval, type ApprovalViewer } from '../../approval/domain/approval-rules.js';
+
 export type ProposalStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
@@ -11,6 +13,8 @@ export interface ApprovalResponse {
   approvedAt: string | null;
   rejectedAt: string | null;
   reason: string | null;
+  /** Server-computed: current user may approve/reject (pending, has permission, not the requester). */
+  canDecide: boolean;
 }
 
 export interface ProposalResponse {
@@ -56,6 +60,7 @@ type ProposalWithRelations = {
     jobId: string;
     approvalType: string;
     status: string;
+    requestedById: string | null;
     requestedAt: Date;
     approvedAt: Date | null;
     rejectedAt: Date | null;
@@ -63,7 +68,7 @@ type ProposalWithRelations = {
   }>;
 };
 
-export function toProposalResponse(p: ProposalWithRelations): ProposalResponse {
+export function toProposalResponse(p: ProposalWithRelations, viewer: ApprovalViewer): ProposalResponse {
   return {
     id: p.id,
     proposalNo: p.proposalNo,
@@ -89,6 +94,7 @@ export function toProposalResponse(p: ProposalWithRelations): ProposalResponse {
       approvedAt: a.approvedAt ? (a.approvedAt as Date).toISOString() : null,
       rejectedAt: a.rejectedAt ? (a.rejectedAt as Date).toISOString() : null,
       reason: a.reason,
+      canDecide: canDecideApproval(a, viewer),
     })),
     createdAt: (p.createdAt as Date).toISOString(),
     updatedAt: (p.updatedAt as Date).toISOString(),

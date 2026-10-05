@@ -1,38 +1,27 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
-import { InputText } from 'primeng/inputtext';
-import { Textarea } from 'primeng/textarea';
-import { ToggleSwitch } from 'primeng/toggleswitch';
-import { Select } from 'primeng/select';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import { HasPermissionDirective } from '../../../shared/directives/has-permission.directive';
 import { MasterApi, type InsuranceProduct, type InsuranceType } from '../data/master.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
+import { MessageService, UiButton, UiDialog, UiInput, UiSelect, UiTable, UiToggleSwitch } from '../../../shared/ui';
 
 @Component({
   selector: 'app-products-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    TableModule, ButtonModule, DialogModule, InputText, Textarea, ToggleSwitch, Select,
-    AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective,
-  ],
+  imports: [ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiToggleSwitch, UiSelect, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective],
   template: `
     <app-page-header title="ผลิตภัณฑ์ประกันภัย" subtitle="จัดการผลิตภัณฑ์ประกันภัย">
-      <p-button *appHasPermission="'master.manage'" label="เพิ่มผลิตภัณฑ์" icon="pi pi-plus" (onClick)="openCreate()" />
+      <ui-button *appHasPermission="'master.manage'" label="เพิ่มผลิตภัณฑ์" icon="pi pi-plus" (onClick)="openCreate()" />
     </app-page-header>
 
     @if (state() === 'loading') { <app-state state="loading" /> }
     @else if (state() === 'error') { <app-state state="error" /> }
     @else {
-      <p-table [value]="items()" styleClass="p-datatable-sm p-datatable-striped">
+      <ui-table [value]="items()" styleClass="p-datatable-sm p-datatable-striped">
         <ng-template #header>
           <tr>
             <th style="width:120px">รหัส</th>
@@ -53,56 +42,56 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
             <td><i [class]="row.requireDocsOnBind ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td><i [class]="row.active ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td>
-              <p-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
+              <ui-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
             </td>
           </tr>
         </ng-template>
         <ng-template #emptymessage>
           <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบข้อมูล</td></tr>
         </ng-template>
-      </p-table>
+      </ui-table>
     }
 
-    <p-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขผลิตภัณฑ์' : 'เพิ่มผลิตภัณฑ์'"
+    <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขผลิตภัณฑ์' : 'เพิ่มผลิตภัณฑ์'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="field">
           <label>ประเภทประกันภัย <span class="required">*</span></label>
-          <p-select formControlName="insuranceTypeId" [options]="insuranceTypes()" optionLabel="name" optionValue="id" placeholder="เลือกประเภท" class="w-full" />
+          <ui-select formControlName="insuranceTypeId" [options]="insuranceTypes()" optionLabel="name" optionValue="id" placeholder="เลือกประเภท" class="w-full" />
           <app-field-error [control]="form.get('insuranceTypeId')" />
         </div>
         <div class="field">
           <label for="prod-code">รหัส <span class="required">*</span></label>
-          <input pInputText id="prod-code" formControlName="code" [readOnly]="!!editId()" class="w-full" />
+          <input uiInput id="prod-code" formControlName="code" [readOnly]="!!editId()" class="w-full" />
           <app-field-error [control]="form.get('code')" />
         </div>
         <div class="field">
           <label for="prod-name">ชื่อผลิตภัณฑ์ <span class="required">*</span></label>
-          <input pInputText id="prod-name" formControlName="name" class="w-full" />
+          <input uiInput id="prod-name" formControlName="name" class="w-full" />
           <app-field-error [control]="form.get('name')" />
         </div>
         <div class="field">
           <label for="prod-desc">คำอธิบาย</label>
-          <textarea pTextarea id="prod-desc" formControlName="description" rows="2" class="w-full"></textarea>
+          <textarea uiInput id="prod-desc" formControlName="description" rows="2" class="w-full"></textarea>
         </div>
         <div class="field-row">
-          <p-toggleswitch formControlName="requireDocsOnSubmit" />
+          <ui-toggleswitch formControlName="requireDocsOnSubmit" />
           <label>ต้องมีเอกสารครบก่อน Submit</label>
         </div>
         <div class="field-row">
-          <p-toggleswitch formControlName="requireDocsOnBind" />
+          <ui-toggleswitch formControlName="requireDocsOnBind" />
           <label>ต้องมีเอกสารครบก่อน Bind</label>
         </div>
         <div class="field-row">
-          <p-toggleswitch formControlName="active" />
+          <ui-toggleswitch formControlName="active" />
           <label>ใช้งาน</label>
         </div>
         <div class="dialog-actions">
-          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
         </div>
       </form>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .dialog-form { display:flex; flex-direction:column; gap:0.75rem; padding-top:0.5rem; }
@@ -184,7 +173,7 @@ export class ProductsPage implements OnInit {
       },
       error: (err) => {
         this.saving.set(false);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+         
         if (err?.error?.errors) applyServerErrors(this.form, err.error);
         else this.toast.add({ severity: 'error', summary: 'ผิดพลาด', detail: 'ไม่สามารถบันทึกได้' });
       },

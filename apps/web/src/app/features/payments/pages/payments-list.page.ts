@@ -1,20 +1,20 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { ButtonModule } from 'primeng/button';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { ExportService } from '../../../core/api/export.service';
 import { JobsApi, type PaymentRecord } from '../../jobs/data/jobs.api';
+import { UiButton } from '../../../shared/ui';
 
 @Component({
   selector: 'app-payments-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, ButtonModule],
+  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, UiButton],
   template: `
     <app-page-header title="การชำระเงิน" subtitle="รายการชำระเงินทั้งหมด">
-      <p-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
+      <ui-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
     </app-page-header>
 
     @if (state() === 'loading') {

@@ -49,7 +49,7 @@ describe('Quotation (e2e)', () => {
 
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('customer.view'),
-      upsertPerm('job.manage_quotation'),
+      upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'),
     ]);
 
     const agentRole = await prisma.role.create({
@@ -61,7 +61,7 @@ describe('Quotation (e2e)', () => {
             { permission: { connect: { code: 'job.view' } } },
             { permission: { connect: { code: 'job.create' } } },
             { permission: { connect: { code: 'customer.view' } } },
-            { permission: { connect: { code: 'job.manage_quotation' } } },
+            { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
           ],
         },
       },
@@ -82,8 +82,8 @@ describe('Quotation (e2e)', () => {
     agentToken = loginRes.body.data.accessToken;
 
     // Seed insurance type & product
-    const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
-    const product = await prisma.insuranceProduct.findFirst({ where: { insuranceTypeId: iType?.id, active: true } });
+    const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
 
     // Seed customer
     const customer = await prisma.customer.create({

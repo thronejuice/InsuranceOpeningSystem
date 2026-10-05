@@ -46,8 +46,8 @@ describe('Document API (e2e)', () => {
       .send({
         values: {
           brand: 'Toyota', model: 'Camry', year: '2024',
-          license_plate: 'ABC-1234', vehicle_type: 'sedan',
-          usage_type: 'personal', sum_insured: '500000',
+          license_plate: 'ABC-1234', vehicle_type: 'รถเก๋ง',
+          usage_type: 'ส่วนบุคคล', sum_insured: '500000',
         },
       });
   }

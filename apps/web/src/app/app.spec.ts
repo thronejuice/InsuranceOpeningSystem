@@ -3,10 +3,8 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { providePrimeNG } from 'primeng/config';
-import Aura from '@primeuix/themes/aura';
-import { MessageService } from 'primeng/api';
 import { App } from './app';
+import { MessageService } from './shared/ui';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -17,7 +15,6 @@ describe('App', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideAnimationsAsync(),
-        providePrimeNG({ theme: { preset: Aura } }),
         MessageService,
       ],
     }).compileComponents();

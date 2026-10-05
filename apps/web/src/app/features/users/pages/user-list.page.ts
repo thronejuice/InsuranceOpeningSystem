@@ -1,42 +1,31 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
-import { InputText } from 'primeng/inputtext';
-import { Password } from 'primeng/password';
-import { MultiSelect } from 'primeng/multiselect';
-import { ToggleSwitch } from 'primeng/toggleswitch';
-import { ConfirmDialog } from 'primeng/confirmdialog';
-import { ConfirmationService, MessageService } from 'primeng/api';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import { UsersApi, type Role, type User } from '../data/users.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
+import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialog, UiInput, UiMultiSelect, UiPassword, UiTable, UiToggleSwitch } from '../../../shared/ui';
+import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
   selector: 'app-user-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ConfirmationService],
-  imports: [
-    ReactiveFormsModule,
-    TableModule, ButtonModule, DialogModule, InputText, Password, MultiSelect, ToggleSwitch, ConfirmDialog,
-    AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, ThDatePipe,
-  ],
+  imports: [MatTooltip, ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiPassword, UiMultiSelect, UiToggleSwitch, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, ThDatePipe],
   template: `
-    <p-confirm-dialog />
+    <ui-confirm-dialog />
 
     <app-page-header title="ผู้ใช้งาน" subtitle="จัดการผู้ใช้งานในระบบ">
-      <p-button label="เพิ่มผู้ใช้" icon="pi pi-plus" (onClick)="openCreate()" />
+      <ui-button label="เพิ่มผู้ใช้" icon="pi pi-plus" (onClick)="openCreate()" />
     </app-page-header>
 
     @if (state() === 'loading') { <app-state state="loading" /> }
     @else if (state() === 'error') { <app-state state="error" /> }
     @else {
-      <p-table [value]="users()" styleClass="p-datatable-sm p-datatable-striped">
+      <ui-table [value]="users()" styleClass="p-datatable-sm p-datatable-striped">
         <ng-template #header>
           <tr>
             <th>ชื่อผู้ใช้</th>
@@ -66,9 +55,9 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
             <td>{{ user.lastLoginAt ? (user.lastLoginAt | thDate) : '-' }}</td>
             <td>
               <div class="action-buttons">
-                <p-button icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(user)" pTooltip="แก้ไข" />
-                <p-button icon="pi pi-key" [text]="true" size="small" severity="warn" (onClick)="openResetPw(user)" pTooltip="รีเซ็ตรหัสผ่าน" />
-                <p-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDeactivate(user)" [disabled]="!user.isActive" pTooltip="ยกเลิกใช้งาน" />
+                <ui-button icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(user)" matTooltip="แก้ไข" />
+                <ui-button icon="pi pi-key" [text]="true" size="small" severity="warn" (onClick)="openResetPw(user)" matTooltip="รีเซ็ตรหัสผ่าน" />
+                <ui-button icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDeactivate(user)" [disabled]="!user.isActive" matTooltip="ยกเลิกใช้งาน" />
               </div>
             </td>
           </tr>
@@ -76,57 +65,57 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
         <ng-template #emptymessage>
           <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบผู้ใช้งาน</td></tr>
         </ng-template>
-      </p-table>
+      </ui-table>
     }
 
     <!-- Create / Edit User Dialog -->
-    <p-dialog [(visible)]="userDialogVisible" [header]="editUserId() ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน'"
+    <ui-dialog [(visible)]="userDialogVisible" [header]="editUserId() ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="userForm" (ngSubmit)="saveUser()" class="dialog-form">
         @if (!editUserId()) {
           <div class="field">
             <label for="u-username">ชื่อผู้ใช้ <span class="required">*</span></label>
-            <input pInputText id="u-username" formControlName="username" class="w-full" autocomplete="off" />
+            <input uiInput id="u-username" formControlName="username" class="w-full" autocomplete="off" />
             <app-field-error [control]="userForm.get('username')" />
           </div>
         }
         <div class="field">
           <label for="u-fullname">ชื่อ-นามสกุล <span class="required">*</span></label>
-          <input pInputText id="u-fullname" formControlName="fullName" class="w-full" />
+          <input uiInput id="u-fullname" formControlName="fullName" class="w-full" />
           <app-field-error [control]="userForm.get('fullName')" />
         </div>
         <div class="field">
           <label for="u-email">อีเมล <span class="required">*</span></label>
-          <input pInputText id="u-email" formControlName="email" type="email" class="w-full" />
+          <input uiInput id="u-email" formControlName="email" type="email" class="w-full" />
           <app-field-error [control]="userForm.get('email')" />
         </div>
         @if (!editUserId()) {
           <div class="field">
             <label for="u-password">รหัสผ่าน <span class="required">*</span></label>
-            <p-password id="u-password" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" styleClass="w-full" />
+            <ui-password class="w-full" id="u-password" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" />
             <app-field-error [control]="userForm.get('password')" />
           </div>
         }
         <div class="field">
           <label>Role</label>
-          <p-multiselect formControlName="roleIds" [options]="roles()" optionLabel="name" optionValue="id"
+          <ui-multiselect formControlName="roleIds" [options]="roles()" optionLabel="name" optionValue="id"
             placeholder="เลือก Role" display="chip" class="w-full" />
         </div>
         @if (editUserId()) {
           <div class="field-row">
-            <p-toggleswitch formControlName="isActive" />
+            <ui-toggleswitch formControlName="isActive" />
             <label>ใช้งาน</label>
           </div>
         }
         <div class="dialog-actions">
-          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="userDialogVisible=false" />
-          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="userDialogVisible=false" />
+          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
         </div>
       </form>
-    </p-dialog>
+    </ui-dialog>
 
-    <!-- Reset Password Dialog -->
-    <p-dialog [(visible)]="resetPwDialogVisible" header="รีเซ็ตรหัสผ่าน"
+    <!-- Reset UiPassword Dialog -->
+    <ui-dialog [(visible)]="resetPwDialogVisible" header="รีเซ็ตรหัสผ่าน"
       [modal]="true" [style]="{width:'400px'}">
       <form [formGroup]="resetPwForm" (ngSubmit)="saveResetPw()" class="dialog-form">
         <div class="field">
@@ -134,15 +123,15 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
         </div>
         <div class="field">
           <label for="rp-pw">รหัสผ่านใหม่ <span class="required">*</span></label>
-          <p-password id="rp-pw" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" styleClass="w-full" />
+          <ui-password class="w-full" id="rp-pw" formControlName="password" [feedback]="false" [toggleMask]="true" inputStyleClass="w-full" />
           <app-field-error [control]="resetPwForm.get('password')" />
         </div>
         <div class="dialog-actions">
-          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="resetPwDialogVisible=false" />
-          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="resetPwDialogVisible=false" />
+          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
         </div>
       </form>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .action-buttons { display:flex; gap:0.25rem; }
@@ -254,7 +243,9 @@ export class UserListPage implements OnInit {
     const val = this.userForm.getRawValue();
 
     if (id) {
-      const { username: _u, password: _p, ...updateData } = val;
+      const updateData = { ...val } as Partial<typeof val>;
+      delete updateData.username;
+      delete updateData.password;
       this.api.updateUser(id, updateData).subscribe({
         next: () => { this.toast.add({ severity: 'success', summary: 'บันทึกสำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
         error: (err) => this.handleSaveError(err),

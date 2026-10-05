@@ -32,7 +32,7 @@ export class QuotationController {
   }
 
   @Post('jobs/:jobId/quotations')
-  @RequirePermissions('job.manage_quotation')
+  @RequirePermissions('quotation.create')
   create(
     @Param('jobId', ParseUUIDPipe) jobId: string,
     @Body() dto: CreateQuotationDto,
@@ -41,7 +41,7 @@ export class QuotationController {
   }
 
   @Put('quotations/:id')
-  @RequirePermissions('job.manage_quotation')
+  @RequirePermissions('quotation.update')
   recordReceived(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateQuotationDto,
@@ -50,7 +50,7 @@ export class QuotationController {
   }
 
   @Post('quotations/:id/select')
-  @RequirePermissions('job.manage_quotation')
+  @RequirePermissions('quotation.select')
   select(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SelectQuotationDto,

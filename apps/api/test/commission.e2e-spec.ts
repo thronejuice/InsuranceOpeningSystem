@@ -63,6 +63,7 @@ describe('Commission API (spec §47 Step 23)', () => {
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
+    await prisma.customer.deleteMany({ where: { customerCode: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.insuranceProduct.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
     const testUsers = await prisma.user.findMany({ where: { username: { startsWith: PREFIX } }, select: { id: true } });
@@ -76,8 +77,8 @@ describe('Commission API (spec §47 Step 23)', () => {
     const passwordHash = await hash(PASSWORD);
     const up = (code: string) => prisma.permission.upsert({ where: { code }, update: {}, create: { code, description: code } });
     await Promise.all([
-      up('job.view'), up('job.create'), up('job.submit'), up('job.update'), up('job.view_all'),
-      up('customer.view'), up('customer.create'), up('job.manage_quotation'),
+      up('job.view'), up('job.view_all'), up('job.create'), up('job.submit'), up('job.update'), up('job.view_all'),
+      up('customer.view'), up('customer.create'), up('quotation.create'), up('quotation.update'), up('quotation.select'),
       up('proposal.create'), up('proposal.send'), up('proposal.accept'), up('proposal.reject'),
       up('approval.approve'), up('policy.view'), up('policy.create'), up('policy.update'),
       up('commission.view'), up('commission.create'), up('payment.view'), up('payment.create'),
@@ -90,12 +91,22 @@ describe('Commission API (spec §47 Step 23)', () => {
         permissions: {
           create: [
             'job.view', 'job.create', 'job.submit', 'job.update',
-            'customer.view', 'customer.create', 'job.manage_quotation',
+            'customer.view', 'customer.create', 'quotation.create', 'quotation.update', 'quotation.select',
             'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject',
-            'approval.approve', 'policy.view', 'policy.create', 'policy.update',
+            'approval.approve', 'job.view_all', 'policy.view', 'policy.create', 'policy.update',
             'commission.view', 'commission.create', 'payment.view', 'payment.create',
           ].map((c) => ({ permission: { connect: { code: c } } })),
         },
+      },
+    });
+
+    await prisma.user.create({
+      data: {
+        username: `${PREFIX}approver`,
+        email: `${PREFIX}approver@test.com`,
+        passwordHash,
+        fullName: 'E2E Commission Approver',
+        roles: { create: [{ role: { connect: { id: agentRole.id } } }] },
       },
     });
 
@@ -129,6 +140,9 @@ describe('Commission API (spec §47 Step 23)', () => {
 
     const agentLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}agent`, password: PASSWORD });
     agentToken = agentLogin.body.data.accessToken;
+
+    const approverLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}approver`, password: PASSWORD });
+    const approverToken = approverLogin.body.data.accessToken as string;
 
     const viewerLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}viewer`, password: PASSWORD });
     viewerToken = viewerLogin.body.data.accessToken;
@@ -179,7 +193,7 @@ describe('Commission API (spec §47 Step 23)', () => {
     const accRes = await http().post(`/api/proposals/${proposalId}/accept`).set('Authorization', `Bearer ${agentToken}`);
     const approvalId = accRes.body.data.approvals[0].id as string;
 
-    await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${agentToken}`)
+    await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${approverToken}`)
       .send({ reason: 'commission e2e approve' });
 
     await http().post(`/api/jobs/${jId}/bind`).set('Authorization', `Bearer ${agentToken}`)
@@ -199,32 +213,34 @@ describe('Commission API (spec §47 Step 23)', () => {
     const res = await http()
       .post(`/api/policies/${policyId}/commission`)
       .set('Authorization', `Bearer ${agentToken}`)
-      .send({ commissionBase: '20000.00', commissionRate: '15.0000', remark: 'commission e2e' });
+      .send({ commissionType: 'COMPANY', commissionBase: '20000.00', commissionRate: '15.0000', remark: 'commission e2e' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.commissionAmount).toBe('3000.00');
-    expect(res.body.data.policyId).toBe(policyId);
+    const created = (Array.isArray(res.body.data) ? res.body.data : res.body.data.items)[0];
+    expect(created.commissionAmount).toBe('3000.00');
+    expect(created.policyId).toBe(policyId);
   });
 
   it('GET /commissions — list includes newly created commission', async () => {
     const res = await http().get('/api/commissions').set('Authorization', `Bearer ${agentToken}`);
     expect(res.status).toBe(200);
-    const commissions = res.body.data as Array<{ policyId: string }>;
+    const commissions = (res.body.data as { items: Array<{ policyId: string }> }).items;
     expect(commissions.some((c) => c.policyId === policyId)).toBe(true);
   });
 
   it('GET /policies/:id/commissions — returns list for policy', async () => {
     const res = await http().get(`/api/policies/${policyId}/commissions`).set('Authorization', `Bearer ${agentToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].commissionAmount).toBe('3000.00');
+    const items = Array.isArray(res.body.data) ? res.body.data : res.body.data.items;
+    expect(items).toHaveLength(1);
+    expect(items[0].commissionAmount).toBe('3000.00');
   });
 
   it('403 — viewer cannot create commission', async () => {
     const res = await http()
       .post(`/api/policies/${policyId}/commission`)
       .set('Authorization', `Bearer ${viewerToken}`)
-      .send({ commissionBase: '1000.00', commissionRate: '10.0000' });
+      .send({ commissionType: 'COMPANY', commissionBase: '1000.00', commissionRate: '10.0000' });
     expect(res.status).toBe(403);
   });
 });

@@ -36,7 +36,7 @@
 | Q6 | Commission rate มาจากไหน | กรอกเองต่อ Policy (MVP) | D24 |
 | Q7 | แสดงปี พ.ศ. หรือ ค.ศ. | ค.ศ. `dd/MM/yyyy` | D6 |
 | Q8 | Quotation ที่ไม่ถูกเลือกต้องเปลี่ยนเป็น REJECTED อัตโนมัติไหม | ไม่ (คงเป็น RECEIVED) | D16 |
-| Q9 | Role ไหนได้ permission อะไร (spec §4 มีแค่รายชื่อ role) | ตาม `ROLE_PERMISSIONS` ใน `apps/api/prisma/seed-data.ts` เช่น AGENT ไม่มี `*.view_all`, VIEWER/FINANCE เห็นทุก Job แบบอ่านอย่างเดียว, `approval.approve` เฉพาะ MANAGER/ADMIN | D3 |
+| Q9 | Role ไหนได้ permission อะไร (spec §4 มีแค่รายชื่อ role) | ตาม `ROLE_PERMISSIONS` ใน `apps/api/prisma/seed-data.ts` เช่น AGENT ไม่มี `*.view_all`, VIEWER/FINANCE เห็นทุก Job แบบอ่านอย่างเดียว, `approval.approve` เฉพาะ MANAGER/ADMIN; `task.create`/`task.update` ให้ AGENT/BROKER_STAFF/SUPERVISOR/ADMIN (role อื่นเห็นอย่างเดียว — เพิ่ม 2026-10-05) | D3 |
 
 ---
 
@@ -253,7 +253,7 @@
 ### Day 19 — Approval API ✅
 - [x] `approval/domain/approval-rules.ts`: canonical pure fn (re-exported by `proposal/domain/approval-eval.ts`); 11 unit tests pass
 - [x] `ApprovalModule`: `GET /approvals` (inbox, requires `approval.approve`), `POST /approvals/:id/approve`, `POST /approvals/:id/reject`
-- [x] Self-approve prevention (requestedById === userId → 422)
+- [x] Self-approve prevention (requestedById === userId → 422) — ยกเว้นผู้มีสิทธิ์ `approval.approve_own` (ADMIN) ตามที่ผู้ใช้ขอให้ admin ทำได้ทุกขั้นตอน (2026-10-05)
 - [x] Q4 implemented: reject approval → job stays at WAITING_APPROVAL (no status change)
 - [x] Registered `ApprovalModule` in `app.module.ts`
 

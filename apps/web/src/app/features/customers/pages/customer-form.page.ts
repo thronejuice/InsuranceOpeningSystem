@@ -16,13 +16,6 @@ import {
 import { Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { finalize } from 'rxjs';
-import { ButtonModule } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
-import { Select } from 'primeng/select';
-import { Textarea } from 'primeng/textarea';
-import { Divider } from 'primeng/divider';
-import { Message } from 'primeng/message';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
@@ -30,6 +23,7 @@ import { AddressEditorComponent } from '../components/address-editor.component';
 import { ContactEditorComponent } from '../components/contact-editor.component';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
 import { CustomersApi, type Customer } from '../data/customers.api';
+import { MessageService, UiButton, UiDivider, UiInput, UiMessage, UiSelect } from '../../../shared/ui';
 
 const CUSTOMER_TYPE_OPTIONS = [
   { label: 'บุคคลธรรมดา', value: 'INDIVIDUAL' },
@@ -40,20 +34,7 @@ const CUSTOMER_TYPE_OPTIONS = [
   selector: 'app-customer-form-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    ButtonModule,
-    InputText,
-    Select,
-    Textarea,
-    Divider,
-    Message,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppFieldErrorComponent,
-    AddressEditorComponent,
-    ContactEditorComponent,
-  ],
+  imports: [ReactiveFormsModule, UiButton, UiInput, UiSelect, UiDivider, UiMessage, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, AddressEditorComponent, ContactEditorComponent],
   template: `
     @if (loadState() === 'loading') {
       <app-state state="loading" />
@@ -66,7 +47,7 @@ const CUSTOMER_TYPE_OPTIONS = [
       />
 
       @if (serverError()) {
-        <p-message severity="error" class="mb-4 block">{{ serverError() }}</p-message>
+        <ui-message severity="error" class="mb-4 block">{{ serverError() }}</ui-message>
       }
 
       <form [formGroup]="form" (ngSubmit)="save()" class="form-layout">
@@ -76,13 +57,13 @@ const CUSTOMER_TYPE_OPTIONS = [
           <div class="form-row">
             <div class="field">
               <label for="customerType">ประเภทลูกค้า <span class="required">*</span></label>
-              <p-select
+              <ui-select class="w-full"
                 inputId="customerType"
                 formControlName="customerType"
                 [options]="customerTypeOptions"
                 optionLabel="label"
                 optionValue="value"
-                styleClass="w-full"
+               
               />
               <app-field-error [control]="form.get('customerType')" />
             </div>
@@ -93,7 +74,7 @@ const CUSTOMER_TYPE_OPTIONS = [
               <div class="field">
                 <label for="firstName">ชื่อ <span class="required">*</span></label>
                 <input
-                  pInputText
+                  uiInput
                   id="firstName"
                   formControlName="firstName"
                   placeholder="ชื่อ"
@@ -104,7 +85,7 @@ const CUSTOMER_TYPE_OPTIONS = [
               <div class="field">
                 <label for="lastName">นามสกุล <span class="required">*</span></label>
                 <input
-                  pInputText
+                  uiInput
                   id="lastName"
                   formControlName="lastName"
                   placeholder="นามสกุล"
@@ -117,7 +98,7 @@ const CUSTOMER_TYPE_OPTIONS = [
               <div class="field">
                 <label for="citizenId">เลขบัตรประชาชน</label>
                 <input
-                  pInputText
+                  uiInput
                   id="citizenId"
                   formControlName="citizenId"
                   placeholder="13 หลัก"
@@ -132,7 +113,7 @@ const CUSTOMER_TYPE_OPTIONS = [
               <div class="field field-full">
                 <label for="companyName">ชื่อบริษัท <span class="required">*</span></label>
                 <input
-                  pInputText
+                  uiInput
                   id="companyName"
                   formControlName="companyName"
                   placeholder="ชื่อบริษัท/นิติบุคคล"
@@ -145,7 +126,7 @@ const CUSTOMER_TYPE_OPTIONS = [
               <div class="field">
                 <label for="taxId">เลขประจำตัวผู้เสียภาษี</label>
                 <input
-                  pInputText
+                  uiInput
                   id="taxId"
                   formControlName="taxId"
                   placeholder="13 หลัก"
@@ -160,15 +141,15 @@ const CUSTOMER_TYPE_OPTIONS = [
           <div class="form-row">
             <div class="field">
               <label for="phone">โทรศัพท์</label>
-              <input pInputText id="phone" formControlName="phone" class="w-full" />
+              <input uiInput id="phone" formControlName="phone" class="w-full" />
             </div>
             <div class="field">
               <label for="mobile">มือถือ</label>
-              <input pInputText id="mobile" formControlName="mobile" class="w-full" />
+              <input uiInput id="mobile" formControlName="mobile" class="w-full" />
             </div>
             <div class="field">
               <label for="email">อีเมล</label>
-              <input pInputText id="email" formControlName="email" type="email" class="w-full" />
+              <input uiInput id="email" formControlName="email" type="email" class="w-full" />
               <app-field-error [control]="form.get('email')" />
             </div>
           </div>
@@ -176,7 +157,7 @@ const CUSTOMER_TYPE_OPTIONS = [
           <div class="field">
             <label for="remark">หมายเหตุ</label>
             <textarea
-              pTextarea
+              uiInput
               id="remark"
               formControlName="remark"
               rows="3"
@@ -185,7 +166,7 @@ const CUSTOMER_TYPE_OPTIONS = [
           </div>
         </div>
 
-        <p-divider />
+        <ui-divider />
 
         <div class="form-section">
           <app-address-editor
@@ -194,7 +175,7 @@ const CUSTOMER_TYPE_OPTIONS = [
           />
         </div>
 
-        <p-divider />
+        <ui-divider />
 
         <div class="form-section">
           <app-contact-editor
@@ -204,13 +185,13 @@ const CUSTOMER_TYPE_OPTIONS = [
         </div>
 
         <div class="form-actions">
-          <p-button
+          <ui-button
             label="ยกเลิก"
             severity="secondary"
             type="button"
             (onClick)="cancel()"
           />
-          <p-button
+          <ui-button
             [label]="isEdit ? 'บันทึกการแก้ไข' : 'สร้างลูกค้า'"
             type="submit"
             [loading]="saving()"

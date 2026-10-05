@@ -1,38 +1,29 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
-import { InputText } from 'primeng/inputtext';
-import { ConfirmDialog } from 'primeng/confirmdialog';
-import { ConfirmationService, MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import { HasPermissionDirective } from '../../../shared/directives/has-permission.directive';
 import { MasterApi, type InsuranceCompany } from '../data/master.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
+import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialog, UiInput, UiTable } from '../../../shared/ui';
 
 @Component({
   selector: 'app-companies-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ConfirmationService],
-  imports: [
-    ReactiveFormsModule,
-    TableModule, ButtonModule, DialogModule, InputText, ConfirmDialog,
-    AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective,
-  ],
+  imports: [ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective],
   template: `
-    <p-confirm-dialog />
+    <ui-confirm-dialog />
     <app-page-header title="บริษัทประกันภัย" subtitle="จัดการบริษัทประกันภัย">
-      <p-button *appHasPermission="'master.manage'" label="เพิ่มบริษัท" icon="pi pi-plus" (onClick)="openCreate()" />
+      <ui-button *appHasPermission="'master.manage'" label="เพิ่มบริษัท" icon="pi pi-plus" (onClick)="openCreate()" />
     </app-page-header>
 
     @if (state() === 'loading') { <app-state state="loading" /> }
     @else if (state() === 'error') { <app-state state="error" /> }
     @else {
-      <p-table [value]="items()" styleClass="p-datatable-sm p-datatable-striped">
+      <ui-table [value]="items()" styleClass="p-datatable-sm p-datatable-striped">
         <ng-template #header>
           <tr>
             <th style="width:120px">รหัส</th>
@@ -52,8 +43,8 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
             <td><span [class]="row.status === 'ACTIVE' ? 'badge-active' : 'badge-inactive'">{{ row.status === 'ACTIVE' ? 'ใช้งาน' : 'ไม่ใช้งาน' }}</span></td>
             <td>
               <div class="action-buttons">
-                <p-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
-                <p-button *appHasPermission="'master.manage'" icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDelete(row)" />
+                <ui-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
+                <ui-button *appHasPermission="'master.manage'" icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDelete(row)" />
               </div>
             </td>
           </tr>
@@ -61,50 +52,50 @@ import { applyServerErrors } from '../../../shared/utils/form-errors';
         <ng-template #emptymessage>
           <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบข้อมูล</td></tr>
         </ng-template>
-      </p-table>
+      </ui-table>
     }
 
-    <p-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขบริษัทประกันภัย' : 'เพิ่มบริษัทประกันภัย'"
+    <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขบริษัทประกันภัย' : 'เพิ่มบริษัทประกันภัย'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="form-grid">
           <div class="field">
             <label for="co-code">รหัส <span class="required">*</span></label>
-            <input pInputText id="co-code" formControlName="code" [readOnly]="!!editId()" class="w-full" />
+            <input uiInput id="co-code" formControlName="code" [readOnly]="!!editId()" class="w-full" />
             <app-field-error [control]="form.get('code')" />
           </div>
           <div class="field">
             <label for="co-name">ชื่อบริษัท <span class="required">*</span></label>
-            <input pInputText id="co-name" formControlName="name" class="w-full" />
+            <input uiInput id="co-name" formControlName="name" class="w-full" />
             <app-field-error [control]="form.get('name')" />
           </div>
           <div class="field">
             <label for="co-tax">เลขประจำตัวผู้เสียภาษี</label>
-            <input pInputText id="co-tax" formControlName="taxId" class="w-full" />
+            <input uiInput id="co-tax" formControlName="taxId" class="w-full" />
           </div>
           <div class="field">
             <label for="co-contact">ชื่อผู้ติดต่อ</label>
-            <input pInputText id="co-contact" formControlName="contactName" class="w-full" />
+            <input uiInput id="co-contact" formControlName="contactName" class="w-full" />
           </div>
           <div class="field">
             <label for="co-phone">โทรศัพท์</label>
-            <input pInputText id="co-phone" formControlName="phone" class="w-full" />
+            <input uiInput id="co-phone" formControlName="phone" class="w-full" />
           </div>
           <div class="field">
             <label for="co-email">อีเมล</label>
-            <input pInputText id="co-email" formControlName="email" type="email" class="w-full" />
+            <input uiInput id="co-email" formControlName="email" type="email" class="w-full" />
           </div>
         </div>
         <div class="field">
           <label for="co-addr">ที่อยู่</label>
-          <input pInputText id="co-addr" formControlName="address" class="w-full" />
+          <input uiInput id="co-addr" formControlName="address" class="w-full" />
         </div>
         <div class="dialog-actions">
-          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
         </div>
       </form>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .action-buttons { display:flex; gap:0.25rem; }
@@ -194,7 +185,7 @@ export class CompaniesPage implements OnInit {
       },
       error: (err) => {
         this.saving.set(false);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+         
         if (err?.error?.errors) applyServerErrors(this.form, err.error);
         else this.toast.add({ severity: 'error', summary: 'ผิดพลาด', detail: 'ไม่สามารถบันทึกได้' });
       },

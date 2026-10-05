@@ -10,19 +10,19 @@ export class DashboardController {
   constructor(private readonly service: DashboardService) {}
 
   @Get('agent')
-  @RequirePermissions('dashboard.view')
+  @RequirePermissions('job.view')
   agent() {
     return this.service.agentDashboard();
   }
 
   @Get('manager')
-  @RequirePermissions('dashboard.view_all')
+  @RequirePermissions('report.view')
   manager() {
     return this.service.managerDashboard();
   }
 
   @Get('funnel')
-  @RequirePermissions('dashboard.view_all')
+  @RequirePermissions('report.view')
   funnel() {
     return this.service.funnel();
   }

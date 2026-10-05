@@ -13,13 +13,9 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
-import { Select } from 'primeng/select';
-import { Divider } from 'primeng/divider';
-import { Checkbox } from 'primeng/checkbox';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import type { CustomerAddress } from '../data/customers.api';
+import { UiButton, UiCheckbox, UiDivider, UiInput, UiSelect } from '../../../shared/ui';
 
 const ADDRESS_TYPE_OPTIONS = [
   { label: 'บ้าน', value: 'HOME' },
@@ -33,20 +29,12 @@ const ADDRESS_TYPE_OPTIONS = [
   selector: 'app-address-editor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    ReactiveFormsModule,
-    ButtonModule,
-    InputText,
-    Select,
-    Divider,
-    Checkbox,
-    AppFieldErrorComponent,
-  ],
+  imports: [ReactiveFormsModule, UiButton, UiInput, UiSelect, UiDivider, UiCheckbox, AppFieldErrorComponent],
   template: `
     <div class="address-editor">
       <div class="editor-header">
         <span class="font-semibold">ที่อยู่</span>
-        <p-button
+        <ui-button
           label="เพิ่มที่อยู่"
           icon="pi pi-plus"
           size="small"
@@ -59,7 +47,7 @@ const ADDRESS_TYPE_OPTIONS = [
         <div [formGroup]="asGroup(group)" class="address-item">
           <div class="address-item-header">
             <span class="address-index">ที่อยู่ที่ {{ $index + 1 }}</span>
-            <p-button
+            <ui-button
               icon="pi pi-trash"
               severity="danger"
               [text]="true"
@@ -70,19 +58,19 @@ const ADDRESS_TYPE_OPTIONS = [
           <div class="form-grid">
             <div class="field">
               <label [attr.for]="'addr-type-' + $index">ประเภทที่อยู่ <span class="required">*</span></label>
-              <p-select
+              <ui-select class="w-full"
                 [inputId]="'addr-type-' + $index"
                 formControlName="addressType"
                 [options]="addressTypeOptions"
                 optionLabel="label"
                 optionValue="value"
                 placeholder="เลือกประเภท"
-                styleClass="w-full"
+               
               />
               <app-field-error [control]="group.get('addressType')" />
             </div>
             <div class="field field-primary">
-              <p-checkbox
+              <ui-checkbox
                 formControlName="isPrimary"
                 [binary]="true"
                 label="ที่อยู่หลัก"
@@ -92,7 +80,7 @@ const ADDRESS_TYPE_OPTIONS = [
           <div class="field">
             <label [attr.for]="'addr-line-' + $index">ที่อยู่ <span class="required">*</span></label>
             <input
-              pInputText
+              uiInput
               [id]="'addr-line-' + $index"
               formControlName="addressLine"
               placeholder="บ้านเลขที่ ถนน ซอย"
@@ -103,23 +91,23 @@ const ADDRESS_TYPE_OPTIONS = [
           <div class="form-grid">
             <div class="field">
               <label [attr.for]="'addr-sub-' + $index">แขวง/ตำบล</label>
-              <input pInputText [id]="'addr-sub-' + $index" formControlName="subDistrict" class="w-full" />
+              <input uiInput [id]="'addr-sub-' + $index" formControlName="subDistrict" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'addr-dist-' + $index">เขต/อำเภอ</label>
-              <input pInputText [id]="'addr-dist-' + $index" formControlName="district" class="w-full" />
+              <input uiInput [id]="'addr-dist-' + $index" formControlName="district" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'addr-prov-' + $index">จังหวัด</label>
-              <input pInputText [id]="'addr-prov-' + $index" formControlName="province" class="w-full" />
+              <input uiInput [id]="'addr-prov-' + $index" formControlName="province" class="w-full" />
             </div>
             <div class="field">
               <label [attr.for]="'addr-post-' + $index">รหัสไปรษณีย์</label>
-              <input pInputText [id]="'addr-post-' + $index" formControlName="postalCode" class="w-full" />
+              <input uiInput [id]="'addr-post-' + $index" formControlName="postalCode" class="w-full" />
             </div>
           </div>
           @if ($index < formArray.length - 1) {
-            <p-divider />
+            <ui-divider />
           }
         </div>
       }

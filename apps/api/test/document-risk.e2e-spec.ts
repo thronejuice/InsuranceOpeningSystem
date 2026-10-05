@@ -13,13 +13,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/common/prisma/prisma.service.js';
 
-const PREFIX = 'e2e_docr_';
+const PREFIX = 'e2e_drisk_';
 const PASSWORD = 'E2e@DocR123';
 
 describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let agentToken: string;
+  let approverToken: string;
   let agentId: string;
   let customerId: string;
 
@@ -53,6 +54,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
+    await prisma.documentChecklist.deleteMany({ where: { product: { code: { startsWith: PREFIX.toUpperCase() } } } });
     await prisma.insuranceProduct.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
     const testUsers = await prisma.user.findMany({ where: { username: { startsWith: PREFIX } }, select: { id: true } });
@@ -67,7 +69,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
     const up = (c: string) => prisma.permission.upsert({ where: { code: c }, update: {}, create: { code: c, description: c } });
     await Promise.all([
       up('job.view'), up('job.create'), up('job.submit'), up('job.update'), up('job.view_all'),
-      up('customer.view'), up('customer.create'), up('job.manage_quotation'),
+      up('customer.view'), up('customer.create'), up('quotation.create'), up('quotation.update'), up('quotation.select'),
       up('proposal.create'), up('proposal.send'), up('proposal.accept'), up('proposal.reject'),
       up('approval.approve'), up('policy.view'), up('policy.create'), up('payment.create'), up('payment.view'),
     ]);
@@ -79,7 +81,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
         permissions: {
           create: [
             'job.view', 'job.create', 'job.submit', 'job.update', 'job.view_all',
-            'customer.view', 'customer.create', 'job.manage_quotation',
+            'customer.view', 'customer.create', 'quotation.create', 'quotation.update', 'quotation.select',
             'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject',
             'approval.approve', 'policy.view', 'policy.create', 'payment.create', 'payment.view',
           ].map((c) => ({ permission: { connect: { code: c } } })),
@@ -97,6 +99,18 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       },
     });
     agentId = agent.id;
+
+    await prisma.user.create({
+      data: {
+        username: `${PREFIX}approver`,
+        email: `${PREFIX}approver@test.com`,
+        passwordHash,
+        fullName: 'E2E DocRisk Approver',
+        roles: { create: [{ role: { connect: { id: role.id } } }] },
+      },
+    });
+    const approverLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}approver`, password: PASSWORD });
+    approverToken = approverLogin.body.data.accessToken;
 
     const loginRes = await http().post('/api/auth/login').send({ username: `${PREFIX}agent`, password: PASSWORD });
     agentToken = loginRes.body.data.accessToken;
@@ -121,6 +135,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
           name: 'E2E RequireDocs Product',
           requireDocsOnSubmit: true,  // ← requires docs
           requireDocsOnBind: false,
+          documentChecklist: { create: [{ documentType: 'ID_CARD', isRequired: true }] },
         },
       });
 
@@ -148,7 +163,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       }
 
       const motorProduct = await prisma.insuranceProduct.findFirst({
-        where: { insuranceTypeId: motorType.id, requireDocsOnSubmit: false },
+        where: { code: 'MOTOR-001' }, // risk check runs before the document check
       });
 
       if (!motorProduct) {
@@ -157,7 +172,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       }
 
       const jobRes = await http().post('/api/jobs').set('Authorization', `Bearer ${agentToken}`)
-        .send({ customerId, insuranceTypeId: motorType.id, productId: motorProduct.id, agentId, effectiveDate: '2027-01-01', priority: 'NORMAL' });
+        .send({ customerId, insuranceTypeId: motorType.id, productId: motorProduct.id, agentId, effectiveDate: '2027-02-01', priority: 'NORMAL' });
       expect(jobRes.status).toBe(201);
       const jobId = jobRes.body.data.id as string;
 
@@ -188,7 +203,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
 
       // Build a POLICY_ISSUED job
       const jobRes = await http().post('/api/jobs').set('Authorization', `Bearer ${agentToken}`)
-        .send({ customerId, insuranceTypeId: iType!.id, productId: product.id, agentId, effectiveDate: '2027-01-01', priority: 'NORMAL' });
+        .send({ customerId, insuranceTypeId: iType!.id, productId: product.id, agentId, effectiveDate: '2027-03-01', priority: 'NORMAL' });
       const jobId = jobRes.body.data.id as string;
 
       const quoRes = await http().post(`/api/jobs/${jobId}/quotations`).set('Authorization', `Bearer ${agentToken}`)
@@ -212,7 +227,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       const accRes = await http().post(`/api/proposals/${proposalId}/accept`).set('Authorization', `Bearer ${agentToken}`);
       const approvalId = accRes.body.data.approvals[0].id as string;
 
-      await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${agentToken}`)
+      await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${approverToken}`)
         .send({ reason: 'dup policy approve' });
 
       await http().post(`/api/jobs/${jobId}/bind`).set('Authorization', `Bearer ${agentToken}`)

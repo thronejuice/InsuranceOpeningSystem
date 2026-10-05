@@ -11,6 +11,7 @@ import { ApprovalRepository } from './approval.repository.js';
 import type { ApproveApprovalDto } from './dto/approve-approval.dto.js';
 import type { RejectApprovalDto } from './dto/reject-approval.dto.js';
 import type { ListApprovalDto } from './dto/list-approval.dto.js';
+import { isSelfDecisionBlocked } from './domain/approval-rules.js';
 import { toApprovalResponse, type ApprovalResponse } from './dto/approval.response.js';
 
 @Injectable()
@@ -22,9 +23,14 @@ export class ApprovalService {
     private readonly cls: ClsService<AppClsStore>,
   ) {}
 
+  private viewer() {
+    return { userId: this.cls.get('userId'), permissions: this.cls.get('permissions') ?? [] };
+  }
+
   async getInbox(dto: ListApprovalDto): Promise<ApprovalResponse[]> {
     const items = await this.repo.findInbox({ status: dto.status ?? 'PENDING' });
-    return items.map(toApprovalResponse);
+    const viewer = this.viewer();
+    return items.map((a) => toApprovalResponse(a, viewer));
   }
 
   @Transactional()
@@ -38,7 +44,7 @@ export class ApprovalService {
     }
 
     // Prevent self-approval
-    if (approval.requestedById === userId) {
+    if (isSelfDecisionBlocked(approval.requestedById, this.viewer())) {
       throw new BusinessException('APPROVAL_SELF_APPROVE', 'Cannot approve your own request', 422);
     }
 
@@ -56,7 +62,7 @@ export class ApprovalService {
 
     await this.audit.log({ action: 'APPROVE', entityType: 'APPROVAL', entityId: id, jobId: approval.jobId });
 
-    return toApprovalResponse(updated);
+    return toApprovalResponse(updated, this.viewer());
   }
 
   @Transactional()
@@ -70,7 +76,7 @@ export class ApprovalService {
     }
 
     // Prevent self-rejection
-    if (approval.requestedById === userId) {
+    if (isSelfDecisionBlocked(approval.requestedById, this.viewer())) {
       throw new BusinessException('APPROVAL_SELF_APPROVE', 'Cannot reject your own request', 422);
     }
 
@@ -90,7 +96,7 @@ export class ApprovalService {
       description: dto.reason,
     });
 
-    return toApprovalResponse(updated);
+    return toApprovalResponse(updated, this.viewer());
   }
 
   private async transitionJob(jobId: string, fromStatus: string, version: number, toStatus: JobStatus, userId: string) {

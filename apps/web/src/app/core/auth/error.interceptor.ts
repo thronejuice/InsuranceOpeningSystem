@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { HttpHandlerFn, HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { catchError, throwError } from 'rxjs';
-import { MessageService } from 'primeng/api';
+import { MessageService } from '../../shared/ui';
 
 interface ApiError {
   success: false;

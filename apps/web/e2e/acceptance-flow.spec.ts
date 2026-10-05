@@ -20,20 +20,20 @@ const BASE = 'http://localhost:4200';
 async function login(page: Page, username: string, password = SEED_PASS) {
   await page.goto(`${BASE}/login`);
   await page.locator('#username').fill(username);
-  // PrimeNG Password component: the inner input has id="password"
+  // ui-password: the inner input has id="password"
   await page.locator('#password').fill(password);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   await page.waitForURL('**/dashboard');
 }
 
-/** Click a PrimeNG Select trigger and choose the option with the given label. */
+/** Click a ui-select (Angular Material) trigger and choose the option with the given label. */
 async function selectOption(page: Page, inputId: string, optionLabel: string) {
-  // PrimeNG Select renders an overlay panel with role="listbox"
-  await page.locator(`p-select[inputid="${inputId}"] .p-select`).click();
+  // mat-select renders its overlay panel with role="listbox"
+  await page.locator(`ui-select[inputid="${inputId}"] mat-select`).click();
   await page.getByRole('option', { name: optionLabel, exact: true }).click();
 }
 
-/** Click a PrimeNG DatePicker and fill the input with a date string. */
+/** Fill a ui-datepicker and fill the input with a date string. */
 async function fillDate(page: Page, inputId: string, dateStr: string) {
   const input = page.locator(`#${inputId}`);
   await input.fill(dateStr);

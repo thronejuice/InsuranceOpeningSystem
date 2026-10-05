@@ -7,9 +7,6 @@ import {
   signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ButtonModule } from 'primeng/button';
-import { Tabs, TabList, Tab, TabPanels, TabPanel } from 'primeng/tabs';
-import { Tag } from 'primeng/tag';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
@@ -17,26 +14,13 @@ import { HasPermissionDirective } from '../../../shared/directives/has-permissio
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { CustomersApi, type Customer } from '../data/customers.api';
 import { JobsApi, type Job } from '../../jobs/data/jobs.api';
+import { UiButton, UiTab, UiTabList, UiTabPanel, UiTabPanels, UiTabs, UiTag } from '../../../shared/ui';
 
 @Component({
   selector: 'app-customer-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    ButtonModule,
-    Tabs,
-    TabList,
-    Tab,
-    TabPanels,
-    TabPanel,
-    Tag,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    HasPermissionDirective,
-    ThDatePipe,
-  ],
+  imports: [RouterLink, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiTag, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, HasPermissionDirective, ThDatePipe],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -48,25 +32,25 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
         [subtitle]="customer()!.customerCode"
       >
         <app-status-badge [status]="customer()!.status" />
-        <p-button
+        <ui-button
           *appHasPermission="'customer.update'"
           label="แก้ไข"
           icon="pi pi-pencil"
           severity="secondary"
-          [routerLink]="['/customers', id(), 'edit']"
+          [link]="['/customers', id(), 'edit']"
         />
       </app-page-header>
 
-      <p-tabs [value]="0" (valueChange)="onTabChange($event)">
-        <p-tablist>
-          <p-tab [value]="0">ข้อมูลพื้นฐาน</p-tab>
-          <p-tab [value]="1">ผู้ติดต่อ ({{ customer()!.contacts?.length ?? 0 }})</p-tab>
-          <p-tab [value]="2">ที่อยู่ ({{ customer()!.addresses?.length ?? 0 }})</p-tab>
-          <p-tab [value]="3">งานประกัน ({{ customerJobs().length }})</p-tab>
-        </p-tablist>
+      <ui-tabs [value]="0" (valueChange)="onTabChange($event)">
+        <ui-tablist>
+          <ui-tab [value]="0">ข้อมูลพื้นฐาน</ui-tab>
+          <ui-tab [value]="1">ผู้ติดต่อ ({{ customer()!.contacts?.length ?? 0 }})</ui-tab>
+          <ui-tab [value]="2">ที่อยู่ ({{ customer()!.addresses?.length ?? 0 }})</ui-tab>
+          <ui-tab [value]="3">งานประกัน ({{ customerJobs().length }})</ui-tab>
+        </ui-tablist>
 
-        <p-tabpanels>
-          <p-tabpanel [value]="0">
+        <ui-tabpanels>
+          <ui-tabpanel [value]="0">
             <div class="info-grid">
               <div class="info-item">
                 <span class="info-label">รหัสลูกค้า</span>
@@ -144,9 +128,9 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                 </div>
               }
             </div>
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <p-tabpanel [value]="1">
+          <ui-tabpanel [value]="1">
             @if (!customer()!.contacts?.length) {
               <app-state state="empty" emptyMessage="ไม่มีผู้ติดต่อ" />
             } @else {
@@ -156,7 +140,7 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                     <div class="contact-header">
                       <span class="contact-name">{{ contact.contactName }}</span>
                       @if (contact.isPrimary) {
-                        <p-tag value="หลัก" severity="info" />
+                        <ui-tag value="หลัก" severity="info" />
                       }
                     </div>
                     <div class="contact-details">
@@ -180,9 +164,9 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                 }
               </div>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <p-tabpanel [value]="2">
+          <ui-tabpanel [value]="2">
             @if (!customer()!.addresses?.length) {
               <app-state state="empty" emptyMessage="ไม่มีที่อยู่" />
             } @else {
@@ -192,7 +176,7 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                     <div class="address-header">
                       <span class="address-type">{{ addressTypeLabel(addr.addressType) }}</span>
                       @if (addr.isPrimary) {
-                        <p-tag value="หลัก" severity="info" />
+                        <ui-tag value="หลัก" severity="info" />
                       }
                     </div>
                     <div class="address-text">
@@ -202,9 +186,9 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                 }
               </div>
             }
-          </p-tabpanel>
+          </ui-tabpanel>
 
-          <p-tabpanel [value]="3">
+          <ui-tabpanel [value]="3">
             @if (jobsState() === 'loading') {
               <app-state state="loading" />
             } @else if (customerJobs().length === 0) {
@@ -230,9 +214,9 @@ import { JobsApi, type Job } from '../../jobs/data/jobs.api';
                 </a>
               </div>
             }
-          </p-tabpanel>
-        </p-tabpanels>
-      </p-tabs>
+          </ui-tabpanel>
+        </ui-tabpanels>
+      </ui-tabs>
     }
   `,
   styles: [`

@@ -168,7 +168,7 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('job.submit'), upsertPerm('job.update'),
       upsertPerm('customer.view'), upsertPerm('customer.create'),
-      upsertPerm('job.manage_quotation'), upsertPerm('proposal.create'), upsertPerm('proposal.send'),
+      upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'), upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'), upsertPerm('approval.approve'),
       upsertPerm('policy.view'), upsertPerm('policy.create'),
     ]);
@@ -185,7 +185,7 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
             { permission: { connect: { code: 'job.update' } } },
             { permission: { connect: { code: 'customer.view' } } },
             { permission: { connect: { code: 'customer.create' } } },
-            { permission: { connect: { code: 'job.manage_quotation' } } },
+            { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
             { permission: { connect: { code: 'proposal.create' } } },
             { permission: { connect: { code: 'proposal.send' } } },
             { permission: { connect: { code: 'proposal.accept' } } },

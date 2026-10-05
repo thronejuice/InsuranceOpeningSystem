@@ -9,31 +9,18 @@ import {
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
-import { Message } from 'primeng/message';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { JobsApi, type PolicyResponse } from '../../jobs/data/jobs.api';
+import { MessageService, UiButton, UiInput, UiMessage } from '../../../shared/ui';
 
 @Component({
   selector: 'app-policy-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    FormsModule,
-    ButtonModule,
-    InputText,
-    Message,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    ThDatePipe,
-  ],
+  imports: [RouterLink, FormsModule, UiButton, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -98,16 +85,16 @@ import { JobsApi, type PolicyResponse } from '../../jobs/data/jobs.api';
           <div class="edit-form">
             <div class="field">
               <label for="pay-due">วันครบกำหนดชำระ</label>
-              <input pInputText id="pay-due" type="date" [(ngModel)]="editPaymentDue" class="w-full" style="max-width:220px" />
+              <input uiInput id="pay-due" type="date" [(ngModel)]="editPaymentDue" class="w-full" style="max-width:220px" />
             </div>
             <div class="field">
               <label for="edit-remark">หมายเหตุ</label>
-              <input pInputText id="edit-remark" [(ngModel)]="editRemark" class="w-full" style="max-width:400px" />
+              <input uiInput id="edit-remark" [(ngModel)]="editRemark" class="w-full" style="max-width:400px" />
             </div>
             @if (saveError()) {
-              <p-message severity="error" class="block mb-2">{{ saveError() }}</p-message>
+              <ui-message severity="error" class="block mb-2">{{ saveError() }}</ui-message>
             }
-            <p-button label="บันทึก" icon="pi pi-save" [loading]="saving()" [disabled]="saving()" (onClick)="save()" />
+            <ui-button label="บันทึก" icon="pi pi-save" [loading]="saving()" [disabled]="saving()" (onClick)="save()" />
           </div>
         </div>
       </div>

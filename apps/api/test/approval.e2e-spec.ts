@@ -55,7 +55,7 @@ describe('Approval API (e2e)', () => {
       prisma.permission.upsert({ where: { code }, update: {}, create: { code, description: code } });
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('customer.view'),
-      upsertPerm('job.manage_quotation'), upsertPerm('job.view_all'),
+      upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'), upsertPerm('job.view_all'),
       upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
       upsertPerm('approval.approve'),
@@ -71,7 +71,7 @@ describe('Approval API (e2e)', () => {
             { permission: { connect: { code: 'job.view' } } },
             { permission: { connect: { code: 'job.create' } } },
             { permission: { connect: { code: 'customer.view' } } },
-            { permission: { connect: { code: 'job.manage_quotation' } } },
+            { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
             { permission: { connect: { code: 'proposal.create' } } },
             { permission: { connect: { code: 'proposal.send' } } },
             { permission: { connect: { code: 'proposal.accept' } } },
@@ -125,8 +125,8 @@ describe('Approval API (e2e)', () => {
     agentToken = agentLogin.body.data.accessToken;
     managerToken = managerLogin.body.data.accessToken;
 
-    const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
-    const product = await prisma.insuranceProduct.findFirst({ where: { insuranceTypeId: iType?.id, active: true } });
+    const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
     const company = await prisma.insuranceCompany.create({
       data: { code: `${PREFIX.toUpperCase()}CO`, name: 'E2E Appr Company' },
     });

@@ -10,6 +10,10 @@ export class TaskRepository {
 
   get tx() { return this.txHost.tx; }
 
+  findJob(where: Prisma.JobWhereInput) {
+    return this.tx.job.findFirst({ where: { deletedAt: null, ...where }, select: { id: true } });
+  }
+
   findById(id: string) {
     return this.tx.task.findUnique({ where: { id } });
   }

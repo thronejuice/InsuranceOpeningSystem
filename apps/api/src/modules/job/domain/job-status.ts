@@ -84,12 +84,24 @@ const STATUS_ACTIONS: Partial<Record<JobStatus, JobAction[]>> = {
   CUSTOMER_REJECTED:   ['close'],
 };
 
+/** Actions that need a permission beyond write access to the job. */
+const ACTION_PERMISSION: Partial<Record<JobAction, string>> = {
+  submit: 'job.submit',
+  requestQuotation: 'quotation.create',
+  recordQuotation: 'quotation.update',
+  selectQuotation: 'quotation.select',
+  approve: 'approval.approve',
+};
+
+/** Actions decided by a checker who does not own the job, so they skip the write-access check. */
+const CHECKER_ACTIONS: JobAction[] = ['approve'];
+
 export function getAllowedActions(status: JobStatus, permissions: string[], canWrite: boolean): JobAction[] {
-  if (!canWrite) return [];
   const result = [...(STATUS_ACTIONS[status] ?? [])].filter((action) => {
-    if (action === 'submit') return permissions.includes('job.submit');
-    return true;
+    if (!canWrite && !CHECKER_ACTIONS.includes(action)) return false;
+    const required = ACTION_PERMISSION[action];
+    return !required || permissions.includes(required);
   });
-  if (!NON_CANCELLABLE.includes(status) && permissions.includes('job.cancel')) result.push('cancel');
+  if (canWrite && !NON_CANCELLABLE.includes(status) && permissions.includes('job.cancel')) result.push('cancel');
   return result;
 }

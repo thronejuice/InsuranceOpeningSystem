@@ -8,12 +8,11 @@ import {
   INSURANCE_PRODUCTS,
   INSURANCE_TYPES,
   MOTOR_COVERAGES,
-  MOTOR_DOCUMENT_CHECKLIST,
-  MOTOR_RISK_FIELDS,
+  PRODUCT_COVERAGES,
+  PRODUCT_DOCUMENT_CHECKLISTS,
+  PRODUCT_RISK_FIELDS,
   PERMISSIONS,
   PROPERTY_COVERAGES,
-  PROPERTY_DOCUMENT_CHECKLIST,
-  PROPERTY_RISK_FIELDS,
   ROLE_PERMISSIONS,
   ROLES,
   SAMPLE_COMPANIES,
@@ -94,21 +93,14 @@ async function main() {
   const productMap = new Map((await prisma.insuranceProduct.findMany()).map((p) => [p.code, p.id]));
 
   // ─── Risk Fields ───────────────────────────────────────────────────────
-  for (const f of MOTOR_RISK_FIELDS) {
-    const productId = productMap.get('MOTOR-001')!;
-    await prisma.riskFieldDefinition.upsert({
-      where: { productId_fieldCode: { productId, fieldCode: f.fieldCode } },
-      update: { fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
-      create: { productId, fieldCode: f.fieldCode, fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
-    });
-  }
-  for (const f of PROPERTY_RISK_FIELDS) {
-    for (const productCode of ['FIRE-001', 'PROPERTY-001'] as const) {
-      const productId = productMap.get(productCode)!;
+  for (const [productCode, defs] of Object.entries(PRODUCT_RISK_FIELDS)) {
+    const productId = productMap.get(productCode)!;
+    for (const f of defs) {
+      const data = { fieldName: f.fieldName, fieldType: f.fieldType, isRequired: f.isRequired, validationRule: f.validationRule, sortOrder: f.sortOrder };
       await prisma.riskFieldDefinition.upsert({
         where: { productId_fieldCode: { productId, fieldCode: f.fieldCode } },
-        update: { fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
-        create: { productId, fieldCode: f.fieldCode, fieldName: f.fieldName, fieldType: f.fieldType as never, isRequired: f.isRequired, sortOrder: f.sortOrder },
+        update: data,
+        create: { productId, fieldCode: f.fieldCode, ...data },
       });
     }
   }
@@ -133,18 +125,21 @@ async function main() {
     }
   }
 
-  // ─── Document Checklists ───────────────────────────────────────────────
-  for (const d of MOTOR_DOCUMENT_CHECKLIST) {
-    const productId = productMap.get('MOTOR-001')!;
-    await prisma.documentChecklist.upsert({
-      where: { productId_documentType: { productId, documentType: d.documentType as never } },
-      update: { isRequired: d.isRequired, sortOrder: d.sortOrder },
-      create: { productId, documentType: d.documentType as never, isRequired: d.isRequired, sortOrder: d.sortOrder },
-    });
+  for (const [productCode, coverages] of Object.entries(PRODUCT_COVERAGES)) {
+    const productId = productMap.get(productCode)!;
+    for (const c of coverages) {
+      await prisma.insuranceCoverage.upsert({
+        where: { productId_code: { productId, code: c.code } },
+        update: { name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+        create: { productId, code: c.code, name: c.name, description: c.description, defaultSumInsured: c.defaultSumInsured },
+      });
+    }
   }
-  for (const d of PROPERTY_DOCUMENT_CHECKLIST) {
-    for (const productCode of ['FIRE-001', 'PROPERTY-001'] as const) {
-      const productId = productMap.get(productCode)!;
+
+  // ─── Document Checklists ───────────────────────────────────────────────
+  for (const [productCode, checklist] of Object.entries(PRODUCT_DOCUMENT_CHECKLISTS)) {
+    const productId = productMap.get(productCode)!;
+    for (const d of checklist) {
       await prisma.documentChecklist.upsert({
         where: { productId_documentType: { productId, documentType: d.documentType as never } },
         update: { isRequired: d.isRequired, sortOrder: d.sortOrder },

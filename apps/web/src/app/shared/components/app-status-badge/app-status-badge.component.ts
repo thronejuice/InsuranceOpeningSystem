@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { Tag } from 'primeng/tag';
+import { UiTag } from '../../ui';
 
 type Severity = 'success' | 'secondary' | 'info' | 'warn' | 'danger' | 'contrast' | undefined;
 
@@ -31,8 +31,8 @@ const STATUS_MAP: Record<string, { label: string; severity: Severity }> = {
   selector: 'app-status-badge',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Tag],
-  template: `<p-tag [value]="label()" [severity]="severity()" />`,
+  imports: [UiTag],
+  template: `<ui-tag [value]="label()" [severity]="severity()" />`,
 })
 export class AppStatusBadgeComponent {
   @Input({ required: true }) status!: string;

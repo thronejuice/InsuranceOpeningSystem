@@ -50,7 +50,7 @@ export class AuthStore {
     this._loading.set(true);
     try {
       const res = await firstValueFrom(
-        this.http.post<ApiResponse<AuthResponse>>('/api/auth/login', credentials),
+        this.http.post<ApiResponse<AuthResponse>>('/api/auth/login', credentials, { withCredentials: true }),
       );
       this._accessToken.set(res.data.accessToken);
       this._user.set(res.data.user);
@@ -62,7 +62,7 @@ export class AuthStore {
 
   async logout(): Promise<void> {
     try {
-      await firstValueFrom(this.http.post('/api/auth/logout', {}));
+      await firstValueFrom(this.http.post('/api/auth/logout', {}, { withCredentials: true }));
     } catch {
       // ignore errors during logout
     } finally {

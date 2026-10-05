@@ -278,6 +278,8 @@ export interface ApprovalInProposal {
   approvedAt: string | null;
   rejectedAt: string | null;
   reason: string | null;
+  /** Server-computed: current user may approve/reject (not the requester). */
+  canDecide: boolean;
 }
 
 export interface ProposalResponse {
@@ -313,6 +315,8 @@ export interface ApprovalResponse {
   reason: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Server-computed: current user may approve/reject (not the requester). */
+  canDecide: boolean;
 }
 
 // ─── Binding / Policy ──────────────────────────────────────────────────────
@@ -800,7 +804,7 @@ export class JobsApi {
   // ─── Activities ─────────────────────────────────────────────────────────
 
   activities(id: string): Observable<ActivitiesResponse> {
-    return this.http.get<ActivitiesResponse>(`/api/jobs/${id}/activities`);
+    return this.http.get<ItemResponse<ActivitiesResponse>>(`/api/jobs/${id}/activities`).pipe(map((r) => r.data));
   }
 
   // ─── Renewal ────────────────────────────────────────────────────────────────

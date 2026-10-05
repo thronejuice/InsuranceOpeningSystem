@@ -1,19 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TableModule } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
-import { InputText } from 'primeng/inputtext';
-import { Select } from 'primeng/select';
-import { ToggleSwitch } from 'primeng/toggleswitch';
-import { InputNumber } from 'primeng/inputnumber';
-import { MessageService } from 'primeng/api';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import { HasPermissionDirective } from '../../../shared/directives/has-permission.directive';
 import { MasterApi, type InsuranceProduct, type RiskField } from '../data/master.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
+import { MessageService, UiButton, UiDialog, UiInput, UiInputNumber, UiSelect, UiTable, UiToggleSwitch } from '../../../shared/ui';
 
 const FIELD_TYPES = [
   { label: 'TEXT', value: 'TEXT' },
@@ -30,18 +23,14 @@ const FIELD_TYPES = [
   selector: 'app-risk-fields-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    FormsModule, ReactiveFormsModule,
-    TableModule, ButtonModule, DialogModule, InputText, Select, ToggleSwitch, InputNumber,
-    AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective,
-  ],
+  imports: [FormsModule, ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiSelect, UiToggleSwitch, UiInputNumber, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective],
   template: `
     <app-page-header title="Risk Fields" subtitle="กำหนด field ข้อมูลความเสี่ยงตามผลิตภัณฑ์">
-      <p-button *appHasPermission="'master.manage'" label="เพิ่ม Field" icon="pi pi-plus" (onClick)="openCreate()" [disabled]="!selectedProductId()" />
+      <ui-button *appHasPermission="'master.manage'" label="เพิ่ม Field" icon="pi pi-plus" (onClick)="openCreate()" [disabled]="!selectedProductId()" />
     </app-page-header>
 
     <div class="toolbar">
-      <p-select
+      <ui-select
         [options]="products()"
         optionLabel="name"
         optionValue="id"
@@ -59,7 +48,7 @@ const FIELD_TYPES = [
     } @else if (state() === 'error') {
       <app-state state="error" />
     } @else {
-      <p-table [value]="fields()" styleClass="p-datatable-sm p-datatable-striped">
+      <ui-table [value]="fields()" styleClass="p-datatable-sm p-datatable-striped">
         <ng-template #header>
           <tr>
             <th style="width:60px">ลำดับ</th>
@@ -80,58 +69,58 @@ const FIELD_TYPES = [
             <td><i [class]="row.isRequired ? 'pi pi-check text-green-500' : 'pi pi-minus text-color-secondary'"></i></td>
             <td><i [class]="row.active ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td>
-              <p-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
+              <ui-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
             </td>
           </tr>
         </ng-template>
         <ng-template #emptymessage>
           <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ยังไม่มี field สำหรับผลิตภัณฑ์นี้</td></tr>
         </ng-template>
-      </p-table>
+      </ui-table>
     }
 
-    <p-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไข Risk Field' : 'เพิ่ม Risk Field'"
+    <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไข Risk Field' : 'เพิ่ม Risk Field'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="form-grid">
           <div class="field">
             <label for="rf-code">Field Code <span class="required">*</span></label>
-            <input pInputText id="rf-code" formControlName="fieldCode" [readOnly]="!!editId()" class="w-full" />
+            <input uiInput id="rf-code" formControlName="fieldCode" [readOnly]="!!editId()" class="w-full" />
             <app-field-error [control]="form.get('fieldCode')" />
           </div>
           <div class="field">
             <label for="rf-name">ชื่อ Field <span class="required">*</span></label>
-            <input pInputText id="rf-name" formControlName="fieldName" class="w-full" />
+            <input uiInput id="rf-name" formControlName="fieldName" class="w-full" />
             <app-field-error [control]="form.get('fieldName')" />
           </div>
           <div class="field">
             <label>ประเภท <span class="required">*</span></label>
-            <p-select formControlName="fieldType" [options]="fieldTypes" optionLabel="label" optionValue="value" class="w-full" />
+            <ui-select formControlName="fieldType" [options]="fieldTypes" optionLabel="label" optionValue="value" class="w-full" />
             <app-field-error [control]="form.get('fieldType')" />
           </div>
           <div class="field">
             <label for="rf-sort">ลำดับ</label>
-            <p-inputnumber id="rf-sort" formControlName="sortOrder" [min]="0" class="w-full" />
+            <ui-inputnumber id="rf-sort" formControlName="sortOrder" [min]="0" class="w-full" />
           </div>
         </div>
         <div class="field">
           <label for="rf-rule">Validation Rule</label>
-          <input pInputText id="rf-rule" formControlName="validationRule" placeholder="เช่น min:0,max:9999" class="w-full" />
+          <input uiInput id="rf-rule" formControlName="validationRule" placeholder="เช่น min:0,max:9999" class="w-full" />
         </div>
         <div class="field-row">
-          <p-toggleswitch formControlName="isRequired" />
+          <ui-toggleswitch formControlName="isRequired" />
           <label>จำเป็นต้องกรอก</label>
         </div>
         <div class="field-row">
-          <p-toggleswitch formControlName="active" />
+          <ui-toggleswitch formControlName="active" />
           <label>ใช้งาน</label>
         </div>
         <div class="dialog-actions">
-          <p-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <p-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
         </div>
       </form>
-    </p-dialog>
+    </ui-dialog>
   `,
   styles: [`
     .toolbar { margin-bottom:1rem; }
@@ -219,7 +208,7 @@ export class RiskFieldsPage implements OnInit {
       },
       error: (err) => {
         this.saving.set(false);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+         
         if (err?.error?.errors) applyServerErrors(this.form, err.error);
         else this.toast.add({ severity: 'error', summary: 'ผิดพลาด', detail: 'ไม่สามารถบันทึกได้' });
       },

@@ -1,3 +1,5 @@
+import { canDecideApproval, type ApprovalViewer } from '../domain/approval-rules.js';
+
 export interface ApprovalResponse {
   id: string;
   jobId: string;
@@ -9,6 +11,8 @@ export interface ApprovalResponse {
   reason: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Server-computed: current user may approve/reject (pending, has permission, not the requester). */
+  canDecide: boolean;
 }
 
 export function toApprovalResponse(a: {
@@ -22,7 +26,7 @@ export function toApprovalResponse(a: {
   reason: string | null;
   createdAt: Date;
   updatedAt: Date;
-}): ApprovalResponse {
+}, viewer: ApprovalViewer): ApprovalResponse {
   return {
     id: a.id,
     jobId: a.jobId,
@@ -34,5 +38,6 @@ export function toApprovalResponse(a: {
     reason: a.reason,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
+    canDecide: canDecideApproval(a, viewer),
   };
 }

@@ -9,11 +9,6 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { debounceTime, Subject, takeUntil } from 'rxjs';
-import { TableModule, SortIcon, SortableColumn, type TableLazyLoadEvent } from 'primeng/table';
-import { ButtonModule } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
-import { Select } from 'primeng/select';
-import { IconField } from 'primeng/iconfield';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
@@ -21,6 +16,8 @@ import { HasPermissionDirective } from '../../../shared/directives/has-permissio
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { JobsApi, type Job, type JobQuery, type PaginationMeta, type JobStatus } from '../data/jobs.api';
 import { ExportService } from '../../../core/api/export.service';
+import { TableLazyLoadEvent, UiButton, UiIconField, UiInput, UiSelect, UiSortIcon, UiSortableColumn, UiTable } from '../../../shared/ui';
+import { MatTooltip } from '@angular/material/tooltip';
 
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: 'ทั้งหมด', value: '' },
@@ -47,25 +44,10 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
   selector: 'app-job-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    RouterLink,
-    FormsModule,
-    TableModule,
-    SortIcon,
-    SortableColumn,
-    ButtonModule,
-    InputText,
-    Select,
-    IconField,
-    AppPageHeaderComponent,
-    AppStateComponent,
-    AppStatusBadgeComponent,
-    HasPermissionDirective,
-    ThDatePipe,
-  ],
+  imports: [MatTooltip, RouterLink, FormsModule, UiTable, UiSortIcon, UiSortableColumn, UiButton, UiInput, UiSelect, UiIconField, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, HasPermissionDirective, ThDatePipe],
   template: `
     <app-page-header title="งานประกัน" subtitle="จัดการงานประกันทั้งหมด">
-      <p-button
+      <ui-button
         label="Export Excel"
         icon="pi pi-file-excel"
         severity="secondary"
@@ -73,27 +55,27 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
         size="small"
         (onClick)="export()"
       />
-      <p-button
+      <ui-button
         *appHasPermission="'job.create'"
         label="สร้างงาน"
         icon="pi pi-plus"
-        routerLink="/jobs/create"
+        link="/jobs/create"
       />
     </app-page-header>
 
     <div class="filter-bar">
-      <p-iconfield>
+      <ui-iconfield>
         <i class="pi pi-search" style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--text-color-secondary)"></i>
         <input
-          pInputText
+          uiInput
           [(ngModel)]="searchText"
           (ngModelChange)="onSearchChange($event)"
           placeholder="ค้นหาเลขงาน, ชื่อลูกค้า..."
           style="padding-left:2.25rem;width:280px"
         />
-      </p-iconfield>
+      </ui-iconfield>
 
-      <p-select
+      <ui-select
         [(ngModel)]="filterStatus"
         [options]="statusOptions"
         optionLabel="label"
@@ -104,7 +86,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
       />
 
       @if (hasActiveFilters()) {
-        <p-button
+        <ui-button
           label="ล้างตัวกรอง"
           icon="pi pi-times"
           severity="secondary"
@@ -119,7 +101,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
     } @else if (state() === 'error') {
       <app-state state="error" />
     } @else {
-      <p-table
+      <ui-table
         [value]="jobs()"
         [lazy]="true"
         [paginator]="true"
@@ -134,13 +116,13 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
       >
         <ng-template #header>
           <tr>
-            <th [pSortableColumn]="'jobNo'" style="width:140px">เลขงาน <p-sort-icon field="jobNo" /></th>
+            <th [uiSortableColumn]="'jobNo'" style="width:140px">เลขงาน <ui-sort-icon field="jobNo" /></th>
             <th>ลูกค้า</th>
             <th>ประเภท / ผลิตภัณฑ์</th>
             <th style="width:160px">สถานะ</th>
-            <th [pSortableColumn]="'effectiveDate'" style="width:130px">วันเริ่มคุ้มครอง <p-sort-icon field="effectiveDate" /></th>
+            <th [uiSortableColumn]="'effectiveDate'" style="width:130px">วันเริ่มคุ้มครอง <ui-sort-icon field="effectiveDate" /></th>
             <th style="width:130px">ผู้รับผิดชอบ</th>
-            <th [pSortableColumn]="'createdAt'" style="width:130px">วันที่สร้าง <p-sort-icon field="createdAt" /></th>
+            <th [uiSortableColumn]="'createdAt'" style="width:130px">วันที่สร้าง <ui-sort-icon field="createdAt" /></th>
             <th style="width:80px"></th>
           </tr>
         </ng-template>
@@ -171,18 +153,18 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
             <td>{{ job.agentName }}</td>
             <td>{{ job.createdAt | thDate }}</td>
             <td>
-              <p-button
+              <ui-button
                 icon="pi pi-eye"
                 severity="secondary"
                 [text]="true"
                 size="small"
-                [routerLink]="['/jobs', job.id]"
-                pTooltip="ดูข้อมูล"
+                [link]="['/jobs', job.id]"
+                matTooltip="ดูข้อมูล"
               />
             </td>
           </tr>
         </ng-template>
-      </p-table>
+      </ui-table>
     }
   `,
   styles: [`

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Transactional } from '@nestjs-cls/transactional';
 import { ClsService } from 'nestjs-cls';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
+import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import { TaskRepository } from './task.repository.js';
@@ -17,13 +18,23 @@ export class TaskService {
     private readonly repo: TaskRepository,
     private readonly audit: AuditService,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
   ) {}
+
+  /** Task inherits the access rule of its Job (BR-014). */
+  private async assertJobAccess(jobId: string): Promise<void> {
+    const exists = await this.repo.findJob({ id: jobId });
+    if (!exists) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+    const visible = await this.repo.findJob({ AND: [{ id: jobId }, this.scope.jobViewScope()] });
+    if (!visible) throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+  }
 
   private toResponse(task: Task): TaskResponse {
     return { ...task, overdue: isOverdue(task.status as string, task.dueDate) };
   }
 
   async listByJob(jobId: string): Promise<TaskListResponse> {
+    await this.assertJobAccess(jobId);
     const items = await this.repo.findByJob(jobId);
     return { items: items.map((t) => this.toResponse(t)), total: items.length };
   }
@@ -35,7 +46,7 @@ export class TaskService {
     const skip = (page - 1) * perPage;
 
     const now = new Date();
-    const where: Prisma.TaskWhereInput = {};
+    const where: Prisma.TaskWhereInput = { job: { deletedAt: null, ...this.scope.jobViewScope() } };
 
     if (query.mine) where.assignedTo = userId;
     if (query.status) where.status = query.status;
@@ -54,6 +65,7 @@ export class TaskService {
 
   @Transactional()
   async create(jobId: string, dto: CreateTaskDto): Promise<TaskResponse> {
+    await this.assertJobAccess(jobId);
     const userId = this.cls.get('userId')!;
     const task = await this.repo.create({
       job: { connect: { id: jobId } },
@@ -81,6 +93,7 @@ export class TaskService {
   async complete(id: string): Promise<TaskResponse> {
     const task = await this.repo.findById(id);
     if (!task) throw new BusinessException('TASK_NOT_FOUND', 'Task not found', 404);
+    await this.assertJobAccess(task.jobId);
     if (task.status === 'DONE') throw new BusinessException('TASK_ALREADY_DONE', 'Task already completed', 409);
     if (task.status === 'CANCELLED') throw new BusinessException('TASK_CANCELLED', 'Task is cancelled', 409);
 
@@ -107,6 +120,7 @@ export class TaskService {
   async cancel(id: string): Promise<TaskResponse> {
     const task = await this.repo.findById(id);
     if (!task) throw new BusinessException('TASK_NOT_FOUND', 'Task not found', 404);
+    await this.assertJobAccess(task.jobId);
     if (task.status === 'CANCELLED') throw new BusinessException('TASK_ALREADY_CANCELLED', 'Task already cancelled', 409);
     if (task.status === 'DONE') throw new BusinessException('TASK_DONE', 'Cannot cancel a completed task', 409);
 
