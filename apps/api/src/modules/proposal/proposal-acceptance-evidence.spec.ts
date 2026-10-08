@@ -333,7 +333,8 @@ describe('Proposal Acceptance Evidence & Notifications (Phase 2 Day 14)', () => 
         originalname: 'customer-approval-email.pdf',
         mimetype: 'application/pdf',
         size: 1024,
-        buffer: Buffer.from('PDF content'),
+        // Minimal valid PDF magic bytes — validateFile checks real content, not just the extension.
+        buffer: Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF'),
       } as Express.Multer.File;
 
       const result = await proposalService.accept(

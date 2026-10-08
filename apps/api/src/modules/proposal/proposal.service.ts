@@ -18,6 +18,8 @@ import {
   type ProposalAcceptanceResponse,
 } from './dto/proposal.response.js';
 import { validateAcceptanceEvidence } from './domain/proposal-acceptance.js';
+import { validateFile } from '../document/domain/file-validator.js';
+import { v4 as uuidv4 } from 'uuid';
 import { Decimal } from 'decimal.js';
 
 import { JobWorkflowService } from '../job/job-workflow.service.js';
@@ -217,9 +219,19 @@ export class ProposalService {
     let evidenceFileId = dto?.evidenceFileId;
 
     if (file) {
+      // Same validation as DocumentService.upload (ext + magic bytes + size) — never trust
+      // the client's filename/mimetype, and never use it to build the storage path.
+      const validation = await validateFile(file.originalname, file.buffer);
+      if (!validation.ok) {
+        throw new BusinessException('INVALID_FILE', validation.reason, 422);
+      }
+
       const now = new Date();
-      const safeOriginalName = file.originalname || 'acceptance-evidence.pdf';
-      const storedName = `${Date.now()}-${safeOriginalName}`;
+      // Kept only as display metadata (never used to build the storage path).
+      const safeOriginalName = (file.originalname || 'acceptance-evidence.pdf')
+        .split(/[/\\]/).pop()!
+        .split('').map((c) => (c.charCodeAt(0) === 0 ? '_' : c)).join('');
+      const storedName = `${uuidv4()}.${validation.ext}`;
       const storagePath = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${proposal.jobId}/${storedName}`;
       await this.storage.save(storagePath, file.buffer);
 
@@ -229,10 +241,10 @@ export class ProposalService {
           documentType: 'OTHER',
           originalName: safeOriginalName,
           storedName,
-          mimeType: file.mimetype || 'application/octet-stream',
+          mimeType: validation.mime,
           size: file.size,
           storagePath,
-          status: 'VERIFIED',
+          status: 'UNDER_REVIEW',
           uploadedById: userId,
           remark: `Acceptance evidence for proposal ${proposal.proposalNo}`,
         },

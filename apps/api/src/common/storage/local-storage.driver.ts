@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { StorageDriver } from './storage.driver.js';
 
 @Injectable()
@@ -10,11 +10,16 @@ export class LocalStorageDriver extends StorageDriver {
 
   constructor(config: ConfigService) {
     super();
-    this.baseDir = config.get<string>('UPLOAD_DIR', './uploads');
+    this.baseDir = resolve(config.get<string>('UPLOAD_DIR', './uploads'));
   }
 
+  /** Rejects any relativePath (e.g. containing `..`) that would resolve outside baseDir. */
   private fullPath(relativePath: string) {
-    return join(this.baseDir, relativePath);
+    const full = resolve(this.baseDir, relativePath);
+    if (full !== this.baseDir && !full.startsWith(this.baseDir + sep)) {
+      throw new Error(`Storage path escapes upload directory: ${relativePath}`);
+    }
+    return full;
   }
 
   async save(relativePath: string, data: Buffer): Promise<void> {
