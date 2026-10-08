@@ -61,6 +61,7 @@ describe('Commission API (spec §47 Step 23)', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.customer.deleteMany({ where: { customerCode: { startsWith: PREFIX.toUpperCase() } } });
@@ -99,6 +100,18 @@ describe('Commission API (spec §47 Step 23)', () => {
         },
       },
     });
+    const managerRole = await prisma.role.create({
+      data: {
+        code: `${PREFIX.toUpperCase()}MANAGER`,
+        name: 'E2E Commission Manager',
+        permissions: {
+          create: [
+            { permission: { connect: { code: 'approval.approve' } } },
+            { permission: { connect: { code: 'job.view_all' } } },
+          ],
+        },
+      },
+    });
 
     await prisma.user.create({
       data: {
@@ -106,7 +119,7 @@ describe('Commission API (spec §47 Step 23)', () => {
         email: `${PREFIX}approver@test.com`,
         passwordHash,
         fullName: 'E2E Commission Approver',
-        roles: { create: [{ role: { connect: { id: agentRole.id } } }] },
+        roles: { create: [{ role: { connect: { id: managerRole.id } } }] },
       },
     });
 

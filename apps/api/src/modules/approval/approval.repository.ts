@@ -10,18 +10,31 @@ export class ApprovalRepository {
 
   private get db() { return this.txHost.tx; }
 
+  private static readonly INCLUDE = {
+    job: { include: { customer: true } },
+    proposal: { include: { quotation: true } },
+  } as const;
+
   findInbox(where?: { status?: string }) {
     return this.db.approval.findMany({
       where: where?.status ? { status: where.status as never } : {},
+      include: ApprovalRepository.INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
   }
 
   findById(id: string) {
-    return this.db.approval.findFirst({ where: { id } });
+    return this.db.approval.findFirst({
+      where: { id },
+      include: ApprovalRepository.INCLUDE,
+    });
   }
 
   update(id: string, data: Prisma.ApprovalUpdateInput) {
-    return this.db.approval.update({ where: { id }, data });
+    return this.db.approval.update({
+      where: { id },
+      data,
+      include: ApprovalRepository.INCLUDE,
+    });
   }
 }

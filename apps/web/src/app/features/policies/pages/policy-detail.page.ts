@@ -13,6 +13,7 @@ import { AppPageHeaderComponent } from '../../../shared/components/app-page-head
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { JobsApi, type PolicyResponse } from '../../jobs/data/jobs.api';
 import { MessageService, UiButton, UiInput, UiMessage } from '../../../shared/ui';
 
@@ -20,7 +21,7 @@ import { MessageService, UiButton, UiInput, UiMessage } from '../../../shared/ui
   selector: 'app-policy-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, UiButton, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
+  imports: [RouterLink, FormsModule, UiButton, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -39,12 +40,12 @@ import { MessageService, UiButton, UiInput, UiMessage } from '../../../shared/ui
           @if (policy()!.expiryDate) {
             <div class="info-item"><span class="info-label">วันสิ้นสุดคุ้มครอง</span><span class="info-value">{{ policy()!.expiryDate | thDate }}</span></div>
           }
-          <div class="info-item"><span class="info-label">เบี้ยรวม</span><span class="info-value">{{ policy()!.grossPremium }}</span></div>
-          <div class="info-item"><span class="info-label">ส่วนลด</span><span class="info-value">{{ policy()!.discount }}</span></div>
-          <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ policy()!.netPremium }}</span></div>
-          <div class="info-item"><span class="info-label">อากรแสตมป์</span><span class="info-value">{{ policy()!.stampDuty }}</span></div>
-          <div class="info-item"><span class="info-label">ภาษี</span><span class="info-value">{{ policy()!.tax }}</span></div>
-          <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value policy-total">{{ policy()!.totalPremium }}</span></div>
+          <div class="info-item"><span class="info-label">เบี้ยรวม</span><span class="info-value">{{ policy()!.grossPremium | money }}</span></div>
+          <div class="info-item"><span class="info-label">ส่วนลด</span><span class="info-value">{{ policy()!.discount | money }}</span></div>
+          <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ policy()!.netPremium | money }}</span></div>
+          <div class="info-item"><span class="info-label">อากรแสตมป์</span><span class="info-value">{{ policy()!.stampDuty | money }}</span></div>
+          <div class="info-item"><span class="info-label">ภาษี</span><span class="info-value">{{ policy()!.tax | money }}</span></div>
+          <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value policy-total">{{ policy()!.totalPremium | money }}</span></div>
           @if (policy()!.paymentDueDate) {
             <div class="info-item"><span class="info-label">วันครบกำหนดชำระ</span><span class="info-value">{{ policy()!.paymentDueDate | thDate }}</span></div>
           }
@@ -69,10 +70,10 @@ import { MessageService, UiButton, UiInput, UiMessage } from '../../../shared/ui
               @for (c of policy()!.coverages; track c.id) {
                 <tr>
                   <td>{{ c.coverageName }}</td>
-                  <td style="text-align:right">{{ c.sumInsured }}</td>
-                  <td style="text-align:right">{{ c.premium }}</td>
-                  <td style="text-align:right">{{ c.deductible ?? '-' }}</td>
-                  <td style="text-align:right">{{ c.rate ?? '-' }}</td>
+                  <td style="text-align:right">{{ c.sumInsured | money }}</td>
+                  <td style="text-align:right">{{ c.premium | money }}</td>
+                  <td style="text-align:right">{{ c.deductible | money }}</td>
+                  <td style="text-align:right">{{ c.rate ? (c.rate | money) : '-' }}</td>
                 </tr>
               }
             </tbody>

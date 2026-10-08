@@ -3,6 +3,7 @@ import { AppPageHeaderComponent } from '../../../shared/components/app-page-head
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { ExportService } from '../../../core/api/export.service';
 import { JobsApi, type CommissionRecord } from '../../jobs/data/jobs.api';
 import { UiButton } from '../../../shared/ui';
@@ -11,7 +12,7 @@ import { UiButton } from '../../../shared/ui';
   selector: 'app-commissions-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, UiButton],
+  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe, UiButton],
   template: `
     <app-page-header title="ค่าคอมมิชชัน" subtitle="รายการค่าคอมมิชชันทั้งหมด">
       <ui-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
@@ -40,9 +41,9 @@ import { UiButton } from '../../../shared/ui';
             @for (c of commissions(); track c.id) {
               <tr>
                 <td>{{ typeLabel(c.commissionType) }}</td>
-                <td style="text-align:right">{{ c.commissionBase }}</td>
-                <td style="text-align:right">{{ c.commissionRate }}</td>
-                <td style="text-align:right"><strong>{{ c.commissionAmount }}</strong></td>
+                <td style="text-align:right">{{ c.commissionBase | money }}</td>
+                <td style="text-align:right">{{ c.commissionRate | money }}</td>
+                <td style="text-align:right"><strong>{{ c.commissionAmount | money }}</strong></td>
                 <td><app-status-badge [status]="c.status" /></td>
                 <td>{{ c.paidDate ? (c.paidDate | thDate) : '-' }}</td>
               </tr>

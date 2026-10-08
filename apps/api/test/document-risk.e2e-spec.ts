@@ -52,6 +52,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.documentChecklist.deleteMany({ where: { product: { code: { startsWith: PREFIX.toUpperCase() } } } });
@@ -99,6 +100,18 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       },
     });
     agentId = agent.id;
+    const managerRole = await prisma.role.create({
+      data: {
+        code: `${PREFIX.toUpperCase()}MANAGER`,
+        name: 'E2E DocRisk Manager',
+        permissions: {
+          create: [
+            { permission: { connect: { code: 'approval.approve' } } },
+            { permission: { connect: { code: 'job.view_all' } } },
+          ],
+        },
+      },
+    });
 
     await prisma.user.create({
       data: {
@@ -106,7 +119,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
         email: `${PREFIX}approver@test.com`,
         passwordHash,
         fullName: 'E2E DocRisk Approver',
-        roles: { create: [{ role: { connect: { id: role.id } } }] },
+        roles: { create: [{ role: { connect: { id: managerRole.id } } }] },
       },
     });
     const approverLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}approver`, password: PASSWORD });

@@ -1,4 +1,5 @@
 import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { PaginationQueryDto } from '../../../common/http/pagination.dto.js';
 
 export enum PolicyStatusFilter {
   PENDING = 'PENDING',
@@ -9,7 +10,7 @@ export enum PolicyStatusFilter {
   RENEWED = 'RENEWED',
 }
 
-export class ListPolicyDto {
+export class ListPolicyDto extends PaginationQueryDto {
   @IsUUID()
   @IsOptional()
   insuranceCompanyId?: string;

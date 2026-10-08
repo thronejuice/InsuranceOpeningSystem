@@ -1,20 +1,26 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   computed,
   ElementRef,
   inject,
   input,
+  OnDestroy,
   OnInit,
   signal,
   ViewChild,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { Location } from '@angular/common';
+import { Router, RouterLink } from '@angular/router';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import {
   JobsApi,
   type Job,
@@ -44,10 +50,12 @@ import {
   type TaskType,
   type TaskPriority,
   type PaymentMethod,
+  type RenewalReference,
 } from '../data/jobs.api';
 import { MasterApi, type InsuranceCoverage, type InsuranceCompany } from '../../master/data/master.api';
 import { MessageService, UiButton, UiDialog, UiInput, UiMessage, UiSelect, UiTab, UiTabList, UiTabPanel, UiTabPanels, UiTabs, UiTimeline } from '../../../shared/ui';
 import { MatTooltip } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '../../../shared/directives/has-permission.directive';
 
 const ACTION_LABELS: Record<JobAction, string> = {
   submit: 'ส่งงาน (Submit)',
@@ -66,11 +74,24 @@ const ACTION_LABELS: Record<JobAction, string> = {
   issuePolicy: 'ยืนยันกรมธรรม์',
 };
 
+const ACTION_ICONS: Record<JobAction, string> = {
+  submit: 'pi pi-send',
+  requestInfo: 'pi pi-question-circle',
+  resume: 'pi pi-play',
+  cancel: 'pi pi-times',
+  close: 'pi pi-check-circle',
+  requestQuotation: 'pi pi-plus',
+  recordQuotation: 'pi pi-pencil',
+  selectQuotation: 'pi pi-check',
+  sendProposal: 'pi pi-send',
+  acceptProposal: 'pi pi-check',
+  rejectProposal: 'pi pi-times',
+  approve: 'pi pi-check',
+  bind: 'pi pi-file',
+  issuePolicy: 'pi pi-verified',
+};
+
 const ACTIONS_REQUIRING_REASON: JobAction[] = ['cancel'];
-const EDITABLE_STATUSES = new Set(['DRAFT', 'OPEN', 'WAITING_INFORMATION']);
-// Documents are still needed after OPEN (bind checks requireDocsOnBind), so only closed jobs lock them
-const DOCS_LOCKED_STATUSES = new Set(['CANCELLED', 'CLOSED', 'EXPIRED']);
-const QUOTATION_MANAGEABLE_STATUSES = new Set(['OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_RECEIVED', 'QUOTATION_SELECTED']);
 
 const DOC_TYPE_OPTIONS = [
   { label: 'บัตรประชาชน', value: 'ID_CARD' },
@@ -103,7 +124,7 @@ interface RecordItem {
   selector: 'app-job-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatTooltip, FormsModule, ReactiveFormsModule, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiDialog, UiInput, UiTimeline, UiMessage, UiSelect, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
+  imports: [RouterLink, MatTooltip, FormsModule, ReactiveFormsModule, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiDialog, UiInput, UiTimeline, UiMessage, UiSelect, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe, HasPermissionDirective],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -112,6 +133,7 @@ interface RecordItem {
     } @else if (job()) {
 
       <app-page-header [title]="job()!.jobNo" subtitle="งานประกัน">
+        <ui-button label="ย้อนกลับ" icon="pi pi-arrow-left" severity="secondary" [outlined]="true" size="small" (onClick)="goBack()" />
         <app-status-badge [status]="job()!.status" />
       </app-page-header>
 
@@ -152,6 +174,7 @@ interface RecordItem {
             @for (act of job()!.allowedActions; track act) {
               <ui-button
                 [label]="actionLabel(act)"
+                [icon]="actionIcon(act)"
                 [severity]="act === 'cancel' ? 'danger' : act === 'close' ? 'secondary' : 'primary'"
                 [outlined]="act === 'cancel' || act === 'close'"
                 size="small"
@@ -204,6 +227,18 @@ interface RecordItem {
                 <div class="info-item info-item-full"><span class="info-label">หมายเหตุ</span><span class="info-value">{{ job()!.remark }}</span></div>
               }
             </div>
+
+            @if (renewalRef(); as ref) {
+              <div class="renewal-ref">
+                <div class="renewal-ref-title"><i class="pi pi-refresh"></i> ต่ออายุจากกรมธรรม์เดิม (ข้อมูลอ้างอิง)</div>
+                <div class="info-grid">
+                  <div class="info-item"><span class="info-label">กรมธรรม์เดิม</span><span class="info-value"><a [routerLink]="['/jobs', ref.previousJobId]">{{ ref.previousPolicyNo }}</a> ({{ ref.previousJobNo }})</span></div>
+                  <div class="info-item"><span class="info-label">บริษัทประกันเดิม</span><span class="info-value">{{ ref.insuranceCompanyName }}</span></div>
+                  <div class="info-item"><span class="info-label">เบี้ยรวมเดิม</span><span class="info-value">{{ ref.totalPremium | money }} บาท</span></div>
+                  <div class="info-item"><span class="info-label">ระยะเวลาเดิม</span><span class="info-value">{{ ref.effectiveDate | thDate }} – {{ ref.expiryDate | thDate }}</span></div>
+                </div>
+              </div>
+            }
           </ui-tabpanel>
 
           <!-- UiTab 1: Risk -->
@@ -301,8 +336,8 @@ interface RecordItem {
                     <tr>
                       <th>รหัส</th>
                       <th>ชื่อความคุ้มครอง</th>
-                      <th style="width:140px">วงเงินคุ้มครอง</th>
-                      <th style="width:120px">ค่าลดหย่อน</th>
+                      <th style="width:140px;text-align:right">วงเงินคุ้มครอง</th>
+                      <th style="width:120px;text-align:right">ค่าลดหย่อน</th>
                       <th>หมายเหตุ</th>
                       <th style="width:80px"></th>
                     </tr>
@@ -319,14 +354,14 @@ interface RecordItem {
                           <td>
                             <div class="row-actions">
                               <ui-button icon="pi pi-check" severity="success" [text]="true" size="small" [loading]="savingCoverage()" (onClick)="saveCoverage(cov)" />
-                              <ui-button icon="pi pi-times" severity="secondary" [text]="true" size="small" (onClick)="cancelEditCoverage()" />
+                              <ui-button icon="pi pi-times" severity="danger" [text]="true" size="small" (onClick)="cancelEditCoverage()" />
                             </div>
                           </td>
                         } @else {
                           <td>{{ cov.coverageCode }}</td>
                           <td>{{ cov.coverageName }}</td>
-                          <td>{{ cov.sumInsured ?? '-' }}</td>
-                          <td>{{ cov.deductible ?? '-' }}</td>
+                          <td style="text-align:right">{{ cov.sumInsured | money }}</td>
+                          <td style="text-align:right">{{ cov.deductible | money }}</td>
                           <td>{{ cov.remark ?? '-' }}</td>
                           <td>
                             @if (canEditRisk()) {
@@ -401,24 +436,28 @@ interface RecordItem {
                       <th style="width:80px">ขนาด</th>
                       <th style="width:50px">รุ่น</th>
                       <th style="width:130px">อัปโหลดเมื่อ</th>
-                      <th style="width:100px"></th>
+                      <th style="width:130px"></th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (doc of documents(); track doc.id) {
                       <tr>
                         <td>{{ docTypeLabel(doc.documentType) }}</td>
-                        <td>{{ doc.originalName }}</td>
+                        <td>
+                          <button type="button" class="doc-name-btn" (click)="openPreview(doc)" matTooltip="คลิกเพื่อดูตัวอย่าง">
+                            <i [class]="getDocIcon(doc.mimeType, doc.originalName)" class="doc-type-icon"></i>
+                            <span class="doc-name-text">{{ doc.originalName }}</span>
+                          </button>
+                        </td>
                         <td>{{ formatSize(doc.size) }}</td>
                         <td>{{ doc.version }}</td>
                         <td>{{ doc.createdAt | thDate }}</td>
                         <td>
                           <div class="row-actions">
-                            <a [href]="downloadUrl(doc.id)" target="_blank">
-                              <ui-button icon="pi pi-download" severity="secondary" [text]="true" size="small" matTooltip="ดาวน์โหลด" />
-                            </a>
+                            <ui-button icon="pi pi-eye" severity="secondary" [text]="true" size="small" matTooltip="ดูตัวอย่างเอกสาร" (onClick)="openPreview(doc)" />
+                            <ui-button icon="pi pi-download" severity="secondary" [text]="true" size="small" matTooltip="ดาวน์โหลด" (onClick)="downloadDoc(doc)" />
                             @if (canManageDocs()) {
-                              <ui-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="deleteDoc(doc)" />
+                              <ui-button icon="pi pi-trash" severity="danger" [text]="true" size="small" matTooltip="ลบเอกสาร" (onClick)="deleteDoc(doc)" />
                             }
                           </div>
                         </td>
@@ -458,6 +497,11 @@ interface RecordItem {
             @if (quotationState() === 'loading') {
               <app-state state="loading" />
             } @else {
+              @if (hasDuplicateCompanies()) {
+                <ui-message severity="warn" class="mb-3">
+                  พบใบเสนอราคาที่มีบริษัทประกันภัยซ้ำกันในงานนี้ คุณสามารถกดปุ่ม "ลบ" เพื่อลบใบที่ซ้ำออกได้
+                </ui-message>
+              }
               @if (canManageQuotation()) {
                 <div class="tab-action-bar">
                   <ui-button label="ขอราคา" icon="pi pi-plus" size="small" (onClick)="openRequestQuotation()" />
@@ -475,22 +519,45 @@ interface RecordItem {
                       <th style="text-align:right">เบี้ยสุทธิ</th>
                       <th style="text-align:right">รวมทั้งสิ้น</th>
                       <th>วันหมดอายุ</th>
-                      <th style="width:110px"></th>
+                      <th style="width:160px;text-align:right"></th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (q of quotations(); track q.id) {
-                      <tr [class.quo-selected]="q.status === 'SELECTED'">
-                        <td>{{ q.insuranceCompanyName }}</td>
+                      <tr [class.quo-selected]="q.status === 'SELECTED'" [class.quo-duplicate]="isDuplicateQuotation(q)">
+                        <td>
+                          <div class="quo-company-cell">
+                            <span>{{ q.insuranceCompanyName }}</span>
+                            @if (isDuplicateQuotation(q)) {
+                              <span class="badge-duplicate" title="มีบริษัทประกันนี้ซ้ำในงานนี้">
+                                <i class="pi pi-exclamation-triangle"></i> ซ้ำ
+                              </span>
+                            }
+                          </div>
+                        </td>
                         <td>{{ q.quotationNo }}</td>
                         <td><app-status-badge [status]="q.status" /></td>
-                        <td style="text-align:right">{{ q.netPremium }}</td>
-                        <td style="text-align:right">{{ q.totalAmount }}</td>
+                        <td style="text-align:right">{{ q.netPremium | money }}</td>
+                        <td style="text-align:right">{{ q.totalAmount | money }}</td>
                         <td>{{ q.validUntil ? (q.validUntil | thDate) : '-' }}</td>
-                        <td>
-                          @if (q.status === 'REQUESTED' && canManageQuotation()) {
-                            <ui-button label="บันทึกราคา" size="small" severity="secondary" [outlined]="true" (onClick)="openRecordPrice(q)" />
-                          }
+                        <td style="text-align:right;white-space:nowrap">
+                          <div class="quo-action-btns">
+                            @if (q.status === 'REQUESTED' && canManageQuotation()) {
+                              <ui-button label="บันทึกราคา" icon="pi pi-pencil" size="small" severity="secondary" [outlined]="true" (onClick)="openRecordPrice(q)" />
+                            }
+                            @if (canDeleteQuotation(q)) {
+                              <ui-button
+                                label="ลบ"
+                                icon="pi pi-trash"
+                                size="small"
+                                severity="danger"
+                                [outlined]="true"
+                                [loading]="deletingQuoTarget()?.id === q.id && isDeletingQuo()"
+                                [disabled]="isDeletingQuo()"
+                                (onClick)="openDeleteQuotation(q)"
+                              />
+                            }
+                          </div>
                         </td>
                       </tr>
                     }
@@ -516,7 +583,7 @@ interface RecordItem {
                         <th [class.cheapest-col]="isCheapest(c.quotationId)">
                           <div class="comp-company">{{ c.insuranceCompanyName }}</div>
                           <div class="comp-quo-no">{{ c.quotationNo }}</div>
-                          <div class="comp-total">รวม {{ c.totalAmount }}</div>
+                          <div class="comp-total">รวม {{ c.totalAmount | money }}</div>
                           <app-status-badge [status]="c.status" />
                           @if (c.status === 'RECEIVED' && canManageQuotation()) {
                             <ui-button label="เลือก" size="small" icon="pi pi-check" styleClass="mt-1 w-full" (onClick)="openSelectQuotation(c)" />
@@ -535,10 +602,10 @@ interface RecordItem {
                         @for (cell of row.cells; let i = $index; track i) {
                           <td [class.cheapest-col]="isCheapest(comparison()!.companies[i].quotationId)">
                             @if (cell.premium) {
-                              <div class="cell-sum">{{ cell.sumInsured }}</div>
-                              <div class="cell-premium">฿{{ cell.premium }}</div>
+                              <div class="cell-sum">{{ cell.sumInsured | money }}</div>
+                              <div class="cell-premium">฿{{ cell.premium | money }}</div>
                               @if (cell.deductible) {
-                                <div class="cell-ded">ลดหย่อน {{ cell.deductible }}</div>
+                                <div class="cell-ded">ลดหย่อน {{ cell.deductible | money }}</div>
                               }
                             } @else {
                               <span class="text-secondary">-</span>
@@ -574,6 +641,9 @@ interface RecordItem {
                         <app-status-badge [status]="prop.status" />
                       </div>
                       <div class="proposal-actions">
+                        <ui-button *appHasPermission="'proposal.view'" [label]="prop.status === 'DRAFT' ? 'ดาวน์โหลด PDF (ฉบับร่าง)' : 'ดาวน์โหลด PDF'"
+                          size="small" icon="pi pi-file-pdf" severity="secondary" [outlined]="true"
+                          [loading]="downloadingProposalId() === prop.id" (onClick)="downloadProposalPdf(prop)" />
                         @if (prop.status === 'DRAFT' && job()!.allowedActions.includes('sendProposal')) {
                           <ui-button label="ส่งใบเสนอ" size="small" icon="pi pi-send" [loading]="sendingProposal()" (onClick)="doSendProposal(prop)" />
                         }
@@ -644,8 +714,8 @@ interface RecordItem {
                         <td>
                           @if (a.canDecide && job()!.allowedActions.includes('approve')) {
                             <div class="row-actions">
-                              <ui-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
-                              <ui-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openRejectApproval(a)" />
+                              <ui-button label="อนุมัติ" icon="pi pi-check" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
+                              <ui-button label="ปฏิเสธ" icon="pi pi-times" size="small" severity="danger" [outlined]="true" (onClick)="openRejectApproval(a)" />
                             </div>
                           } @else if (a.status === 'PENDING') {
                             <small class="text-secondary">รอผู้อนุมัติท่านอื่น</small>
@@ -744,8 +814,8 @@ interface RecordItem {
                   @if (policy()!.expiryDate) {
                     <div class="info-item"><span class="info-label">วันสิ้นสุด</span><span class="info-value">{{ policy()!.expiryDate | thDate }}</span></div>
                   }
-                  <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ policy()!.netPremium }}</span></div>
-                  <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ policy()!.totalPremium }}</span></div>
+                  <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ policy()!.netPremium | money }}</span></div>
+                  <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ policy()!.totalPremium | money }}</span></div>
                   @if (policy()!.issuedAt) {
                     <div class="info-item"><span class="info-label">ออกเมื่อ</span><span class="info-value">{{ policy()!.issuedAt | thDate }}</span></div>
                   }
@@ -765,9 +835,9 @@ interface RecordItem {
                       @for (c of policy()!.coverages; track c.id) {
                         <tr>
                           <td>{{ c.coverageName }}</td>
-                          <td style="text-align:right">{{ c.sumInsured }}</td>
-                          <td style="text-align:right">{{ c.premium }}</td>
-                          <td style="text-align:right">{{ c.deductible ?? '-' }}</td>
+                          <td style="text-align:right">{{ c.sumInsured | money }}</td>
+                          <td style="text-align:right">{{ c.premium | money }}</td>
+                          <td style="text-align:right">{{ c.deductible | money }}</td>
                         </tr>
                       }
                     </tbody>
@@ -789,8 +859,8 @@ interface RecordItem {
               <div class="section-header">
                 <div class="payment-summary">
                   <span class="info-label">ยอดชำระแล้ว: </span>
-                  <strong>{{ paymentData()?.totalPaid ?? '0' }}</strong>
-                  &nbsp;/&nbsp;{{ policy()!.totalPremium }}
+                  <strong>{{ (paymentData()?.totalPaid ?? '0') | money }}</strong>
+                  &nbsp;/&nbsp;{{ policy()!.totalPremium | money }}
                   @if (paymentData()?.paymentStatus) {
                     <app-status-badge [status]="paymentData()!.paymentStatus" />
                   }
@@ -842,12 +912,12 @@ interface RecordItem {
                       <tr>
                         <td>{{ p.paymentNo }}</td>
                         <td>{{ p.paymentDate | thDate }}</td>
-                        <td style="text-align:right">{{ p.amount }}</td>
+                        <td style="text-align:right">{{ p.amount | money }}</td>
                         <td>{{ p.paymentMethod }}</td>
                         <td><app-status-badge [status]="p.status" /></td>
                         <td>
                           @if (p.status === 'ACTIVE') {
-                            <ui-button label="ยกเลิก" severity="danger" size="small" [text]="true" (onClick)="doCancelPayment(p)" />
+                            <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="doCancelPayment(p)" />
                           }
                         </td>
                       </tr>
@@ -911,9 +981,9 @@ interface RecordItem {
                     @for (c of commissionData()!.items; track c.id) {
                       <tr>
                         <td>{{ c.commissionType }}</td>
-                        <td style="text-align:right">{{ c.commissionBase }}</td>
-                        <td style="text-align:right">{{ c.commissionRate }}</td>
-                        <td style="text-align:right">{{ c.commissionAmount }}</td>
+                        <td style="text-align:right">{{ c.commissionBase | money }}</td>
+                        <td style="text-align:right">{{ c.commissionRate | money }}</td>
+                        <td style="text-align:right">{{ c.commissionAmount | money }}</td>
                         <td><app-status-badge [status]="c.status" /></td>
                       </tr>
                     }
@@ -1001,6 +1071,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showReasonDialog"
       [header]="reasonDialogTitle()"
+      icon="pi pi-exclamation-triangle"
       [modal]="true"
       [style]="{ width: '420px' }"
       [closable]="!executing()"
@@ -1013,9 +1084,10 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="closeReasonDialog()" [disabled]="!!executing()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeReasonDialog()" [disabled]="!!executing()" />
         <ui-button
           [label]="reasonDialogTitle()"
+          icon="pi pi-check"
           severity="danger"
           (onClick)="confirmAction()"
           [loading]="!!executing()"
@@ -1028,6 +1100,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showAddCoverageDialog"
       header="เพิ่มความคุ้มครอง"
+      icon="pi pi-shield"
       [modal]="true"
       [style]="{ width: '480px' }"
     >
@@ -1061,8 +1134,8 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showAddCoverageDialog = false" [disabled]="savingCoverage()" />
-        <ui-button label="เพิ่ม" (onClick)="confirmAddCoverage()" [loading]="savingCoverage()" [disabled]="savingCoverage()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeAddCoverage()" [disabled]="savingCoverage()" />
+        <ui-button label="เพิ่ม" icon="pi pi-plus" (onClick)="confirmAddCoverage()" [loading]="savingCoverage()" [disabled]="savingCoverage()" />
       </ng-template>
     </ui-dialog>
 
@@ -1070,21 +1143,25 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showRequestQuoDialog"
       header="ขอใบเสนอราคา"
+      icon="pi pi-send"
       [modal]="true"
       [style]="{ width: '480px' }"
     >
       <div class="dialog-form">
         <div class="field">
           <label for="req-company">บริษัทประกัน <span class="required">*</span></label>
-          <ui-select class="w-full"
-            inputId="req-company"
-            [(ngModel)]="reqCompanyId"
-            [options]="companies()"
-            optionLabel="name"
-            optionValue="id"
-            placeholder="เลือกบริษัท"
-           
-          />
+          @if (availableCompanies().length === 0 && companies().length > 0) {
+            <ui-message severity="info">ขอใบเสนอราคาครบทุกบริษัทประกันแล้ว</ui-message>
+          } @else {
+            <ui-select class="w-full"
+              inputId="req-company"
+              [(ngModel)]="reqCompanyId"
+              [options]="availableCompanies()"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="เลือกบริษัท"
+            />
+          }
         </div>
         <div class="field">
           <label for="req-gross">เบี้ยรวม (เริ่มต้น) <span class="required">*</span></label>
@@ -1107,8 +1184,8 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRequestQuoDialog = false" [disabled]="savingReqQuo()" />
-        <ui-button label="ส่งคำขอ" (onClick)="confirmRequestQuotation()" [loading]="savingReqQuo()" [disabled]="savingReqQuo()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeRequestQuotation()" [disabled]="savingReqQuo()" />
+        <ui-button label="ส่งคำขอ" icon="pi pi-send" (onClick)="confirmRequestQuotation()" [loading]="savingReqQuo()" [disabled]="savingReqQuo() || (availableCompanies().length === 0 && companies().length > 0)" />
       </ng-template>
     </ui-dialog>
 
@@ -1116,6 +1193,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showRecordPriceDialog"
       header="บันทึกราคา"
+      icon="pi pi-calculator"
       [modal]="true"
       [style]="{ width: '720px' }"
     >
@@ -1182,8 +1260,74 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRecordPriceDialog = false" [disabled]="savingRecord()" />
-        <ui-button label="บันทึกราคา" (onClick)="confirmRecordPrice()" [loading]="savingRecord()" [disabled]="savingRecord()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeRecordPrice()" [disabled]="savingRecord()" />
+        <ui-button label="บันทึกราคา" icon="pi pi-save" (onClick)="confirmRecordPrice()" [loading]="savingRecord()" [disabled]="savingRecord()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Delete Quotation Confirmation UiDialog -->
+    <ui-dialog
+      [(visible)]="showDeleteQuoDialog"
+      header="ยืนยันการลบใบเสนอราคา"
+      icon="pi pi-trash"
+      [modal]="true"
+      [style]="{ width: '480px' }"
+    >
+      @if (deletingQuoTarget(); as quo) {
+        <div class="dialog-form">
+          <div style="padding: 0.75rem 1rem; border-radius: 6px; background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; display: flex; flex-direction: column; gap: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+              <i class="pi pi-exclamation-triangle" style="color: #dc2626;"></i>
+              <span>คุณแน่ใจหรือไม่ว่าต้องการลบใบเสนอราคานี้?</span>
+            </div>
+            @if (isDuplicateQuotation(quo)) {
+              <div style="font-size: 0.8rem; color: #b91c1c; padding-left: 1.5rem;">
+                รายการนี้เป็นใบเสนอราคาที่มีบริษัทประกันภัยซ้ำในงานนี้
+              </div>
+            }
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; background: var(--surface-ground, #f8fafc); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--surface-border, #e2e8f0); margin-top: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="text-secondary" style="font-size: 0.875rem;">เลขที่ใบเสนอราคา</span>
+              <span style="font-weight: 600;">{{ quo.quotationNo }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="text-secondary" style="font-size: 0.875rem;">บริษัทประกันภัย</span>
+              <span style="font-weight: 500;">{{ quo.insuranceCompanyName }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="text-secondary" style="font-size: 0.875rem;">สถานะ</span>
+              <app-status-badge [status]="quo.status" />
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="text-secondary" style="font-size: 0.875rem;">เบี้ยรวมทั้งสิ้น</span>
+              <span style="font-weight: 600; color: var(--primary-color, #0284c7);">{{ quo.totalAmount | money }}</span>
+            </div>
+          </div>
+
+          <div style="color: var(--text-color-secondary, #64748b); font-size: 0.8rem; margin-top: 0.25rem;">
+            * เมื่อยืนยันการลบแล้ว ข้อมูลใบเสนอราคานี้จะถูกลบออกจากระบบและไม่สามารถกู้คืนได้
+          </div>
+        </div>
+      }
+      <ng-template #footer>
+        <ui-button
+          label="ยกเลิก"
+          icon="pi pi-times"
+          severity="danger"
+          [outlined]="true"
+          (onClick)="closeDeleteQuotation()"
+          [disabled]="isDeletingQuo()"
+        />
+        <ui-button
+          label="ยืนยันการลบ"
+          icon="pi pi-trash"
+          severity="danger"
+          (onClick)="doDeleteQuotation()"
+          [loading]="isDeletingQuo()"
+          [disabled]="isDeletingQuo()"
+        />
       </ng-template>
     </ui-dialog>
 
@@ -1191,6 +1335,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showSelectQuoDialog"
       header="เลือกใบเสนอราคา"
+      icon="pi pi-check-circle"
       [modal]="true"
       [style]="{ width: '420px' }"
     >
@@ -1198,7 +1343,7 @@ interface RecordItem {
         @if (selectingCompany()) {
           <div class="select-quo-info">
             <div class="info-item"><span class="info-label">บริษัท</span><span class="info-value">{{ selectingCompany()!.insuranceCompanyName }}</span></div>
-            <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ selectingCompany()!.totalAmount }}</span></div>
+            <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ selectingCompany()!.totalAmount | money }}</span></div>
           </div>
         }
         <div class="field">
@@ -1210,8 +1355,8 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showSelectQuoDialog = false" [disabled]="selectingQuo()" />
-        <ui-button label="ยืนยันเลือก" (onClick)="confirmSelectQuotation()" [loading]="selectingQuo()" [disabled]="selectingQuo()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeSelectQuotation()" [disabled]="selectingQuo()" />
+        <ui-button label="ยืนยันเลือก" icon="pi pi-check" (onClick)="confirmSelectQuotation()" [loading]="selectingQuo()" [disabled]="selectingQuo()" />
       </ng-template>
     </ui-dialog>
 
@@ -1219,6 +1364,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showCreateProposalDialog"
       header="สร้างใบเสนอ"
+      icon="pi pi-file-plus"
       [modal]="true"
       [style]="{ width: '420px' }"
     >
@@ -1236,8 +1382,8 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showCreateProposalDialog = false" [disabled]="creatingProposal()" />
-        <ui-button label="สร้างใบเสนอ" (onClick)="confirmCreateProposal()" [loading]="creatingProposal()" [disabled]="creatingProposal()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" (onClick)="closeCreateProposal()" [disabled]="creatingProposal()" />
+        <ui-button label="สร้างใบเสนอ" icon="pi pi-check" (onClick)="confirmCreateProposal()" [loading]="creatingProposal()" [disabled]="creatingProposal()" />
       </ng-template>
     </ui-dialog>
 
@@ -1245,6 +1391,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showRejectProposalDialog"
       header="ปฏิเสธใบเสนอ"
+      icon="pi pi-times-circle"
       [modal]="true"
       [style]="{ width: '420px' }"
     >
@@ -1256,8 +1403,8 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectProposalDialog = false" [disabled]="rejectingProposal()" />
-        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectProposal()" [loading]="rejectingProposal()" [disabled]="rejectingProposal()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="closeRejectProposal()" [disabled]="rejectingProposal()" />
+        <ui-button label="ปฏิเสธ" icon="pi pi-times" severity="danger" (onClick)="confirmRejectProposal()" [loading]="rejectingProposal()" [disabled]="rejectingProposal()" />
       </ng-template>
     </ui-dialog>
 
@@ -1265,6 +1412,7 @@ interface RecordItem {
     <ui-dialog
       [(visible)]="showRejectApprovalDialog"
       header="ปฏิเสธการอนุมัติ"
+      icon="pi pi-times-circle"
       [modal]="true"
       [style]="{ width: '420px' }"
     >
@@ -1276,8 +1424,87 @@ interface RecordItem {
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectApprovalDialog = false" [disabled]="rejectingApproval()" />
-        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmRejectApproval()" [loading]="rejectingApproval()" [disabled]="rejectingApproval()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="closeRejectApproval()" [disabled]="rejectingApproval()" />
+        <ui-button label="ปฏิเสธ" icon="pi pi-times" severity="danger" (onClick)="confirmRejectApproval()" [loading]="rejectingApproval()" [disabled]="rejectingApproval()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Document Preview UiDialog -->
+    <ui-dialog
+      [(visible)]="showPreviewDialog"
+      [header]="previewDialogTitle()"
+      icon="pi pi-file"
+      [modal]="true"
+      [style]="{ width: '900px', maxWidth: '95vw' }"
+      (visibleChange)="onPreviewVisibleChange($event)"
+    >
+      <div class="doc-preview-modal-body">
+        @if (previewLoading()) {
+          <div class="preview-loading-state">
+            <app-state state="loading" loadingMessage="กำลังโหลดเอกสาร..." />
+          </div>
+        } @else if (previewError()) {
+          <div class="preview-error-state">
+            <i class="pi pi-exclamation-triangle preview-warn-icon"></i>
+            <p class="preview-error-msg">{{ previewError() }}</p>
+            <ui-button label="ลองใหม่อีกครั้ง" icon="pi pi-refresh" severity="secondary" size="small" (onClick)="retryPreview()" class="mt-2" />
+          </div>
+        } @else if (previewingDoc(); as doc) {
+          <!-- Document Info Bar -->
+          <div class="doc-preview-meta-bar">
+            <div class="meta-item">
+              <span class="meta-label">ประเภท:</span>
+              <span class="meta-value">{{ docTypeLabel(doc.documentType) }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">ขนาด:</span>
+              <span class="meta-value">{{ formatSize(doc.size) }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">เวอร์ชัน:</span>
+              <span class="meta-value">v{{ doc.version }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">อัปโหลดเมื่อ:</span>
+              <span class="meta-value">{{ doc.createdAt | thDate }}</span>
+            </div>
+          </div>
+
+          <!-- Document Viewer Area -->
+          <div class="doc-preview-content">
+            @if (isPdf(doc.mimeType, doc.originalName)) {
+              @if (previewSafeUrl) {
+                <iframe
+                  [src]="previewSafeUrl"
+                  class="preview-iframe"
+                  title="PDF Preview"
+                ></iframe>
+              }
+            } @else if (isImage(doc.mimeType, doc.originalName)) {
+              <div class="preview-image-wrapper">
+                <img [src]="currentBlobUrl" [alt]="doc.originalName" class="preview-image" />
+              </div>
+            } @else {
+              <div class="preview-unsupported">
+                <i class="pi pi-file preview-unsupported-icon"></i>
+                <p class="preview-unsupported-title">ไม่สามารถแสดงตัวอย่างไฟล์ประเภทนี้ในเบราว์เซอร์ได้โดยตรง</p>
+                <p class="preview-unsupported-desc">กรุณาดาวน์โหลดไฟล์เพื่อเปิดด้วยโปรแกรมในเครื่องของคุณ</p>
+                <ui-button label="ดาวน์โหลดไฟล์" icon="pi pi-download" severity="primary" (onClick)="downloadDoc(doc)" class="mt-2" />
+              </div>
+            }
+          </div>
+        }
+      </div>
+      <ng-template #footer>
+        <div class="preview-dialog-footer">
+          @if (currentBlobUrl) {
+            <ui-button label="เปิดในแท็บใหม่" icon="pi pi-external-link" severity="secondary" [outlined]="true" (onClick)="openInNewTab()" />
+          }
+          @if (previewingDoc(); as doc) {
+            <ui-button label="ดาวน์โหลด" icon="pi pi-download" severity="primary" (onClick)="downloadDoc(doc)" />
+          }
+          <ui-button label="ปิด" icon="pi pi-times" severity="secondary" (onClick)="closePreview()" />
+        </div>
       </ng-template>
     </ui-dialog>
   `,
@@ -1296,6 +1523,9 @@ interface RecordItem {
     .info-value { font-size: 0.9rem; font-weight: 500; }
     .info-sub { font-size: 0.78rem; color: var(--text-color-secondary); }
     .action-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--surface-border); }
+    .renewal-ref { margin-top: 1rem; padding: 0.75rem 1rem; background: var(--surface-ground); border: 1px solid var(--surface-border); border-radius: 8px; }
+    .renewal-ref-title { font-weight: 600; font-size: 0.875rem; }
+    .renewal-ref .info-grid { padding: 0.5rem 0 0; }
     .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem 0; }
     .risk-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; padding: 1rem 0; max-width: 800px; }
     .field { display: flex; flex-direction: column; gap: 0.3rem; }
@@ -1324,7 +1554,6 @@ interface RecordItem {
     .reason-form { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0; }
     .error-text { color: var(--red-500); font-size: 0.8rem; }
     .add-cov-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.25rem 0; }
-    .quo-selected td { background: var(--green-50) !important; }
     .dialog-form { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.25rem 0; }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     .items-section { margin-top: 0.5rem; }
@@ -1349,7 +1578,7 @@ interface RecordItem {
     .proposal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
     .proposal-info { display: flex; align-items: center; gap: 0.75rem; }
     .proposal-no { font-weight: 600; font-size: 0.95rem; }
-    .proposal-actions { display: flex; gap: 0.5rem; }
+    .proposal-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
     .proposal-meta { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.82rem; color: var(--text-color-secondary); }
     .meta-item { display: flex; align-items: center; gap: 0.35rem; }
     .meta-text { font-size: 0.8rem; color: var(--text-color-secondary); }
@@ -1364,12 +1593,141 @@ interface RecordItem {
     .mt-2 { margin-top: 0.5rem; }
     .overdue-row td { color: var(--red-700); }
     .badge-overdue { display: inline-block; background: var(--red-100); color: var(--red-700); font-size: 0.7rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+    /* Document Table & Preview */
+    .doc-name-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--primary-color, #2563eb);
+      cursor: pointer;
+      font-size: 0.875rem;
+      text-align: left;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+    .doc-name-btn:hover {
+      text-decoration: underline;
+      color: var(--primary-700, #1d4ed8);
+    }
+    .doc-type-icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .doc-preview-modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 400px;
+    }
+    .doc-preview-meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface-ground, #f8fafc);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      border: 1px solid var(--surface-border, #e2e8f0);
+    }
+    .doc-preview-meta-bar .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .doc-preview-meta-bar .meta-label {
+      color: var(--text-color-secondary, #64748b);
+      font-weight: 500;
+    }
+    .doc-preview-meta-bar .meta-value {
+      font-weight: 600;
+      color: var(--text-color, #1e293b);
+    }
+    .doc-preview-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 520px;
+      background: var(--surface-50, #f8fafc);
+      border: 1px solid var(--surface-border, #e2e8f0);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .preview-iframe {
+      width: 100%;
+      height: 70vh;
+      min-height: 520px;
+      border: none;
+      display: block;
+    }
+    .preview-image-wrapper {
+      max-height: 70vh;
+      overflow: auto;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+    }
+    .preview-image {
+      max-width: 100%;
+      max-height: 68vh;
+      object-fit: contain;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      border-radius: 4px;
+    }
+    .preview-loading-state,
+    .preview-error-state,
+    .preview-unsupported {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 1rem;
+      text-align: center;
+    }
+    .preview-warn-icon {
+      font-size: 2.5rem;
+      color: var(--red-500, #ef4444);
+    }
+    .preview-error-msg {
+      margin-top: 0.5rem;
+      color: var(--red-500, #ef4444);
+      font-weight: 500;
+    }
+    .preview-unsupported-icon {
+      font-size: 3rem;
+      color: var(--text-color-secondary, #94a3b8);
+    }
+    .preview-unsupported-title {
+      margin-top: 0.5rem;
+      font-weight: 500;
+      font-size: 1rem;
+    }
+    .preview-unsupported-desc {
+      margin-top: 0.25rem;
+      font-size: 0.85rem;
+      color: var(--text-color-secondary, #64748b);
+    }
+    .preview-dialog-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      width: 100%;
+    }
   `],
 })
-export class JobDetailPage implements OnInit {
+export class JobDetailPage implements OnInit, OnDestroy {
   private readonly api = inject(JobsApi);
   private readonly masterApi = inject(MasterApi);
   private readonly toast = inject(MessageService);
+  private readonly sanitizer = inject(DomSanitizer);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   @ViewChild('fileInput') fileInputEl!: ElementRef<HTMLInputElement>;
 
@@ -1377,11 +1735,14 @@ export class JobDetailPage implements OnInit {
 
   // ─── Page state ──────────────────────────────────────────────────────────
   readonly state = signal<'loading' | 'error' | 'none'>('loading');
+  private readonly location = inject(Location);
+  private readonly router = inject(Router);
   readonly job = signal<Job | null>(null);
+  readonly renewalRef = signal<RenewalReference | null>(null);
   readonly activeTab = signal(0);
 
-  readonly canEditRisk = computed(() => EDITABLE_STATUSES.has(this.job()?.status ?? ''));
-  readonly canManageDocs = computed(() => !!this.job() && !DOCS_LOCKED_STATUSES.has(this.job()!.status));
+  readonly canEditRisk = computed(() => this.job()?.capabilities?.editRisk ?? false);
+  readonly canManageDocs = computed(() => this.job()?.capabilities?.manageDocuments ?? false);
 
   // ─── Workflow actions ─────────────────────────────────────────────────────
   readonly executing = signal<JobAction | null>(null);
@@ -1424,6 +1785,7 @@ export class JobDetailPage implements OnInit {
   readonly createProposalError = signal<string | null>(null);
   readonly creatingProposal = signal(false);
   readonly sendingProposal = signal(false);
+  readonly downloadingProposalId = signal<string | null>(null);
   readonly acceptingProposal = signal(false);
   showRejectProposalDialog = false;
   rejectingProposalTarget: ProposalResponse | null = null;
@@ -1536,7 +1898,7 @@ export class JobDetailPage implements OnInit {
     const b = parseFloat(this.commBase);
     const r = parseFloat(this.commRate);
     if (isNaN(b) || isNaN(r)) return '-';
-    return (b * r / 100).toFixed(2);
+    return new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(b * r / 100);
   }
 
   // ─── Document tab ─────────────────────────────────────────────────────────
@@ -1547,17 +1909,57 @@ export class JobDetailPage implements OnInit {
   uploadDocType = '';
   readonly docTypeOptions = DOC_TYPE_OPTIONS;
 
+  // Document preview
+  showPreviewDialog = false;
+  readonly previewingDoc = signal<JobDocument | null>(null);
+  readonly previewLoading = signal(false);
+  readonly previewError = signal<string | null>(null);
+  currentBlobUrl: string | null = null;
+  previewSafeUrl: SafeResourceUrl | null = null;
+
   // ─── UiTimeline tab ─────────────────────────────────────────────────────────
   readonly activitiesState = signal<'loading' | 'none'>('none');
   readonly activities = signal<ActivityItem[]>([]);
 
   // ─── Quotation tab ────────────────────────────────────────────────────────
-  readonly canManageQuotation = computed(() => QUOTATION_MANAGEABLE_STATUSES.has(this.job()?.status ?? ''));
+  readonly canManageQuotation = computed(() => this.job()?.capabilities?.manageQuotations ?? false);
   readonly quotationState = signal<'loading' | 'none'>('none');
   readonly quotations = signal<Quotation[]>([]);
   readonly comparisonState = signal<'loading' | 'none'>('none');
   readonly comparison = signal<ComparisonResponse | null>(null);
   readonly companies = signal<InsuranceCompany[]>([]);
+  readonly availableCompanies = computed(() => {
+    const existingCompanyIds = new Set(this.quotations().map((q) => q.insuranceCompanyId));
+    return this.companies().filter((c) => !existingCompanyIds.has(c.id));
+  });
+
+  showDeleteQuoDialog = false;
+  readonly deletingQuoTarget = signal<Quotation | null>(null);
+  readonly isDeletingQuo = signal(false);
+
+  readonly duplicateCompanyIds = computed(() => {
+    const counts = new Map<string, number>();
+    for (const q of this.quotations()) {
+      counts.set(q.insuranceCompanyId, (counts.get(q.insuranceCompanyId) ?? 0) + 1);
+    }
+    const dupes = new Set<string>();
+    for (const [companyId, count] of counts.entries()) {
+      if (count > 1) dupes.add(companyId);
+    }
+    return dupes;
+  });
+
+  readonly hasDuplicateCompanies = computed(() => this.duplicateCompanyIds().size > 0);
+
+  isDuplicateQuotation(q: Quotation): boolean {
+    return this.duplicateCompanyIds().has(q.insuranceCompanyId);
+  }
+
+  canDeleteQuotation(q: Quotation): boolean {
+    if (!this.canManageQuotation()) return false;
+    if (q.status === 'SELECTED' || this.job()?.selectedQuotationId === q.id) return false;
+    return true;
+  }
 
   // Request quotation dialog
   showRequestQuoDialog = false;
@@ -1592,6 +1994,16 @@ export class JobDetailPage implements OnInit {
     this.loadJob();
   }
 
+  /** Back to the previous page; falls back to the job list when opened directly (no history) */
+  goBack(): void {
+    if (window.history.length > 1) this.location.back();
+    else void this.router.navigate(['/jobs']);
+  }
+
+  ngOnDestroy(): void {
+    this.cleanupBlobUrl();
+  }
+
   onTabChange(tab: number | string | undefined): void {
     const t = Number(tab);
     this.activeTab.set(t);
@@ -1613,6 +2025,8 @@ export class JobDetailPage implements OnInit {
   // ─── Labels ───────────────────────────────────────────────────────────────
 
   actionLabel(action: JobAction): string { return ACTION_LABELS[action] ?? action; }
+
+  actionIcon(action: JobAction): string { return ACTION_ICONS[action] ?? 'pi pi-cog'; }
 
   reasonDialogTitle(): string {
     const a = this.pendingAction();
@@ -1698,6 +2112,7 @@ export class JobDetailPage implements OnInit {
       this.reasonText = '';
       this.reasonError.set(null);
       this.showReasonDialog = true;
+      this.cdr.markForCheck();
     } else {
       this.executeAction(action);
     }
@@ -1706,6 +2121,7 @@ export class JobDetailPage implements OnInit {
   closeReasonDialog(): void {
     this.showReasonDialog = false;
     this.pendingAction.set(null);
+    this.cdr.markForCheck();
   }
 
   confirmAction(): void {
@@ -1716,6 +2132,7 @@ export class JobDetailPage implements OnInit {
     const action = this.pendingAction();
     if (action) {
       this.showReasonDialog = false;
+      this.cdr.markForCheck();
       this.executeAction(action, this.reasonText.trim());
     }
   }
@@ -1808,6 +2225,13 @@ export class JobDetailPage implements OnInit {
       });
     }
     this.showAddCoverageDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeAddCoverage(): void {
+    this.showAddCoverageDialog = false;
+    this.addCovError.set(null);
+    this.cdr.markForCheck();
   }
 
   confirmAddCoverage(): void {
@@ -1825,6 +2249,7 @@ export class JobDetailPage implements OnInit {
         this.coverages.update((list) => [...list, cov]);
         this.savingCoverage.set(false);
         this.showAddCoverageDialog = false;
+        this.cdr.markForCheck();
         this.toast.add({ severity: 'success', summary: 'เพิ่มแล้ว', detail: 'เพิ่มความคุ้มครองเรียบร้อย' });
       },
       error: (e: HttpErrorResponse) => {
@@ -1927,6 +2352,110 @@ export class JobDetailPage implements OnInit {
     });
   }
 
+  openPreview(doc: JobDocument): void {
+    this.previewingDoc.set(doc);
+    this.previewError.set(null);
+    this.previewLoading.set(true);
+    this.showPreviewDialog = true;
+    this.cleanupBlobUrl();
+    this.cdr.markForCheck();
+
+    this.api.downloadDocumentBlob(doc.id).subscribe({
+      next: (blob) => {
+        const mime = blob.type || doc.mimeType || 'application/octet-stream';
+        const typedBlob = new Blob([blob], { type: mime });
+        const url = URL.createObjectURL(typedBlob);
+        this.currentBlobUrl = url;
+        this.previewSafeUrl = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+        this.previewLoading.set(false);
+      },
+      error: () => {
+        this.previewLoading.set(false);
+        this.previewError.set('ไม่สามารถโหลดเอกสารเพื่อแสดงตัวอย่างได้');
+      },
+    });
+  }
+
+  retryPreview(): void {
+    const doc = this.previewingDoc();
+    if (doc) {
+      this.openPreview(doc);
+    }
+  }
+
+  closePreview(): void {
+    this.showPreviewDialog = false;
+    this.cleanupBlobUrl();
+    this.previewingDoc.set(null);
+    this.cdr.markForCheck();
+  }
+
+  onPreviewVisibleChange(visible: boolean): void {
+    if (!visible) {
+      this.cleanupBlobUrl();
+      this.previewingDoc.set(null);
+      this.cdr.markForCheck();
+    }
+  }
+
+  private cleanupBlobUrl(): void {
+    if (this.currentBlobUrl) {
+      URL.revokeObjectURL(this.currentBlobUrl);
+      this.currentBlobUrl = null;
+    }
+    this.previewSafeUrl = null;
+  }
+
+  openInNewTab(): void {
+    if (this.currentBlobUrl) {
+      window.open(this.currentBlobUrl, '_blank');
+    }
+  }
+
+  downloadDoc(doc: JobDocument): void {
+    this.api.downloadDocumentBlob(doc.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.originalName || `document-${doc.id}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.toast.add({ severity: 'error', summary: 'ไม่สามารถดาวน์โหลดไฟล์ได้' });
+      },
+    });
+  }
+
+  isImage(mimeType?: string, fileName?: string): boolean {
+    const m = mimeType?.toLowerCase() ?? '';
+    const name = fileName?.toLowerCase() ?? '';
+    return m.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(name);
+  }
+
+  isPdf(mimeType?: string, fileName?: string): boolean {
+    const m = mimeType?.toLowerCase() ?? '';
+    const name = fileName?.toLowerCase() ?? '';
+    return m === 'application/pdf' || name.endsWith('.pdf');
+  }
+
+  getDocIcon(mimeType?: string, fileName?: string): string {
+    if (this.isPdf(mimeType, fileName)) return 'pi pi-file-pdf text-red-500';
+    if (this.isImage(mimeType, fileName)) return 'pi pi-image text-blue-500';
+    const name = fileName?.toLowerCase() ?? '';
+    if (/\.(doc|docx)$/i.test(name)) return 'pi pi-file-word text-blue-600';
+    if (/\.(xls|xlsx|csv)$/i.test(name)) return 'pi pi-file-excel text-green-600';
+    return 'pi pi-file text-gray-500';
+  }
+
+  previewDialogTitle(): string {
+    const doc = this.previewingDoc();
+    return doc ? `ตัวอย่างเอกสาร: ${doc.originalName}` : 'ตัวอย่างเอกสาร';
+  }
+
   // ─── UiTimeline ─────────────────────────────────────────────────────────────
 
   private loadActivities(): void {
@@ -1959,10 +2488,8 @@ export class JobDetailPage implements OnInit {
   }
 
   isCheapest(quotationId: string): boolean {
-    const cols = this.comparison()?.companies ?? [];
-    if (cols.length <= 1) return false;
-    const min = cols.reduce((a, b) => (parseFloat(a.totalAmount) <= parseFloat(b.totalAmount) ? a : b));
-    return min.quotationId === quotationId;
+    const col = this.comparison()?.companies.find((c) => c.quotationId === quotationId);
+    return col?.isLowest ?? false;
   }
 
   openRequestQuotation(): void {
@@ -1976,10 +2503,21 @@ export class JobDetailPage implements OnInit {
       this.masterApi.listCompanies().subscribe({ next: (r) => this.companies.set(r.data) });
     }
     this.showRequestQuoDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRequestQuotation(): void {
+    this.showRequestQuoDialog = false;
+    this.reqError.set(null);
+    this.cdr.markForCheck();
   }
 
   confirmRequestQuotation(): void {
     if (!this.reqCompanyId) { this.reqError.set('กรุณาเลือกบริษัทประกัน'); return; }
+    if (this.quotations().some((q) => q.insuranceCompanyId === this.reqCompanyId)) {
+      this.reqError.set('บริษัทประกันนี้มีใบเสนอราคาในงานนี้แล้ว');
+      return;
+    }
     if (!this.reqGross) { this.reqError.set('กรุณากรอกเบี้ยรวม'); return; }
     this.savingReqQuo.set(true);
     this.reqError.set(null);
@@ -1994,6 +2532,7 @@ export class JobDetailPage implements OnInit {
         this.quotations.update((list) => [...list, q]);
         this.savingReqQuo.set(false);
         this.showRequestQuoDialog = false;
+        this.cdr.markForCheck();
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.toast.add({ severity: 'success', summary: 'ส่งคำขอแล้ว', detail: `${q.quotationNo}` });
       },
@@ -2022,6 +2561,14 @@ export class JobDetailPage implements OnInit {
     }));
     this.recError.set(null);
     this.showRecordPriceDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRecordPrice(): void {
+    this.showRecordPriceDialog = false;
+    this.recError.set(null);
+    this.recordingQuo = null;
+    this.cdr.markForCheck();
   }
 
   addRecordItem(): void {
@@ -2056,6 +2603,7 @@ export class JobDetailPage implements OnInit {
         this.quotations.update((list) => list.map((q) => q.id === updated.id ? updated : q));
         this.savingRecord.set(false);
         this.showRecordPriceDialog = false;
+        this.cdr.markForCheck();
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.toast.add({ severity: 'success', summary: 'บันทึกแล้ว', detail: `${updated.quotationNo}` });
       },
@@ -2072,6 +2620,14 @@ export class JobDetailPage implements OnInit {
     this.selectReason = '';
     this.selectError.set(null);
     this.showSelectQuoDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeSelectQuotation(): void {
+    this.showSelectQuoDialog = false;
+    this.selectError.set(null);
+    this.selectingCompany.set(null);
+    this.cdr.markForCheck();
   }
 
   confirmSelectQuotation(): void {
@@ -2087,6 +2643,7 @@ export class JobDetailPage implements OnInit {
         this.quotations.update((list) => list.map((q) => q.id === updated.id ? updated : q));
         this.selectingQuo.set(false);
         this.showSelectQuoDialog = false;
+        this.cdr.markForCheck();
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.loadComparison();
         this.toast.add({ severity: 'success', summary: 'เลือกแล้ว', detail: `เลือก ${col.insuranceCompanyName}` });
@@ -2100,6 +2657,47 @@ export class JobDetailPage implements OnInit {
         } else {
           this.selectError.set(body?.message ?? 'เกิดข้อผิดพลาด');
         }
+      },
+    });
+  }
+
+  openDeleteQuotation(q: Quotation): void {
+    this.deletingQuoTarget.set(q);
+    this.showDeleteQuoDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeDeleteQuotation(): void {
+    this.showDeleteQuoDialog = false;
+    this.deletingQuoTarget.set(null);
+    this.cdr.markForCheck();
+  }
+
+  doDeleteQuotation(): void {
+    const q = this.deletingQuoTarget();
+    if (!q) return;
+
+    this.isDeletingQuo.set(true);
+    this.api.deleteQuotation(q.id).subscribe({
+      next: () => {
+        this.quotations.update((list) => list.filter((item) => item.id !== q.id));
+        this.isDeletingQuo.set(false);
+        this.showDeleteQuoDialog = false;
+        this.deletingQuoTarget.set(null);
+        this.toast.add({ severity: 'success', summary: 'ลบแล้ว', detail: `ลบใบเสนอราคา ${q.quotationNo} เรียบร้อย` });
+        this.loadComparison();
+        this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
+        this.cdr.markForCheck();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.isDeletingQuo.set(false);
+        const body = e.error as { message?: string } | null;
+        this.toast.add({
+          severity: 'error',
+          summary: 'ไม่สามารถลบได้',
+          detail: body?.message ?? 'เกิดข้อผิดพลาดในการลบใบเสนอราคา',
+        });
+        this.cdr.markForCheck();
       },
     });
   }
@@ -2119,6 +2717,13 @@ export class JobDetailPage implements OnInit {
     this.propRemark = '';
     this.createProposalError.set(null);
     this.showCreateProposalDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeCreateProposal(): void {
+    this.showCreateProposalDialog = false;
+    this.createProposalError.set(null);
+    this.cdr.markForCheck();
   }
 
   confirmCreateProposal(): void {
@@ -2132,6 +2737,7 @@ export class JobDetailPage implements OnInit {
         this.proposals.update((list) => [...list, prop]);
         this.creatingProposal.set(false);
         this.showCreateProposalDialog = false;
+        this.cdr.markForCheck();
         this.toast.add({ severity: 'success', summary: 'สร้างแล้ว', detail: prop.proposalNo });
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
       },
@@ -2150,14 +2756,37 @@ export class JobDetailPage implements OnInit {
       next: (updated) => {
         this.proposals.update((list) => list.map((p) => p.id === updated.id ? updated : p));
         this.sendingProposal.set(false);
-        this.toast.add({ severity: 'success', summary: 'ส่งแล้ว', detail: `${updated.proposalNo}` });
+        this.toast.add({ severity: 'success', summary: 'ส่งแล้ว', detail: `${updated.proposalNo} — บันทึก PDF ไว้ในแท็บเอกสารแล้ว` });
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
+        this.loadDocuments();
         this.loadActivities();
       },
       error: (e: HttpErrorResponse) => {
         this.sendingProposal.set(false);
         const body = e.error as { message?: string } | null;
         this.proposalError.set(body?.message ?? 'เกิดข้อผิดพลาด');
+      },
+    });
+  }
+
+  /** DRAFT → rendered live with a watermark; after sending → the stored copy the customer received */
+  downloadProposalPdf(prop: ProposalResponse): void {
+    this.downloadingProposalId.set(prop.id);
+    this.api.downloadProposalPdf(prop.id).subscribe({
+      next: (blob) => {
+        this.downloadingProposalId.set(null);
+        const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${prop.proposalNo}${prop.status === 'DRAFT' ? '-DRAFT' : ''}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.downloadingProposalId.set(null);
+        this.toast.add({ severity: 'error', summary: 'ไม่สามารถสร้าง PDF ได้' });
       },
     });
   }
@@ -2186,6 +2815,15 @@ export class JobDetailPage implements OnInit {
     this.rejectProposalReason = '';
     this.rejectProposalError.set(null);
     this.showRejectProposalDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRejectProposal(): void {
+    this.showRejectProposalDialog = false;
+    this.rejectProposalReason = '';
+    this.rejectProposalError.set(null);
+    this.rejectingProposalTarget = null;
+    this.cdr.markForCheck();
   }
 
   confirmRejectProposal(): void {
@@ -2199,6 +2837,7 @@ export class JobDetailPage implements OnInit {
         this.proposals.update((list) => list.map((p) => p.id === updated.id ? updated : p));
         this.rejectingProposal.set(false);
         this.showRejectProposalDialog = false;
+        this.cdr.markForCheck();
         this.toast.add({ severity: 'info', summary: 'ปฏิเสธแล้ว' });
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.loadActivities();
@@ -2237,6 +2876,15 @@ export class JobDetailPage implements OnInit {
     this.rejectApprovalReason = '';
     this.rejectApprovalError.set(null);
     this.showRejectApprovalDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRejectApproval(): void {
+    this.showRejectApprovalDialog = false;
+    this.rejectApprovalReason = '';
+    this.rejectApprovalError.set(null);
+    this.rejectingApprovalTarget = null;
+    this.cdr.markForCheck();
   }
 
   confirmRejectApproval(): void {
@@ -2249,6 +2897,7 @@ export class JobDetailPage implements OnInit {
       next: () => {
         this.rejectingApproval.set(false);
         this.showRejectApprovalDialog = false;
+        this.cdr.markForCheck();
         this.toast.add({ severity: 'info', summary: 'ปฏิเสธการอนุมัติแล้ว' });
         this.loadProposals();
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
@@ -2489,8 +3138,19 @@ export class JobDetailPage implements OnInit {
         this.state.set('none');
         // Eagerly load activities (timeline) for fresh state
         this.loadActivities();
+        this.loadRenewalReference(job);
       },
       error: () => this.state.set('error'),
+    });
+  }
+
+  /** Reference card for jobs created by renewing a policy; reference data only, so failures stay silent */
+  private loadRenewalReference(job: Job): void {
+    this.renewalRef.set(null);
+    if (job.source !== 'RENEWAL') return;
+    this.api.getRenewalReference(job.id).subscribe({
+      next: (ref) => this.renewalRef.set(ref),
+      error: () => this.renewalRef.set(null),
     });
   }
 }

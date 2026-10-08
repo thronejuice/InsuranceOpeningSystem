@@ -21,8 +21,10 @@ export type UiSeverity = 'primary' | 'secondary' | 'success' | 'info' | 'warn' |
   host: { '[class.ui-btn-host]': 'true' },
   template: `
     <ng-template #inner>
-      @if (loading()) { <i class="pi pi-spinner pi-spin"></i> } @else if (icon()) { <i [class]="icon()"></i> }
-      @if (label()) { <span>{{ label() }}</span> }
+      <span class="ui-btn-content">
+        @if (loading()) { <i class="pi pi-spinner pi-spin"></i> } @else if (resolvedIcon()) { <i [class]="resolvedIcon()"></i> }
+        @if (label()) { <span class="ui-btn-label">{{ label() }}</span> }
+      </span>
     </ng-template>
     @if (link() !== null && link() !== undefined) {
       <a [matButton]="variant()" [routerLink]="link()" [class]="cls()" [attr.aria-label]="ariaLabel() || null"
@@ -36,6 +38,22 @@ export type UiSeverity = 'primary' | 'secondary' | 'success' | 'info' | 'warn' |
       </button>
     }
   `,
+  styles: [`
+    :host { display: inline-flex; vertical-align: middle; }
+    .ui-btn-content {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .ui-btn-label {
+      display: inline-block;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+  `],
 })
 export class UiButton {
   readonly label = input<string>('');
@@ -53,13 +71,45 @@ export class UiButton {
   readonly ariaLabel = input<string>('', { alias: 'aria-label' });
   readonly clicked = output<MouseEvent>({ alias: 'onClick' });
 
+  resolvedIcon(): string {
+    const explicit = this.icon();
+    if (explicit) return explicit;
+    const l = (this.label() || '').trim().toLowerCase();
+    if (!l) return '';
+    if (l.includes('บันทึก') || l.includes('save')) return 'pi pi-save';
+    if (l.includes('ยกเลิก') || l.includes('cancel')) return 'pi pi-times';
+    if (l.includes('ลบ') || l.includes('delete')) return 'pi pi-trash';
+    if (l.includes('เพิ่ม') || l.includes('สร้าง') || l.includes('create') || l.includes('add')) return 'pi pi-plus';
+    if (l.includes('ส่ง') || l.includes('send') || l.includes('submit')) return 'pi pi-send';
+    if (l.includes('ค้นหา') || l.includes('search')) return 'pi pi-search';
+    if (l.includes('ล้าง') || l.includes('clear')) return 'pi pi-times';
+    if (l.includes('แก้ไข') || l.includes('edit')) return 'pi pi-pencil';
+    if (l.includes('อนุมัติ') || l.includes('approve') || l.includes('ยอมรับ') || l.includes('accept') || l.includes('ตกลง') || l.includes('เลือก') || l.includes('เสร็จ')) return 'pi pi-check';
+    if (l.includes('ปฏิเสธ') || l.includes('reject')) return 'pi pi-times';
+    if (l.includes('excel') || l.includes('export')) return 'pi pi-file-excel';
+    if (l.includes('พิมพ์') || l.includes('print')) return 'pi pi-print';
+    if (l.includes('ดาวน์โหลด') || l.includes('download')) return 'pi pi-download';
+    if (l.includes('ย้อนกลับ') || l.includes('กลับ') || l.includes('back')) return 'pi pi-arrow-left';
+    return '';
+  }
+
+  resolvedSeverity(): UiSeverity {
+    const explicit = this.severity();
+    const l = (this.label() || this.ariaLabel() || '').trim().toLowerCase();
+    const isCancel = l === 'ยกเลิก' || l === 'cancel' || l.startsWith('ยกเลิก') || l.startsWith('cancel');
+    if (isCancel && (!explicit || explicit === 'secondary')) {
+      return 'danger';
+    }
+    return explicit;
+  }
+
   variant(): 'filled' | 'outlined' | 'text' | 'tonal' {
     if (this.text()) return 'text';
     if (this.outlined()) return 'outlined';
-    return this.severity() === 'secondary' ? 'tonal' : 'filled';
+    return this.resolvedSeverity() === 'secondary' ? 'tonal' : 'filled';
   }
   cls(): string {
-    return ['ui-btn', `ui-btn--${this.severity() ?? 'primary'}`, this.size() === 'small' ? 'ui-btn--sm' : '', this.styleClass()]
+    return ['ui-btn', `ui-btn--${this.resolvedSeverity() ?? 'primary'}`, this.size() === 'small' ? 'ui-btn--sm' : '', this.styleClass()]
       .filter(Boolean).join(' ');
   }
 }

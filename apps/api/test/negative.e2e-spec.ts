@@ -122,6 +122,7 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -272,7 +273,7 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
 
   describe('N2 — Expired Proposal (spec §44)', () => {
     it('accepting an expired proposal → 422 PROPOSAL_EXPIRED', async () => {
-      const { jobId, proposalId } = await createJobInState('PROPOSAL_DRAFT');
+      const { proposalId } = await createJobInState('PROPOSAL_DRAFT');
 
       // Expire the proposal directly in DB
       await prisma.proposal.update({

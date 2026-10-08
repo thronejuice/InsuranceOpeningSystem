@@ -187,12 +187,15 @@ const CUSTOMER_TYPE_OPTIONS = [
         <div class="form-actions">
           <ui-button
             label="ยกเลิก"
-            severity="secondary"
+            icon="pi pi-times"
+            severity="danger"
+            [outlined]="true"
             type="button"
             (onClick)="cancel()"
           />
           <ui-button
             [label]="isEdit ? 'บันทึกการแก้ไข' : 'สร้างลูกค้า'"
+            [icon]="isEdit ? 'pi pi-save' : 'pi pi-check'"
             type="submit"
             [loading]="saving()"
             [disabled]="saving()"

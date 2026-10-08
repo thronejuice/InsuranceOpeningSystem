@@ -161,6 +161,11 @@ modules/job/
 | Unique | `customer_code`, `job_no`, `quotation_no`, `proposal_no`, `policy_no`, `payment_no` |
 | Index | FK ทุกตัว + column ที่ใช้ filter บ่อย (`status`, `agent_id`, `expiry_date`) |
 
+> **ข้อยกเว้น Physical Delete สำหรับข้อมูลร่างการสอบถาม (Draft Inquiry Parameters):**
+> ตาราง `job_coverages` และ `job_risk_values` เป็นพารามิเตอร์เงื่อนไขความคุ้มครองและข้อมูลความเสี่ยงขั้นต้นระหว่างร่าง Job (DRAFT / OPEN / WAITING_INFORMATION)
+> อนุญาตให้ทำการ physical delete / replace รายการได้ขณะที่ Job อยู่ในสถานะแก้ไขได้ (`EDITABLE_STATUSES`) โดยมี Audit log บันทึกการเปลี่ยนแปลง
+> เมื่อเข้าสู่กระบวนการเสนอราคาและทำสัญญา ความคุ้มครองจะถูก snapshot ถาวรใน `quotation_items` และ `policy_coverages` ซึ่งเป็น Transaction data ที่ห้ามลบเด็ดขาด
+
 ### 5.1 Table เพิ่มจาก spec §31
 
 | Table | เหตุผล |

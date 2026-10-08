@@ -7,7 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
 
-# Install all workspace deps (postinstall runs prisma generate)
+# Install all workspace deps (postinstall runs prisma generate).
+# Puppeteer uses the Alpine Chromium in the runtime image, so skip its browser download.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN npm ci --workspace=apps/api --include-workspace-root
 
 # Copy source
@@ -21,7 +23,11 @@ RUN npm run build
 # ── Stage 2: Runtime ───────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 
-RUN apk add --no-cache dumb-init
+# chromium: renders the proposal PDF (PdfRendererService); Thai fonts are embedded by the app
+RUN apk add --no-cache dumb-init chromium
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 
@@ -34,6 +40,7 @@ RUN npm ci --workspace=apps/api --include-workspace-root --omit=dev
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/src/generated ./apps/api/src/generated
 COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/assets ./apps/api/assets
 
 WORKDIR /app/apps/api
 

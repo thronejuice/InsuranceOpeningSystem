@@ -3,6 +3,7 @@ import { TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
+import { RENEWAL_INCLUDE } from './dto/renewal.response.js';
 
 @Injectable()
 export class RenewalRepository {
@@ -11,7 +12,7 @@ export class RenewalRepository {
   private get db() { return this.txHost.tx; }
 
   findMany(where: Prisma.RenewalWhereInput, skip: number, take: number) {
-    return this.db.renewal.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } });
+    return this.db.renewal.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, include: RENEWAL_INCLUDE });
   }
 
   count(where: Prisma.RenewalWhereInput) {
@@ -19,7 +20,7 @@ export class RenewalRepository {
   }
 
   findById(id: string) {
-    return this.db.renewal.findFirst({ where: { id } });
+    return this.db.renewal.findFirst({ where: { id }, include: RENEWAL_INCLUDE });
   }
 
   findActiveByPolicyId(previousPolicyId: string) {
@@ -32,10 +33,10 @@ export class RenewalRepository {
   }
 
   create(data: Prisma.RenewalCreateInput) {
-    return this.db.renewal.create({ data });
+    return this.db.renewal.create({ data, include: RENEWAL_INCLUDE });
   }
 
   update(id: string, data: Prisma.RenewalUpdateInput) {
-    return this.db.renewal.update({ where: { id }, data });
+    return this.db.renewal.update({ where: { id }, data, include: RENEWAL_INCLUDE });
   }
 }

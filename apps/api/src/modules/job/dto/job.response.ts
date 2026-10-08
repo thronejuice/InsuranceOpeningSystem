@@ -1,4 +1,4 @@
-import { getAllowedActions, type JobAction, type JobStatus } from '../domain/job-status.js';
+import { getAllowedActions, getJobCapabilities, type JobAction, type JobCapabilities, type JobStatus } from '../domain/job-status.js';
 
 interface JobWithRelations {
   id: string;
@@ -48,6 +48,7 @@ export interface JobResponse {
   createdAt: string;
   updatedAt: string;
   allowedActions: JobAction[];
+  capabilities: JobCapabilities;
 }
 
 export function toJobResponse(job: JobWithRelations, permissions: string[], canWrite: boolean): JobResponse {
@@ -82,5 +83,6 @@ export function toJobResponse(job: JobWithRelations, permissions: string[], canW
     createdAt: (job.createdAt as Date).toISOString(),
     updatedAt: (job.updatedAt as Date).toISOString(),
     allowedActions: getAllowedActions(job.status as JobStatus, permissions, canWrite),
+    capabilities: getJobCapabilities(job.status as JobStatus, canWrite),
   };
 }

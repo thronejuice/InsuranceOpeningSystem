@@ -14,6 +14,7 @@ describe('Proposal API (e2e)', () => {
   let prisma: PrismaService;
   let agentToken: string;
   let agentId: string;
+  let otherToken: string;
 
   // Job with premium 50,000 → Supervisor
   let jobSupId: string;
@@ -24,6 +25,15 @@ describe('Proposal API (e2e)', () => {
   let proposalMgrId: string;
 
   const http = () => request(app.getHttpServer());
+
+  /** supertest buffers unknown content types as text; keep PDF bytes intact */
+  const binary: Parameters<request.Test['parse']>[0] = (res, cb) => {
+    // At runtime the parser receives the raw Node response stream
+    const stream = res as unknown as NodeJS.ReadableStream;
+    const chunks: Buffer[] = [];
+    stream.on('data', (c: Buffer) => chunks.push(c));
+    stream.on('end', () => cb(null, Buffer.concat(chunks)));
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -45,6 +55,7 @@ describe('Proposal API (e2e)', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -59,7 +70,7 @@ describe('Proposal API (e2e)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('customer.view'),
       upsertPerm('quotation.create'), upsertPerm('quotation.update'), upsertPerm('quotation.select'),
-      upsertPerm('proposal.create'), upsertPerm('proposal.send'),
+      upsertPerm('proposal.view'), upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
     ]);
 
@@ -73,6 +84,7 @@ describe('Proposal API (e2e)', () => {
             { permission: { connect: { code: 'job.create' } } },
             { permission: { connect: { code: 'customer.view' } } },
             { permission: { connect: { code: 'quotation.create' } } }, { permission: { connect: { code: 'quotation.update' } } }, { permission: { connect: { code: 'quotation.select' } } },
+            { permission: { connect: { code: 'proposal.view' } } },
             { permission: { connect: { code: 'proposal.create' } } },
             { permission: { connect: { code: 'proposal.send' } } },
             { permission: { connect: { code: 'proposal.accept' } } },
@@ -92,6 +104,19 @@ describe('Proposal API (e2e)', () => {
       },
     });
     agentId = agent.id;
+
+    // Same role, different agent — BR-014 says they must not read the first agent's proposals
+    await prisma.user.create({
+      data: {
+        username: `${PREFIX}other`,
+        email: `${PREFIX}other@test.com`,
+        passwordHash,
+        fullName: 'E2E Prop Other Agent',
+        roles: { create: [{ role: { connect: { id: role.id } } }] },
+      },
+    });
+    const otherLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}other`, password: PASSWORD });
+    otherToken = otherLogin.body.data.accessToken;
 
     const loginRes = await http().post('/api/auth/login').send({ username: `${PREFIX}agent`, password: PASSWORD });
     agentToken = loginRes.body.data.accessToken;
@@ -174,6 +199,31 @@ describe('Proposal API (e2e)', () => {
     expect(res.body.code).toBe('PROPOSAL_NO_SELECTED_QUOTATION');
   });
 
+  // ─── Proposal PDF ─────────────────────────────────────────────────────────
+
+  it('GET /proposals/:id/pdf — DRAFT renders a PDF without storing a document', async () => {
+    const res = await http()
+      .get(`/api/proposals/${proposalSupId}/pdf`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .buffer(true)
+      .parse(binary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('.pdf');
+    expect((res.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+
+    const docs = await prisma.document.count({ where: { jobId: jobSupId, documentType: 'PROPOSAL' } });
+    expect(docs).toBe(0);
+  });
+
+  it('GET /proposals/:id/pdf — BR-014: another agent → 403', async () => {
+    const res = await http()
+      .get(`/api/proposals/${proposalSupId}/pdf`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res.status).toBe(403);
+  });
+
   // ─── Send proposal ────────────────────────────────────────────────────────
 
   it('POST /proposals/:id/send — transitions job to WAITING_CUSTOMER', async () => {
@@ -194,6 +244,24 @@ describe('Proposal API (e2e)', () => {
     // Job should now be WAITING_CUSTOMER
     const jobRes = await http().get(`/api/jobs/${jobSupId}`).set('Authorization', `Bearer ${agentToken}`);
     expect(jobRes.body.data.status).toBe('WAITING_CUSTOMER');
+  });
+
+  it('POST /proposals/:id/send — stores the final PDF as a PROPOSAL document, served on download', async () => {
+    const proposal = await prisma.proposal.findUniqueOrThrow({ where: { id: proposalSupId } });
+    const docs = await prisma.document.findMany({
+      where: { jobId: jobSupId, documentType: 'PROPOSAL', status: 'ACTIVE' },
+    });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].originalName).toBe(`${proposal.proposalNo}.pdf`);
+    expect(docs[0].mimeType).toBe('application/pdf');
+
+    const res = await http()
+      .get(`/api/proposals/${proposalSupId}/pdf`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .buffer(true)
+      .parse(binary);
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBe(docs[0].size);
   });
 
   // ─── Accept proposal — triggers Supervisor approval ───────────────────────

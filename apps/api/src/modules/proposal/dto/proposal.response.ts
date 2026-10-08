@@ -1,21 +1,9 @@
-import { canDecideApproval, type ApprovalViewer } from '../../approval/domain/approval-rules.js';
+import type { ApprovalViewer } from '../../approval/domain/approval-rules.js';
+import { toApprovalResponse, type ApprovalResponse } from '../../approval/dto/approval.response.js';
 
 export type ProposalStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-
-export interface ApprovalResponse {
-  id: string;
-  proposalId: string;
-  jobId: string;
-  approvalType: string;
-  status: ApprovalStatus;
-  requestedAt: string;
-  approvedAt: string | null;
-  rejectedAt: string | null;
-  reason: string | null;
-  /** Server-computed: current user may approve/reject (pending, has permission, not the requester). */
-  canDecide: boolean;
-}
+export type { ApprovalResponse };
 
 export interface ProposalResponse {
   id: string;
@@ -84,18 +72,7 @@ export function toProposalResponse(p: ProposalWithRelations, viewer: ApprovalVie
     rejectReason: p.rejectReason,
     remark: p.remark,
     version: p.version,
-    approvals: (p.approvals ?? []).map((a) => ({
-      id: a.id,
-      proposalId: a.proposalId,
-      jobId: a.jobId,
-      approvalType: a.approvalType,
-      status: a.status as ApprovalStatus,
-      requestedAt: (a.requestedAt as Date).toISOString(),
-      approvedAt: a.approvedAt ? (a.approvedAt as Date).toISOString() : null,
-      rejectedAt: a.rejectedAt ? (a.rejectedAt as Date).toISOString() : null,
-      reason: a.reason,
-      canDecide: canDecideApproval(a, viewer),
-    })),
+    approvals: (p.approvals ?? []).map((a) => toApprovalResponse(a, viewer)),
     createdAt: (p.createdAt as Date).toISOString(),
     updatedAt: (p.updatedAt as Date).toISOString(),
   };

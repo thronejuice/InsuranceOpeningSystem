@@ -92,12 +92,13 @@ export class JobRiskService {
       update: { updatedAt: new Date() },
     });
 
-    // Upsert each value
-    for (const [fieldCode, fieldValue] of Object.entries(incoming)) {
+    // Upsert each value — coerce to string because NUMBER fields may arrive as JS numbers
+    for (const [fieldCode, rawValue] of Object.entries(incoming)) {
+      const fieldValue = rawValue !== null && rawValue !== undefined ? String(rawValue) : null;
       await this.db.jobRiskValue.upsert({
         where: { jobRiskId_fieldCode: { jobRiskId: risk.id, fieldCode } },
-        create: { jobRiskId: risk.id, fieldCode, fieldValue: fieldValue ?? null },
-        update: { fieldValue: fieldValue ?? null },
+        create: { jobRiskId: risk.id, fieldCode, fieldValue },
+        update: { fieldValue },
       });
     }
 

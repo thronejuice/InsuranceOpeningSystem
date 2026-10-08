@@ -56,6 +56,7 @@ describe('Renewal API', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -332,5 +333,146 @@ describe('Renewal API', () => {
       where: { previousPolicy: { jobId: job.id } },
     });
     expect(renewals).toHaveLength(1);
+  });
+
+  describe('renew with custom dates, copied data and task closing', () => {
+    let policy2Id: string;
+    let oldJob2Id: string;
+    let renewalBody: Record<string, any>;
+
+    beforeAll(async () => {
+      const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
+      const product = await prisma.insuranceProduct.findFirst({ where: { code: `${PREFIX.toUpperCase()}PROD` } });
+      const company = await prisma.insuranceCompany.findFirst({ where: { code: `${PREFIX.toUpperCase()}CO` } });
+      const customer = await prisma.customer.findFirst({ where: { customerCode: `${PREFIX.toUpperCase()}C001` } });
+      const renewer = await prisma.user.findFirst({ where: { username: `${PREFIX}renewer` } });
+
+      const job = await prisma.job.create({
+        data: {
+          jobNo: 'JOB-RENTEST-FULL',
+          insuranceTypeId: iType!.id,
+          productId: product!.id,
+          customerId: customer!.id,
+          agentId: renewer!.id,
+          assignedTo: renewer!.id,
+          effectiveDate: new Date('2026-10-01'),
+          expiryDate: new Date('2027-10-01'),
+          status: 'POLICY_ISSUED',
+          version: 1,
+        },
+      });
+      oldJob2Id = job.id;
+      const quotation = await prisma.quotation.create({
+        data: {
+          quotationNo: 'QT-RENTEST-FULL',
+          jobId: job.id,
+          insuranceCompanyId: company!.id,
+          grossPremium: '8000.00',
+          netPremium: '8000.00',
+          totalAmount: '8600.00',
+          status: 'SELECTED',
+          version: 1,
+        },
+      });
+      const policy = await prisma.policy.create({
+        data: {
+          policyNo: 'PL-RENTEST-FULL',
+          jobId: job.id,
+          quotationId: quotation.id,
+          insuranceCompanyId: company!.id,
+          effectiveDate: new Date('2026-10-01'),
+          expiryDate: new Date('2027-10-01'),
+          grossPremium: '8000.00',
+          netPremium: '8000.00',
+          totalPremium: '8600.00',
+          status: 'ISSUED',
+          version: 1,
+        },
+      });
+      policy2Id = policy.id;
+
+      const doc = (documentType: 'ID_CARD' | 'POLICY', storedName: string) => ({
+        jobId: job.id,
+        documentType,
+        originalName: `${storedName}.pdf`,
+        storedName,
+        mimeType: 'application/pdf',
+        size: 10,
+        storagePath: `e2e/${storedName}.pdf`,
+      });
+      await prisma.document.createMany({ data: [doc('ID_CARD', 'ren-id'), doc('POLICY', 'ren-policy')] });
+      await prisma.task.createMany({
+        data: [
+          { jobId: job.id, taskType: 'RENEWAL', subject: 'renewal todo', status: 'TODO' },
+          { jobId: job.id, taskType: 'RENEWAL', subject: 'renewal doing', status: 'IN_PROGRESS' },
+          { jobId: job.id, taskType: 'CALL_CUSTOMER', subject: 'other task', status: 'TODO' },
+        ],
+      });
+    });
+
+    it('R8: GET /renewals exposes canRenew and backend-computed suggested dates', async () => {
+      await prisma.renewal.create({
+        data: { previousPolicyId: policy2Id, renewalDate: new Date(), targetExpiryDate: new Date('2027-10-01'), status: 'PENDING' },
+      });
+      const res = await http().get('/api/renewals').set('Authorization', `Bearer ${renewerToken}`);
+      const row = (res.body.data.items as Record<string, any>[]).find((r) => r.previousPolicyId === policy2Id)!;
+      expect(row.canRenew).toBe(true);
+      expect(row.previousPolicyNo).toBe('PL-RENTEST-FULL');
+      expect(row.totalPremium).toBe('8600.00');
+      expect(row.suggestedEffectiveDate).toBe('2027-10-01');
+      expect(row.suggestedExpiryDate).toBe('2028-10-01');
+    });
+
+    it('R9: rejects expiry date not after effective date → 422', async () => {
+      const res = await http()
+        .post(`/api/policies/${policy2Id}/renew`)
+        .set('Authorization', `Bearer ${renewerToken}`)
+        .send({ effectiveDate: '2027-10-01', expiryDate: '2027-09-01' });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('RENEWAL_INVALID_DATES');
+    });
+
+    it('R10: renew with custom dates → DRAFT job with copied assignee/documents, tasks closed', async () => {
+      const res = await http()
+        .post(`/api/policies/${policy2Id}/renew`)
+        .set('Authorization', `Bearer ${renewerToken}`)
+        .send({ effectiveDate: '2027-10-15', expiryDate: '2028-10-15' });
+      expect(res.status).toBe(201);
+      renewalBody = res.body.data;
+      expect(renewalBody.canRenew).toBe(false);
+      expect(renewalBody.newJobNo).toBeTruthy();
+
+      const newJob = await prisma.job.findUniqueOrThrow({ where: { id: renewalBody.newJobId } });
+      expect(newJob.status).toBe('DRAFT');
+      expect(newJob.source).toBe('RENEWAL');
+      expect(newJob.assignedTo).toBe(newJob.agentId);
+      expect(newJob.effectiveDate.toISOString().slice(0, 10)).toBe('2027-10-15');
+      expect(newJob.expiryDate?.toISOString().slice(0, 10)).toBe('2028-10-15');
+
+      // only customer documents are copied, pointing at the same stored file
+      const docs = await prisma.document.findMany({ where: { jobId: newJob.id } });
+      expect(docs.map((d) => d.documentType)).toEqual(['ID_CARD']);
+      expect(docs[0].storagePath).toBe('e2e/ren-id.pdf');
+
+      // open RENEWAL tasks of the old job are DONE, other tasks untouched
+      const tasks = await prisma.task.findMany({ where: { jobId: oldJob2Id } });
+      const byType = (type: string) => tasks.filter((t) => t.taskType === type);
+      expect(byType('RENEWAL').every((t) => t.status === 'DONE' && t.completedAt && t.completedById)).toBe(true);
+      expect(byType('CALL_CUSTOMER')[0].status).toBe('TODO');
+    });
+
+    it('R11: GET /jobs/:id/renewal-reference returns previous policy summary; null for normal jobs', async () => {
+      const ref = await http().get(`/api/jobs/${renewalBody.newJobId}/renewal-reference`).set('Authorization', `Bearer ${renewerToken}`);
+      expect(ref.status).toBe(200);
+      expect(ref.body.data).toMatchObject({
+        previousPolicyNo: 'PL-RENTEST-FULL',
+        insuranceCompanyName: 'E2E Renewal Company',
+        totalPremium: '8600.00',
+      });
+
+      const none = await http().get(`/api/jobs/${oldJob2Id}/renewal-reference`).set('Authorization', `Bearer ${renewerToken}`);
+      expect(none.status).toBe(200);
+      expect(none.body.data).toBeNull();
+    });
   });
 });

@@ -20,14 +20,14 @@ export type JobStatus =
   | 'RENEWAL';
 
 export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
-  DRAFT:               ['OPEN'],
-  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED'],
+  DRAFT:               ['OPEN', 'QUOTATION_SELECTED'],
+  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_SELECTED'],
   WAITING_INFORMATION: ['OPEN'],
-  QUOTATION_REQUESTED: ['QUOTATION_RECEIVED'],
+  QUOTATION_REQUESTED: ['QUOTATION_RECEIVED', 'QUOTATION_SELECTED'],
   QUOTATION_RECEIVED:  ['QUOTATION_SELECTED'],
   QUOTATION_SELECTED:  ['PROPOSAL_SENT'],
   PROPOSAL_SENT:       ['WAITING_CUSTOMER'],
-  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED'],
+  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL'],
   CUSTOMER_ACCEPTED:   ['WAITING_APPROVAL', 'BINDING'],
   WAITING_APPROVAL:    ['APPROVED'],
   APPROVED:            ['BINDING'],
@@ -104,4 +104,28 @@ export function getAllowedActions(status: JobStatus, permissions: string[], canW
   });
   if (canWrite && !NON_CANCELLABLE.includes(status) && permissions.includes('job.cancel')) result.push('cancel');
   return result;
+}
+
+export interface JobCapabilities {
+  editRisk: boolean;
+  manageDocuments: boolean;
+  manageQuotations: boolean;
+}
+
+export const EDITABLE_STATUSES: JobStatus[] = ['DRAFT', 'OPEN', 'WAITING_INFORMATION'];
+export const DOCS_LOCKED_STATUSES: JobStatus[] = ['CANCELLED', 'CLOSED', 'EXPIRED'];
+export const QUOTATION_MANAGEABLE_STATUSES: JobStatus[] = [
+  'OPEN',
+  'WAITING_INFORMATION',
+  'QUOTATION_REQUESTED',
+  'QUOTATION_RECEIVED',
+  'QUOTATION_SELECTED',
+];
+
+export function getJobCapabilities(status: JobStatus, canWrite = true): JobCapabilities {
+  return {
+    editRisk: canWrite && EDITABLE_STATUSES.includes(status),
+    manageDocuments: canWrite && !DOCS_LOCKED_STATUSES.includes(status),
+    manageQuotations: canWrite && QUOTATION_MANAGEABLE_STATUSES.includes(status),
+  };
 }

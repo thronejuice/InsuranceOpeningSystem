@@ -112,7 +112,7 @@ describe('Document API (e2e)', () => {
         roles: { create: [{ roleId: agentRole.id }] },
       },
     });
-    const agentB = await prisma.user.create({
+    await prisma.user.create({
       data: {
         username: `${PREFIX}agent_b`, email: `${PREFIX}b@test.com`,
         fullName: 'Doc Agent B', passwordHash,

@@ -65,6 +65,31 @@ export interface RiskField {
   updatedAt: string;
 }
 
+export interface BankAccount {
+  bankName: string;
+  branch?: string;
+  accountName: string;
+  accountNo: string;
+}
+
+/** Letterhead printed on customer-facing documents (proposal PDF) */
+export interface CompanyProfile {
+  nameTh: string;
+  nameEn: string | null;
+  addressTh: string | null;
+  addressEn: string | null;
+  taxId: string | null;
+  brokerLicenseNo: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  proposalTerms: string | null;
+  bankAccounts: BankAccount[];
+  hasLogo: boolean;
+  configured: boolean;
+  updatedAt: string | null;
+}
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -130,5 +155,24 @@ export class MasterApi {
   }
   updateCoverage(id: string, body: object) {
     return this.http.put<ApiResponse<InsuranceCoverage>>(`/api/master/coverages/${id}`, body);
+  }
+
+  // Company profile (letterhead)
+  getCompanyProfile() {
+    return this.http.get<ApiResponse<CompanyProfile>>('/api/settings/company');
+  }
+  updateCompanyProfile(body: object) {
+    return this.http.put<ApiResponse<CompanyProfile>>('/api/settings/company', body);
+  }
+  getCompanyLogo() {
+    return this.http.get('/api/settings/company/logo', { responseType: 'blob' });
+  }
+  uploadCompanyLogo(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ApiResponse<CompanyProfile>>('/api/settings/company/logo', form);
+  }
+  removeCompanyLogo() {
+    return this.http.delete<ApiResponse<CompanyProfile>>('/api/settings/company/logo');
   }
 }

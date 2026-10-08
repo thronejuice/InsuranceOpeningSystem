@@ -39,6 +39,12 @@ export type JobAction =
   | 'bind'
   | 'issuePolicy';
 
+export interface JobCapabilities {
+  editRisk: boolean;
+  manageDocuments: boolean;
+  manageQuotations: boolean;
+}
+
 export interface Job {
   id: string;
   jobNo: string;
@@ -63,6 +69,7 @@ export interface Job {
   createdAt: string;
   updatedAt: string;
   allowedActions: JobAction[];
+  capabilities?: JobCapabilities;
 }
 
 export interface CreateJobDto {
@@ -255,6 +262,7 @@ export interface CompanyColumn {
   netPremium: string;
   stampDuty: string;
   tax: string;
+  isLowest?: boolean;
 }
 
 export interface ComparisonResponse {
@@ -268,19 +276,29 @@ export interface ComparisonResponse {
 export type ProposalStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
-export interface ApprovalInProposal {
+export interface ApprovalResponse {
   id: string;
-  proposalId: string;
   jobId: string;
+  jobNo?: string | null;
+  customerName?: string | null;
+  totalPremium?: string | null;
+  proposalId: string;
   approvalType: string;
+  requestedById: string | null;
+  approverId: string | null;
   status: ApprovalStatus;
+  reason: string | null;
+  remark?: string | null;
   requestedAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
-  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
   /** Server-computed: current user may approve/reject (not the requester). */
   canDecide: boolean;
 }
+
+export type ApprovalInProposal = ApprovalResponse;
 
 export interface ProposalResponse {
   id: string;
@@ -300,23 +318,6 @@ export interface ProposalResponse {
   approvals: ApprovalInProposal[];
   createdAt: string;
   updatedAt: string;
-}
-
-// ─── Approval (global inbox) ────────────────────────────────────────────────
-
-export interface ApprovalResponse {
-  id: string;
-  jobId: string;
-  proposalId: string;
-  approvalType: string;
-  requestedById: string | null;
-  approverId: string | null;
-  status: string;
-  reason: string | null;
-  createdAt: string;
-  updatedAt: string;
-  /** Server-computed: current user may approve/reject (not the requester). */
-  canDecide: boolean;
 }
 
 // ─── Binding / Policy ──────────────────────────────────────────────────────
@@ -474,7 +475,23 @@ export type RenewalStatus = 'PENDING' | 'IN_PROGRESS' | 'QUOTATION' | 'CUSTOMER_
 export interface RenewalRecord {
   id: string;
   previousPolicyId: string;
+  previousPolicyNo: string;
+  previousJobId: string;
+  previousJobNo: string;
+  customerName: string;
+  productName: string;
+  insuranceCompanyName: string;
+  policyEffectiveDate: string;
+  policyExpiryDate: string | null;
+  /** Money as string (Decimal 15,2) */
+  totalPremium: string;
   newJobId: string | null;
+  newJobNo: string | null;
+  /** Defaults for the renew dialog, computed by the backend (yyyy-mm-dd) */
+  suggestedEffectiveDate: string;
+  suggestedExpiryDate: string;
+  /** Decided by the backend: show the renew button only when true */
+  canRenew: boolean;
   renewalDate: string;
   targetExpiryDate: string;
   status: RenewalStatus;
@@ -482,6 +499,23 @@ export interface RenewalRecord {
   remark: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RenewalReference {
+  previousPolicyId: string;
+  previousPolicyNo: string;
+  previousJobId: string;
+  previousJobNo: string;
+  insuranceCompanyName: string;
+  totalPremium: string;
+  effectiveDate: string;
+  expiryDate: string | null;
+}
+
+export interface RenewPolicyBody {
+  /** yyyy-mm-dd; omitted = backend default (previous expiry, same term) */
+  effectiveDate?: string;
+  expiryDate?: string;
 }
 
 export interface RenewalListResponse {
@@ -631,6 +665,10 @@ export class JobsApi {
     return `/api/documents/${docId}/download`;
   }
 
+  downloadDocumentBlob(docId: string): Observable<Blob> {
+    return this.http.get(`/api/documents/${docId}/download`, { responseType: 'blob' });
+  }
+
   // ─── Quotations ─────────────────────────────────────────────────────────
 
   listAllQuotations(params: { insuranceCompanyId?: string; status?: string; validUntilFrom?: string; validUntilTo?: string }): Observable<Quotation[]> {
@@ -662,6 +700,10 @@ export class JobsApi {
     return this.http.get<ItemResponse<ComparisonResponse>>(`/api/jobs/${jobId}/quotation-comparison`).pipe(map((r) => r.data));
   }
 
+  deleteQuotation(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/quotations/${id}`);
+  }
+
   // ─── Proposal ───────────────────────────────────────────────────────────
 
   listProposals(jobId: string): Observable<ProposalResponse[]> {
@@ -674,6 +716,10 @@ export class JobsApi {
 
   sendProposal(proposalId: string): Observable<ProposalResponse> {
     return this.http.post<ItemResponse<ProposalResponse>>(`/api/proposals/${proposalId}/send`, {}).pipe(map((r) => r.data));
+  }
+
+  downloadProposalPdf(proposalId: string): Observable<Blob> {
+    return this.http.get(`/api/proposals/${proposalId}/pdf`, { responseType: 'blob' });
   }
 
   acceptProposal(proposalId: string): Observable<ProposalResponse> {
@@ -818,7 +864,11 @@ export class JobsApi {
     return this.http.get<{ success: boolean; data: RenewalListResponse }>('/api/renewals', { params: p }).pipe(map((r) => r.data));
   }
 
-  renewPolicy(policyId: string): Observable<RenewalRecord> {
-    return this.http.post<{ success: boolean; data: RenewalRecord }>(`/api/policies/${policyId}/renew`, {}).pipe(map((r) => r.data));
+  renewPolicy(policyId: string, body: RenewPolicyBody = {}): Observable<RenewalRecord> {
+    return this.http.post<{ success: boolean; data: RenewalRecord }>(`/api/policies/${policyId}/renew`, body).pipe(map((r) => r.data));
+  }
+
+  getRenewalReference(jobId: string): Observable<RenewalReference | null> {
+    return this.http.get<{ success: boolean; data: RenewalReference | null }>(`/api/jobs/${jobId}/renewal-reference`).pipe(map((r) => r.data));
   }
 }

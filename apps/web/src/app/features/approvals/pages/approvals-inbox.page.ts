@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -15,11 +17,17 @@ import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { JobsApi, type ApprovalResponse } from '../../jobs/data/jobs.api';
 import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../../shared/ui';
 
+const APPROVAL_TYPE_LABELS: Record<string, string> = {
+  SUPERVISOR: 'หัวหน้างาน (Supervisor)',
+  MANAGER: 'ผู้จัดการ (Manager)',
+  ADMIN: 'ผู้ดูแลระบบ (Admin)',
+};
+
 @Component({
   selector: 'app-approvals-inbox-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, UiButton, UiDialog, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
+  imports: [RouterLink, FormsModule, MoneyPipe, UiButton, UiDialog, UiInput, UiMessage, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe],
   template: `
     <app-page-header title="กล่องอนุมัติ" subtitle="รายการรอการอนุมัติ" />
 
@@ -35,6 +43,8 @@ import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../..
           <thead>
             <tr>
               <th>งานประกัน</th>
+              <th>ลูกค้า</th>
+              <th>ยอดเบี้ย</th>
               <th>ประเภทอนุมัติ</th>
               <th>สถานะ</th>
               <th>วันที่ขอ</th>
@@ -46,17 +56,19 @@ import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../..
             @for (a of approvals(); track a.id) {
               <tr>
                 <td>
-                  <a [routerLink]="['/jobs', a.jobId]" class="job-link">{{ a.jobId }}</a>
+                  <a [routerLink]="['/jobs', a.jobId]" class="job-link">{{ a.jobNo || a.jobId }}</a>
                 </td>
-                <td>{{ a.approvalType }}</td>
+                <td>{{ a.customerName || '-' }}</td>
+                <td>{{ a.totalPremium ? (a.totalPremium | money) + ' บาท' : '-' }}</td>
+                <td><span class="type-tag">{{ getApprovalTypeLabel(a.approvalType) }}</span></td>
                 <td><app-status-badge [status]="a.status" /></td>
-                <td>{{ a.createdAt | thDate }}</td>
+                <td>{{ (a.requestedAt || a.createdAt) | thDate }}</td>
                 <td>{{ a.reason ?? '-' }}</td>
                 <td>
                   @if (a.canDecide) {
                     <div class="row-actions">
-                      <ui-button label="อนุมัติ" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
-                      <ui-button label="ปฏิเสธ" size="small" severity="danger" [outlined]="true" (onClick)="openReject(a)" />
+                      <ui-button label="อนุมัติ" icon="pi pi-check" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
+                      <ui-button label="ปฏิเสธ" icon="pi pi-times" size="small" severity="danger" [outlined]="true" (onClick)="openReject(a)" />
                     </div>
                   } @else if (a.status === 'PENDING') {
                     <small class="text-secondary">รอผู้อนุมัติท่านอื่น</small>
@@ -77,6 +89,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../..
     <ui-dialog
       [(visible)]="showRejectDialog"
       header="ปฏิเสธการอนุมัติ"
+      icon="pi pi-times-circle"
       [modal]="true"
       [style]="{ width: '420px' }"
     >
@@ -88,8 +101,8 @@ import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../..
         }
       </div>
       <ng-template #footer>
-        <ui-button label="ยกเลิก" severity="secondary" (onClick)="showRejectDialog = false" [disabled]="rejecting()" />
-        <ui-button label="ปฏิเสธ" severity="danger" (onClick)="confirmReject()" [loading]="rejecting()" [disabled]="rejecting()" />
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="closeReject()" [disabled]="rejecting()" />
+        <ui-button label="ปฏิเสธ" icon="pi pi-times-circle" severity="danger" (onClick)="confirmReject()" [loading]="rejecting()" [disabled]="rejecting()" />
       </ng-template>
     </ui-dialog>
   `,
@@ -111,6 +124,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiMessage } from '../../..
 export class ApprovalsInboxPage implements OnInit {
   private readonly api = inject(JobsApi);
   private readonly toast = inject(MessageService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   readonly state = signal<'loading' | 'error' | 'none'>('none');
   readonly approvals = signal<ApprovalResponse[]>([]);
@@ -124,6 +138,10 @@ export class ApprovalsInboxPage implements OnInit {
   readonly rejecting = signal(false);
 
   ngOnInit(): void { this.load(); }
+
+  getApprovalTypeLabel(type: string): string {
+    return APPROVAL_TYPE_LABELS[type] ?? type;
+  }
 
   private load(): void {
     this.state.set('loading');
@@ -155,6 +173,14 @@ export class ApprovalsInboxPage implements OnInit {
     this.rejectReason = '';
     this.rejectError.set(null);
     this.showRejectDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeReject(): void {
+    this.showRejectDialog = false;
+    this.rejectError.set(null);
+    this.rejectTarget = null;
+    this.cdr.markForCheck();
   }
 
   confirmReject(): void {
@@ -167,6 +193,7 @@ export class ApprovalsInboxPage implements OnInit {
       next: () => {
         this.rejecting.set(false);
         this.showRejectDialog = false;
+        this.cdr.markForCheck();
         this.approvals.update((list) => list.filter((x) => x.id !== a.id));
         this.toast.add({ severity: 'info', summary: 'ปฏิเสธแล้ว' });
       },

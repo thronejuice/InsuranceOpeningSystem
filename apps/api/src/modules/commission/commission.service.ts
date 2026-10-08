@@ -13,6 +13,9 @@ import type { CommissionQueryDto } from './dto/commission-query.dto.js';
 import type { CommissionListResponse, CommissionResponse } from './dto/commission.response.js';
 import { calculateCommission } from './domain/commission-calc.js';
 
+import { DataScopeService } from '../../common/access/data-scope.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+
 @Injectable()
 export class CommissionService {
   constructor(
@@ -20,9 +23,29 @@ export class CommissionService {
     private readonly audit: AuditService,
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
   ) {}
 
+  private async assertJobAccess(jobId: string) {
+    const userId = this.cls.get('userId')!;
+    const permissions = this.cls.get('permissions') ?? [];
+    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
+      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    }
+    return job;
+  }
+
+  private async assertPolicyAccess(policyId: string) {
+    const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+    return policy;
+  }
+
   async listByPolicy(policyId: string): Promise<CommissionListResponse> {
+    await this.assertPolicyAccess(policyId);
     const commissions = await this.repo.findByPolicy(policyId);
     return {
       items: commissions.map(toResponse),
@@ -35,12 +58,13 @@ export class CommissionService {
     const limit = query.perPage ?? 20;
     const skip = (page - 1) * limit;
 
-    const where = {
+    const where: Prisma.CommissionWhereInput = {
       ...(query.agentId ? { agentId: query.agentId } : {}),
       ...(query.status ? { status: query.status as never } : {}),
       ...(query.fromDate || query.toDate
         ? { createdAt: { ...(query.fromDate ? { gte: new Date(query.fromDate) } : {}), ...(query.toDate ? { lte: new Date(query.toDate) } : {}) } }
         : {}),
+      policy: { job: { deletedAt: null, ...this.scope.jobViewScope() } },
     };
 
     const [items, total] = await Promise.all([
@@ -55,8 +79,7 @@ export class CommissionService {
   async create(policyId: string, dto: CreateCommissionDto): Promise<CommissionListResponse> {
     const userId = this.cls.get('userId')!;
 
-    const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
-    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    const policy = await this.assertPolicyAccess(policyId);
     if (policy.status === 'CANCELLED') {
       throw new BusinessException('POLICY_INVALID_STATUS', 'Cannot add commission to a cancelled policy', 409);
     }

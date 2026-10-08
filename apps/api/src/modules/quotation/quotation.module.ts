@@ -3,7 +3,10 @@ import { QuotationController } from './quotation.controller.js';
 import { QuotationService } from './quotation.service.js';
 import { QuotationRepository } from './quotation.repository.js';
 
+import { JobModule } from '../job/job.module.js';
+
 @Module({
+  imports: [JobModule],
   controllers: [QuotationController],
   providers: [QuotationService, QuotationRepository],
   exports: [QuotationService],

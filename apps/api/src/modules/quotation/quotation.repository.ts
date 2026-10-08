@@ -38,6 +38,13 @@ export class QuotationRepository {
     });
   }
 
+  findByJobAndCompany(jobId: string, insuranceCompanyId: string) {
+    return this.db.quotation.findFirst({
+      where: { jobId, insuranceCompanyId },
+      include: QuotationRepository.INCLUDE,
+    });
+  }
+
   create(data: Prisma.QuotationCreateInput) {
     return this.db.quotation.create({ data, include: QuotationRepository.INCLUDE });
   }
@@ -52,5 +59,9 @@ export class QuotationRepository {
 
   countRequestedForJob(jobId: string): Promise<number> {
     return this.db.quotation.count({ where: { jobId } });
+  }
+
+  delete(id: string) {
+    return this.db.quotation.delete({ where: { id } });
   }
 }

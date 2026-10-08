@@ -18,6 +18,7 @@ import { JobsApi } from '../data/jobs.api';
 import { MasterApi, type InsuranceType, type InsuranceProduct } from '../../master/data/master.api';
 import { CustomersApi, type Customer } from '../../customers/data/customers.api';
 import { UsersApi, type User } from '../../users/data/users.api';
+import { AuthStore } from '../../../core/auth/auth.store';
 import { MessageService, UiAutocomplete, UiAutocompleteSelectEvent, UiButton, UiDatepicker, UiInput, UiMessage, UiSelect } from '../../../shared/ui';
 
 const PRIORITY_OPTIONS = [
@@ -345,7 +346,9 @@ export interface ValidationErrorItem {
             <div class="action-buttons">
               <ui-button
                 label="ยกเลิก"
-                severity="secondary"
+                icon="pi pi-times"
+                severity="danger"
+                [outlined]="true"
                 type="button"
                 (onClick)="cancel()"
               />
@@ -755,6 +758,7 @@ export class JobFormPage implements OnInit {
   private readonly masterApi = inject(MasterApi);
   private readonly customersApi = inject(CustomersApi);
   private readonly usersApi = inject(UsersApi);
+  private readonly authStore = inject(AuthStore);
   private readonly router = inject(Router);
   private readonly toast = inject(MessageService);
 
@@ -952,14 +956,34 @@ export class JobFormPage implements OnInit {
       error: () => this.loadState.set('error'),
     });
 
-    this.usersApi.listUsers().subscribe({
-      next: (res) => {
-        this.agents.set(res.data);
-        agentsDone = true;
-        checkDone();
-      },
-      error: () => this.loadState.set('error'),
-    });
+    if (!this.authStore.hasPermission('job.view_all')) {
+      const currentUser = this.authStore.user();
+      if (currentUser) {
+        const userAgent: User = {
+          id: currentUser.id,
+          username: currentUser.username,
+          email: currentUser.email,
+          fullName: currentUser.fullName,
+          isActive: true,
+          createdAt: '',
+          updatedAt: '',
+          roles: [],
+        };
+        this.agents.set([userAgent]);
+        this.form.patchValue({ agentId: currentUser.id });
+      }
+      agentsDone = true;
+      checkDone();
+    } else {
+      this.usersApi.listUsers().subscribe({
+        next: (res) => {
+          this.agents.set(res.data);
+          agentsDone = true;
+          checkDone();
+        },
+        error: () => this.loadState.set('error'),
+      });
+    }
   }
 
   onTypeChange(val?: unknown): void {

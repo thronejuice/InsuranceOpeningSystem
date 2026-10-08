@@ -37,6 +37,13 @@
 | Q7 | แสดงปี พ.ศ. หรือ ค.ศ. | ค.ศ. `dd/MM/yyyy` | D6 |
 | Q8 | Quotation ที่ไม่ถูกเลือกต้องเปลี่ยนเป็น REJECTED อัตโนมัติไหม | ไม่ (คงเป็น RECEIVED) | D16 |
 | Q9 | Role ไหนได้ permission อะไร (spec §4 มีแค่รายชื่อ role) | ตาม `ROLE_PERMISSIONS` ใน `apps/api/prisma/seed-data.ts` เช่น AGENT ไม่มี `*.view_all`, VIEWER/FINANCE เห็นทุก Job แบบอ่านอย่างเดียว, `approval.approve` เฉพาะ MANAGER/ADMIN; `task.create`/`task.update` ให้ AGENT/BROKER_STAFF/SUPERVISOR/ADMIN (role อื่นเห็นอย่างเดียว — เพิ่ม 2026-10-05) | D3 |
+| Q-A | ตรวจระดับผู้อนุมัติเทียบกับ `approvalType` หรือไม่ | ตรวจสอบตามลำดับ `ROLE_PRIORITY` (SUPERVISOR=1, MANAGER=2, ADMIN=3) ใน domain function `canApproveType` | P1-3 |
+| Q-B | ข้อยกเว้น physical delete สำหรับ coverage/risk | อนุญาตลบแบบ physical สำหรับ `job_coverages` และ `job_risk_values` ที่อยู่ในสถานะแก้ไขได้ (`EDITABLE_STATUSES`) ก่อนถูก snapshot ลง quotation | P2-5 |
+| Q-C | สิทธิ์ `approval.approve_own` ของ ADMIN ใน production | ตัด `approval.approve_own` ออกจาก ADMIN ใน seed ของ production เพื่อรักษาหลัก maker-checker แต่คงไว้ใน non-production สำหรับ local flow testing | P1-4 |
+| Q10 | ควบคุมสิทธิ์การกระทำในหน้าเว็บจาก frontend หรือ backend | Backend คำนวณ `capabilities` (`editRisk`, `manageDocuments`, `manageQuotations`) ส่งมากับ `JobResponse` แทนการ hardcode สถานะเป็น Sets ใน frontend | P2-3 |
+| Q11 | Agent ควรเห็นลูกค้าทุกคนไหม (BR-014) | ตอนนี้เห็นทุกคนตามสิทธิ์ `customer.view`; เก็บเป็น open question ว่าควรจำกัดตาม `createdById` หรือ Job ที่ถืออยู่ | P3 |
+| Q12 | ค่าตัวเลือก SELECT เดิมที่เป็นภาษาอังกฤษของ Job เก่า | ใช้ค่าตัวเลือกภาษาไทยตาม master data ปัจจุบัน; หากมีข้อมูลเก่าต้องรัน data migration แปลง | P3 |
+| Q13 | Excel export ใช้ parseFloat หรือ string + numFmt | ใช้ตัวเลขเพื่อให้ spreadsheet คำนวณได้; ยอมรับได้สำหรับทศนิยม 2 ตำแหน่งของเงิน | P3 |
 
 ---
 

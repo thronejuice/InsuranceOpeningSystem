@@ -3,7 +3,6 @@ import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
-import type { JobStatus } from '../../generated/prisma/enums.js';
 import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
@@ -18,6 +17,8 @@ import { toQuotationResponse, type QuotationResponse } from './dto/quotation.res
 import type { QuotationComparisonResponse } from './dto/comparison.response.js';
 import type { ListQuotationDto } from './dto/list-quotation.dto.js';
 
+import { JobWorkflowService } from '../job/job-workflow.service.js';
+
 @Injectable()
 export class QuotationService {
   constructor(
@@ -27,6 +28,7 @@ export class QuotationService {
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
     private readonly scope: DataScopeService,
+    private readonly workflow: JobWorkflowService,
   ) {}
 
   async listAll(dto: ListQuotationDto): Promise<QuotationResponse[]> {
@@ -53,6 +55,11 @@ export class QuotationService {
   async create(jobId: string, dto: CreateQuotationDto): Promise<QuotationResponse> {
     const userId = this.cls.get('userId')!;
     const job = await this.getJobOrThrow(jobId);
+
+    const existing = await this.repo.findByJobAndCompany(jobId, dto.insuranceCompanyId);
+    if (existing) {
+      throw new BusinessException('QUOTATION_COMPANY_DUPLICATE', 'บริษัทประกันนี้มีใบเสนอราคาในงานนี้แล้ว', 400);
+    }
 
     let calc;
     try {
@@ -85,7 +92,7 @@ export class QuotationService {
     if (job.status === 'OPEN' || job.status === 'WAITING_INFORMATION') {
       const totalCount = await this.repo.countRequestedForJob(jobId);
       if (totalCount === 1) {
-        await this.transitionJob(jobId, job.status, job.version, 'QUOTATION_REQUESTED', userId);
+        await this.workflow.transitionInTx(job, 'QUOTATION_REQUESTED', userId);
       }
     }
 
@@ -162,7 +169,7 @@ export class QuotationService {
     if (job.status === 'QUOTATION_REQUESTED') {
       const receivedCount = await this.repo.countReceivedForJob(quotation.jobId);
       if (receivedCount === 1) {
-        await this.transitionJob(quotation.jobId, job.status, job.version, 'QUOTATION_RECEIVED', userId);
+        await this.workflow.transitionInTx(job, 'QUOTATION_RECEIVED', userId);
       }
     }
 
@@ -217,7 +224,7 @@ export class QuotationService {
       where: { id: quotation.jobId },
       data: { selectedQuotationId: id },
     });
-    await this.transitionJob(quotation.jobId, job.status, job.version, 'QUOTATION_SELECTED', userId);
+    await this.workflow.transitionInTx(job, 'QUOTATION_SELECTED', userId);
 
     await this.audit.log({
       action: 'QUOTATION_SELECTED',
@@ -229,6 +236,44 @@ export class QuotationService {
 
     const updated = await this.repo.findById(id);
     return toQuotationResponse(updated!);
+  }
+
+  @Transactional()
+  async delete(id: string): Promise<void> {
+    const quotation = await this.repo.findById(id);
+    if (!quotation) throw new BusinessException('QUOTATION_NOT_FOUND', 'Quotation not found', 404);
+
+    await this.assertJobAccess(quotation.jobId);
+    const job = await this.getJobOrThrow(quotation.jobId);
+
+    if (quotation.status === 'SELECTED' || job.selectedQuotationId === id) {
+      throw new BusinessException('QUOTATION_CANNOT_DELETE_SELECTED', 'ไม่สามารถลบใบเสนอราคาที่ถูกเลือกแล้วได้', 400);
+    }
+
+    const proposalCount = await this.txHost.tx.proposal.count({ where: { quotationId: id } });
+    if (proposalCount > 0) {
+      throw new BusinessException('QUOTATION_REFERENCED_BY_PROPOSAL', 'ไม่สามารถลบใบเสนอราคาที่ถูกนำไปสร้างใบเสนอแล้วได้', 400);
+    }
+
+    const bindingCount = await this.txHost.tx.binding.count({ where: { quotationId: id } });
+    if (bindingCount > 0) {
+      throw new BusinessException('QUOTATION_REFERENCED_BY_BINDING', 'ไม่สามารถลบใบเสนอราคาที่มีการยืนยันการรับประกันแล้วได้', 400);
+    }
+
+    const policyCount = await this.txHost.tx.policy.count({ where: { quotationId: id } });
+    if (policyCount > 0) {
+      throw new BusinessException('QUOTATION_REFERENCED_BY_POLICY', 'ไม่สามารถลบใบเสนอราคาที่มีการออกกรมธรรม์แล้วได้', 400);
+    }
+
+    await this.txHost.tx.quotationItem.deleteMany({ where: { quotationId: id } });
+    await this.repo.delete(id);
+
+    await this.audit.log({
+      action: 'DELETE_QUOTATION',
+      entityType: 'QUOTATION',
+      entityId: id,
+      jobId: quotation.jobId,
+    });
   }
 
   async comparison(jobId: string): Promise<QuotationComparisonResponse> {
@@ -249,6 +294,17 @@ export class QuotationService {
       }
     }
 
+    let minAmount: (typeof receivedOrSelected)[number]['totalAmount'] | null = null;
+    let minQuotationId: string | null = null;
+    if (receivedOrSelected.length > 1) {
+      for (const q of receivedOrSelected) {
+        if (!minAmount || q.totalAmount.lt(minAmount)) {
+          minAmount = q.totalAmount;
+          minQuotationId = q.id;
+        }
+      }
+    }
+
     const companies = receivedOrSelected.map((q) => ({
       quotationId: q.id,
       quotationNo: q.quotationNo,
@@ -260,6 +316,7 @@ export class QuotationService {
       netPremium: q.netPremium.toFixed(2),
       stampDuty: q.stampDuty.toFixed(2),
       tax: q.tax.toFixed(2),
+      isLowest: q.id === minQuotationId,
     }));
 
     const coverages = allCoverageNames.map((coverageName) => ({
@@ -292,18 +349,5 @@ export class QuotationService {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
     return job;
-  }
-
-  private async transitionJob(jobId: string, fromStatus: string, version: number, toStatus: JobStatus, userId: string) {
-    const { count } = await this.txHost.tx.job.updateMany({
-      where: { id: jobId, version },
-      data: { status: toStatus, version: { increment: 1 }, updatedById: userId },
-    });
-    if (count === 0) {
-      throw new BusinessException('CONCURRENT_MODIFICATION', 'Job was modified by another user', 409);
-    }
-    await this.txHost.tx.jobStatusHistory.create({
-      data: { jobId, fromStatus: fromStatus as JobStatus, toStatus, changedById: userId },
-    });
   }
 }

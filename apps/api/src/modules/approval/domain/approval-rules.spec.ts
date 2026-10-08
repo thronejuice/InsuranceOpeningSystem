@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import { canDecideApproval, evaluateApprovalRules, isSelfDecisionBlocked, type ApprovalRuleInput } from './approval-rules.js';
+import { canApproveType, canDecideApproval, evaluateApprovalRules, isSelfDecisionBlocked, type ApprovalRuleInput } from './approval-rules.js';
 
 // Mirrors seed-data.ts APPROVAL_RULES (3 canonical rules)
 const RULES: ApprovalRuleInput[] = [
@@ -114,5 +113,32 @@ describe('isSelfDecisionBlocked', () => {
 
   it('never blocks a different user', () => {
     expect(isSelfDecisionBlocked('u1', { userId: 'u2', permissions: [] })).toBe(false);
+  });
+});
+
+describe('canApproveType', () => {
+  it('allows SUPERVISOR, MANAGER, ADMIN to approve SUPERVISOR level', () => {
+    expect(canApproveType('SUPERVISOR', ['SUPERVISOR'])).toBe(true);
+    expect(canApproveType('SUPERVISOR', ['MANAGER'])).toBe(true);
+    expect(canApproveType('SUPERVISOR', ['ADMIN'])).toBe(true);
+    expect(canApproveType('SUPERVISOR', ['AGENT'])).toBe(false);
+  });
+
+  it('blocks SUPERVISOR from approving MANAGER level, allows MANAGER and ADMIN', () => {
+    expect(canApproveType('MANAGER', ['SUPERVISOR'])).toBe(false);
+    expect(canApproveType('MANAGER', ['MANAGER'])).toBe(true);
+    expect(canApproveType('MANAGER', ['ADMIN'])).toBe(true);
+  });
+
+  it('only allows ADMIN to approve ADMIN level', () => {
+    expect(canApproveType('ADMIN', ['SUPERVISOR'])).toBe(false);
+    expect(canApproveType('ADMIN', ['MANAGER'])).toBe(false);
+    expect(canApproveType('ADMIN', ['ADMIN'])).toBe(true);
+  });
+
+  it('allows any user if approvalType is null, undefined, or unrecognized', () => {
+    expect(canApproveType(null, ['AGENT'])).toBe(true);
+    expect(canApproveType(undefined, [])).toBe(true);
+    expect(canApproveType('UNKNOWN', ['AGENT'])).toBe(true);
   });
 });

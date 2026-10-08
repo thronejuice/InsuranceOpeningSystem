@@ -6,6 +6,7 @@ const TABS = [
   { label: 'ผลิตภัณฑ์', route: 'products' },
   { label: 'บริษัทประกันภัย', route: 'companies' },
   { label: 'Risk Fields', route: 'risk-fields' },
+  { label: 'ข้อมูลบริษัท (หัวกระดาษ)', route: 'company-profile' },
 ];
 
 @Component({

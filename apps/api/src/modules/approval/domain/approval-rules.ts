@@ -60,6 +60,32 @@ export function evaluateApprovalRules(
 export interface ApprovalViewer {
   userId?: string;
   permissions: string[];
+  roles?: string[];
+}
+
+export function getRolePriority(roleCode: string): number {
+  if (ROLE_PRIORITY[roleCode]) return ROLE_PRIORITY[roleCode];
+  const upper = roleCode.toUpperCase();
+  if (upper.includes('ADMIN')) return ROLE_PRIORITY.ADMIN;
+  if (upper.includes('MANAGER') || upper.endsWith('MGR')) return ROLE_PRIORITY.MANAGER;
+  if (upper.includes('SUPERVISOR') || upper.endsWith('SUP')) return ROLE_PRIORITY.SUPERVISOR;
+  return 0;
+}
+
+/**
+ * Whether the user holds sufficient role priority to decide (approve or reject)
+ * a request of type `approvalType`.
+ * Priority order: SUPERVISOR (1) < MANAGER (2) < ADMIN (3).
+ * If approvalType is omitted or not recognized, any user with approval permission may decide.
+ */
+export function canApproveType(
+  approvalType: string | null | undefined,
+  userRoles: string[],
+): boolean {
+  if (!approvalType || !(approvalType in ROLE_PRIORITY)) return true;
+  const required = ROLE_PRIORITY[approvalType] ?? 0;
+  const userMax = Math.max(0, ...userRoles.map(getRolePriority));
+  return userMax >= required;
 }
 
 /**
@@ -72,16 +98,17 @@ export function isSelfDecisionBlocked(requestedById: string | null, viewer: Appr
 
 /**
  * Whether the viewer may approve/reject: the request is still PENDING, the viewer holds
- * `approval.approve`, and maker-checker does not block them.
+ * `approval.approve`, maker-checker does not block them, and viewer role is >= approvalType.
  */
 export function canDecideApproval(
-  approval: { status: string; requestedById: string | null },
+  approval: { status: string; requestedById: string | null; approvalType?: string | null },
   viewer: ApprovalViewer,
 ): boolean {
   return (
     approval.status === 'PENDING' &&
     viewer.permissions.includes('approval.approve') &&
     !!viewer.userId &&
-    !isSelfDecisionBlocked(approval.requestedById, viewer)
+    !isSelfDecisionBlocked(approval.requestedById, viewer) &&
+    canApproveType(approval.approvalType, viewer.roles ?? [])
   );
 }

@@ -46,6 +46,7 @@ const ENTITY_ROUTES: Record<string, string> = {
         @if (unreadCount() > 0) {
           <ui-button
             label="อ่านทั้งหมด"
+            icon="pi pi-check-circle"
             [text]="true"
             size="small"
             (onClick)="markAllRead()"

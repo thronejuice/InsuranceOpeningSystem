@@ -16,6 +16,7 @@ describe('autoCalc', () => {
   it('calculates VAT as (net + stampDuty) × 0.07 to 2dp', () => {
     const { stampDuty, tax } = autoCalc(new Decimal('10000'));
     // (10000 + 40) × 0.07 = 10040 × 0.07 = 702.80
+    expect(stampDuty.toString()).toBe('40');
     expect(tax.toFixed(2)).toBe('702.80');
   });
 });

@@ -3,7 +3,6 @@ import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
-import type { JobStatus } from '../../generated/prisma/enums.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -15,6 +14,9 @@ import type { RejectProposalDto } from './dto/reject-proposal.dto.js';
 import { toProposalResponse, type ProposalResponse } from './dto/proposal.response.js';
 import { Decimal } from 'decimal.js';
 
+import { JobWorkflowService } from '../job/job-workflow.service.js';
+import { ProposalDocumentService } from './proposal-document.service.js';
+
 @Injectable()
 export class ProposalService {
   constructor(
@@ -23,10 +25,16 @@ export class ProposalService {
     private readonly audit: AuditService,
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly workflow: JobWorkflowService,
+    private readonly document: ProposalDocumentService,
   ) {}
 
   private viewer() {
-    return { userId: this.cls.get('userId'), permissions: this.cls.get('permissions') ?? [] };
+    return {
+      userId: this.cls.get('userId'),
+      permissions: this.cls.get('permissions') ?? [],
+      roles: this.cls.get('roles') ?? [],
+    };
   }
 
   async listByJob(jobId: string): Promise<ProposalResponse[]> {
@@ -72,8 +80,13 @@ export class ProposalService {
     return toProposalResponse(proposal, this.viewer());
   }
 
-  @Transactional()
   async send(id: string): Promise<ProposalResponse> {
+    const pdf = await this.document.renderFinal(id);
+    return this.sendWithPdf(id, pdf);
+  }
+
+  @Transactional()
+  private async sendWithPdf(id: string, pdf: Buffer): Promise<ProposalResponse> {
     const userId = this.cls.get('userId')!;
     const proposal = await this.repo.findById(id);
     if (!proposal) throw new BusinessException('PROPOSAL_NOT_FOUND', 'Proposal not found', 404);
@@ -96,9 +109,12 @@ export class ProposalService {
     });
 
     // Transition job QUOTATION_SELECTED → PROPOSAL_SENT → WAITING_CUSTOMER (Q3: two hops, same tx)
-    await this.transitionJob(proposal.jobId, job.status, job.version, 'PROPOSAL_SENT', userId);
+    await this.workflow.transitionInTx(job, 'PROPOSAL_SENT', userId);
     const updatedJob = await this.txHost.tx.job.findFirst({ where: { id: proposal.jobId } });
-    await this.transitionJob(proposal.jobId, 'PROPOSAL_SENT', updatedJob!.version, 'WAITING_CUSTOMER', userId);
+    await this.workflow.transitionInTx(updatedJob!, 'WAITING_CUSTOMER', userId);
+
+    // Snapshot of exactly what the customer receives (spec §12.1 document type PROPOSAL)
+    await this.document.storeFinal(id, pdf);
 
     await this.audit.log({ action: 'SEND_PROPOSAL', entityType: 'PROPOSAL', entityId: id, jobId: proposal.jobId });
 
@@ -126,7 +142,7 @@ export class ProposalService {
       }
     }
 
-    const updated = await this.repo.update(id, {
+    await this.repo.update(id, {
       status: 'ACCEPTED',
       acceptedAt: new Date(),
       version: { increment: 1 },
@@ -148,10 +164,10 @@ export class ProposalService {
           requestedBy: userId ? { connect: { id: userId } } : undefined,
         },
       });
-      await this.transitionJob(proposal.jobId, job.status, job.version, 'WAITING_APPROVAL', userId);
+      await this.workflow.transitionInTx(job, 'WAITING_APPROVAL', userId);
     } else {
       // No approval needed → CUSTOMER_ACCEPTED
-      await this.transitionJob(proposal.jobId, job.status, job.version, 'CUSTOMER_ACCEPTED', userId);
+      await this.workflow.transitionInTx(job, 'CUSTOMER_ACCEPTED', userId);
     }
 
     await this.audit.log({ action: 'ACCEPT_PROPOSAL', entityType: 'PROPOSAL', entityId: id, jobId: proposal.jobId });
@@ -182,7 +198,7 @@ export class ProposalService {
     });
 
     const job = await this.getJobOrThrow(proposal.jobId);
-    await this.transitionJob(proposal.jobId, job.status, job.version, 'CUSTOMER_REJECTED', userId);
+    await this.workflow.transitionInTx(job, 'CUSTOMER_REJECTED', userId);
 
     await this.audit.log({
       action: 'REJECT_PROPOSAL',
@@ -224,18 +240,5 @@ export class ProposalService {
     if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
-  }
-
-  private async transitionJob(jobId: string, fromStatus: string, version: number, toStatus: JobStatus, userId: string) {
-    const { count } = await this.txHost.tx.job.updateMany({
-      where: { id: jobId, version },
-      data: { status: toStatus, version: { increment: 1 }, updatedById: userId },
-    });
-    if (count === 0) {
-      throw new BusinessException('CONCURRENT_MODIFICATION', 'Job was modified by another user', 409);
-    }
-    await this.txHost.tx.jobStatusHistory.create({
-      data: { jobId, fromStatus: fromStatus as JobStatus, toStatus, changedById: userId },
-    });
   }
 }

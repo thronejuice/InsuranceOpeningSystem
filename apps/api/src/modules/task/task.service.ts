@@ -11,6 +11,7 @@ import type { CreateTaskDto } from './dto/create-task.dto.js';
 import type { TaskQueryDto } from './dto/task-query.dto.js';
 import type { TaskListResponse, TaskResponse } from './dto/task.response.js';
 import type { Task, Prisma } from '../../generated/prisma/client.js';
+import type { TaskType } from '../../generated/prisma/enums.js';
 
 @Injectable()
 export class TaskService {
@@ -124,7 +125,6 @@ export class TaskService {
     if (task.status === 'CANCELLED') throw new BusinessException('TASK_ALREADY_CANCELLED', 'Task already cancelled', 409);
     if (task.status === 'DONE') throw new BusinessException('TASK_DONE', 'Cannot cancel a completed task', 409);
 
-    const userId = this.cls.get('userId')!;
     const updated = await this.repo.update(id, {
       status: 'CANCELLED',
     });
@@ -138,19 +138,18 @@ export class TaskService {
       newValue: { status: 'CANCELLED' },
     });
 
-    void userId;
     return this.toResponse(updated);
   }
 
   @Transactional()
-  async createAutoTask(jobId: string, taskType: string, subject: string, assignedTo?: string): Promise<void> {
+  async createAutoTask(jobId: string, taskType: TaskType, subject: string, assignedTo?: string): Promise<void> {
     const userId = this.cls.get('userId');
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 3);
 
     await this.repo.create({
       job: { connect: { id: jobId } },
-      taskType: taskType as any,
+      taskType,
       subject,
       dueDate,
       priority: 'MEDIUM',

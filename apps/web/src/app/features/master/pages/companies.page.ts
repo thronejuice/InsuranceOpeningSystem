@@ -56,6 +56,7 @@ import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialo
     }
 
     <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขบริษัทประกันภัย' : 'เพิ่มบริษัทประกันภัย'"
+      [icon]="editId() ? 'pi pi-building' : 'pi pi-plus-circle'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="form-grid">
@@ -91,8 +92,8 @@ import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialo
           <input uiInput id="co-addr" formControlName="address" class="w-full" />
         </div>
         <div class="dialog-actions">
-          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" icon="pi pi-check" type="submit" [loading]="saving()" />
         </div>
       </form>
     </ui-dialog>

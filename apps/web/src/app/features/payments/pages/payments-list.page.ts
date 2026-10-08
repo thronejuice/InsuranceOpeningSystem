@@ -3,6 +3,7 @@ import { AppPageHeaderComponent } from '../../../shared/components/app-page-head
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { ExportService } from '../../../core/api/export.service';
 import { JobsApi, type PaymentRecord } from '../../jobs/data/jobs.api';
 import { UiButton } from '../../../shared/ui';
@@ -11,7 +12,7 @@ import { UiButton } from '../../../shared/ui';
   selector: 'app-payments-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, UiButton],
+  imports: [AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe, UiButton],
   template: `
     <app-page-header title="การชำระเงิน" subtitle="รายการชำระเงินทั้งหมด">
       <ui-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
@@ -41,7 +42,7 @@ import { UiButton } from '../../../shared/ui';
               <tr>
                 <td class="mono">{{ p.paymentNo }}</td>
                 <td>{{ p.paymentDate | thDate }}</td>
-                <td style="text-align:right">{{ p.amount }}</td>
+                <td style="text-align:right">{{ p.amount | money }}</td>
                 <td>{{ methodLabel(p.paymentMethod) }}</td>
                 <td><app-status-badge [status]="p.status" /></td>
                 <td>{{ p.referenceNo ?? '-' }}</td>

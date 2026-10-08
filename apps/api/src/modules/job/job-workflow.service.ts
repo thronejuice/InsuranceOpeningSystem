@@ -64,8 +64,38 @@ export class JobWorkflowService {
     }
 
     const userId = this.cls.get('userId')!;
+    await this.transitionInTx(job, to, userId, opts);
+
+    if (to === 'QUOTATION_REQUESTED') {
+      await this.taskSvc.createAutoTask(job.id, 'FOLLOW_UP_QUOTATION', 'ติดตามใบเสนอราคา', job.agentId);
+    } else if (to === 'PROPOSAL_SENT') {
+      await this.taskSvc.createAutoTask(job.id, 'FOLLOW_UP_CUSTOMER', 'ติดตามผลการนำเสนอลูกค้า', job.agentId);
+    }
+
+    const updated = await this.repo.findById(jobId);
+    const permissions = this.cls.get('permissions') ?? [];
+    return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
+  }
+
+  /**
+   * Internal transition executed within an existing transaction by other domain services
+   * (Quotation, Proposal, Approval, Policy, Renewal).
+   * Validates state machine rules via canTransition(), performs optimistic locking on Job,
+   * creates JobStatusHistory, and writes an audit log.
+   */
+  async transitionInTx(
+    job: { id: string; status: string; version: number },
+    to: JobStatus,
+    userId: string,
+    opts: { reason?: string } = {},
+  ): Promise<void> {
+    const from = job.status as JobStatus;
+    if (!canTransition(from, to)) {
+      throw new BusinessException('JOB_INVALID_TRANSITION', `Cannot transition from ${from} to ${to}`, 409);
+    }
+
     const { count } = await this.txHost.tx.job.updateMany({
-      where: { id: job.id, version: job.version, status: job.status },
+      where: { id: job.id, version: job.version, status: job.status as JobStatus },
       data: { status: to, version: { increment: 1 }, updatedById: userId },
     });
 
@@ -92,16 +122,6 @@ export class JobWorkflowService {
       newValue: { status: to },
       description: opts.reason,
     });
-
-    if (to === 'QUOTATION_REQUESTED') {
-      await this.taskSvc.createAutoTask(job.id, 'FOLLOW_UP_QUOTATION', 'ติดตามใบเสนอราคา', job.agentId);
-    } else if (to === 'PROPOSAL_SENT') {
-      await this.taskSvc.createAutoTask(job.id, 'FOLLOW_UP_CUSTOMER', 'ติดตามผลการนำเสนอลูกค้า', job.agentId);
-    }
-
-    const updated = await this.repo.findById(jobId);
-    const permissions = this.cls.get('permissions') ?? [];
-    return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
   }
 
   async getActivities(jobId: string) {

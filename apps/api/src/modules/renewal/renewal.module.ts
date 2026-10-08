@@ -7,8 +7,11 @@ import { RenewalRepository } from './renewal.repository.js';
 import { RenewalProcessor } from './renewal.processor.js';
 import { RENEWAL_DAILY_JOB, RENEWAL_QUEUE } from './renewal.processor.js';
 
+import { JobModule } from '../job/job.module.js';
+
 @Module({
   imports: [
+    JobModule,
     BullModule.registerQueue({ name: RENEWAL_QUEUE }),
   ],
   controllers: [RenewalController],

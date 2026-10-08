@@ -15,6 +15,7 @@ import { AppPageHeaderComponent } from '../../../shared/components/app-page-head
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppStatusBadgeComponent } from '../../../shared/components/app-status-badge/app-status-badge.component';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
+import { MoneyPipe } from '../../../shared/pipes/money.pipe';
 import { JobsApi, type Quotation } from '../../jobs/data/jobs.api';
 import { MasterApi, type InsuranceCompany } from '../../master/data/master.api';
 import { UiButton, UiInput, UiSelect } from '../../../shared/ui';
@@ -33,7 +34,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
   selector: 'app-quotation-list-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, UiButton, UiSelect, UiInput, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, SlicePipe],
+  imports: [RouterLink, FormsModule, UiButton, UiSelect, UiInput, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, SlicePipe, MoneyPipe],
   template: `
     <app-page-header title="ใบเสนอราคาทั้งหมด" subtitle="รายการใบเสนอราคาทุกงาน">
       <ui-button label="Export Excel" icon="pi pi-file-excel" severity="secondary" [outlined]="true" size="small" (onClick)="export()" />
@@ -65,7 +66,7 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
         <span>ถึง</span>
         <input uiInput type="date" [(ngModel)]="filterValidTo" style="width:150px" (ngModelChange)="debouncedLoad()" />
       </div>
-      <ui-button label="ล้างตัวกรอง" severity="secondary" [outlined]="true" size="small" (onClick)="clearFilters()" />
+      <ui-button label="ล้างตัวกรอง" icon="pi pi-times" severity="secondary" [outlined]="true" size="small" (onClick)="clearFilters()" />
     </div>
 
     @if (state() === 'loading') {
@@ -101,8 +102,8 @@ const STATUS_OPTIONS: { label: string; value: string }[] = [
               </td>
               <td>{{ q.insuranceCompanyName }}</td>
               <td><app-status-badge [status]="q.status" /></td>
-              <td style="text-align:right">{{ q.netPremium }}</td>
-              <td style="text-align:right">{{ q.totalAmount }}</td>
+              <td style="text-align:right">{{ q.netPremium | money }}</td>
+              <td style="text-align:right">{{ q.totalAmount | money }}</td>
               <td>{{ q.validUntil ? (q.validUntil | thDate) : '-' }}</td>
               <td>{{ q.createdAt | thDate }}</td>
             </tr>

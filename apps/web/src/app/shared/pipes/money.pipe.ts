@@ -1,16 +1,21 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
-/** แสดงเงิน (รับ string จาก API) โดยไม่แปลงเป็น float */
+/**
+ * แสดงจำนวนเงิน / วงเงิน พร้อม comma (หลักพัน) และทศนิยม 2 ตำแหน่ง (#,##0.00)
+ * ตัวอย่าง:
+ *   1234.5 -> "1,234.50"
+ *   "500000" -> "500,000.00"
+ *   null / undefined / "" / "-" -> "-" (หรือตาม emptyPlaceholder)
+ */
 @Pipe({ name: 'money', standalone: true })
 export class MoneyPipe implements PipeTransform {
-  transform(value: string | null | undefined, currency = 'THB'): string {
-    if (value == null || value === '') return '-';
-    // ใช้ Intl.NumberFormat กับ string จำนวน (parse เป็น number เฉพาะตอนแสดงผล ไม่ใช้คำนวณ)
-    const num = Number(value);
-    if (isNaN(num)) return value;
+  transform(value: string | number | null | undefined, emptyPlaceholder = '-'): string {
+    if (value == null || value === '') return emptyPlaceholder;
+    const cleanStr = String(value).replace(/,/g, '').trim();
+    if (cleanStr === '' || cleanStr === '-') return emptyPlaceholder;
+    const num = Number(cleanStr);
+    if (isNaN(num)) return String(value);
     return new Intl.NumberFormat('th-TH', {
-      style: 'currency',
-      currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(num);

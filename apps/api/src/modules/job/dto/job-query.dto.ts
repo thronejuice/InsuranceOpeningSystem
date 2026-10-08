@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { JobPriority, JobStatus } from '../../../generated/prisma/enums.js';
 import { PaginationQueryDto } from '../../../common/http/pagination.dto.js';
 

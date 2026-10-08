@@ -70,6 +70,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 
     <!-- Create / Edit User Dialog -->
     <ui-dialog [(visible)]="userDialogVisible" [header]="editUserId() ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน'"
+      [icon]="editUserId() ? 'pi pi-user-edit' : 'pi pi-user-plus'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="userForm" (ngSubmit)="saveUser()" class="dialog-form">
         @if (!editUserId()) {
@@ -108,14 +109,14 @@ import { MatTooltip } from '@angular/material/tooltip';
           </div>
         }
         <div class="dialog-actions">
-          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="userDialogVisible=false" />
-          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="userDialogVisible=false" />
+          <ui-button label="บันทึก" icon="pi pi-check" type="submit" [loading]="saving()" />
         </div>
       </form>
     </ui-dialog>
 
     <!-- Reset UiPassword Dialog -->
-    <ui-dialog [(visible)]="resetPwDialogVisible" header="รีเซ็ตรหัสผ่าน"
+    <ui-dialog [(visible)]="resetPwDialogVisible" header="รีเซ็ตรหัสผ่าน" icon="pi pi-key"
       [modal]="true" [style]="{width:'400px'}">
       <form [formGroup]="resetPwForm" (ngSubmit)="saveResetPw()" class="dialog-form">
         <div class="field">
@@ -127,8 +128,8 @@ import { MatTooltip } from '@angular/material/tooltip';
           <app-field-error [control]="resetPwForm.get('password')" />
         </div>
         <div class="dialog-actions">
-          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="resetPwDialogVisible=false" />
-          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="resetPwDialogVisible=false" />
+          <ui-button label="บันทึก" icon="pi pi-check" type="submit" [loading]="saving()" />
         </div>
       </form>
     </ui-dialog>

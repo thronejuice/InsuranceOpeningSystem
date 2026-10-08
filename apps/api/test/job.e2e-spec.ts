@@ -108,7 +108,7 @@ describe('Job (e2e)', () => {
     const agentB = await prisma.user.create({
       data: { username: `${PREFIX}agent_b`, email: `${PREFIX}b@test.com`, fullName: 'Agent B', passwordHash, roles: { create: [{ roleId: agentRole.id }] } },
     });
-    const admin = await prisma.user.create({
+    await prisma.user.create({
       data: { username: `${PREFIX}admin`, email: `${PREFIX}admin@test.com`, fullName: 'Admin', passwordHash, roles: { create: [{ roleId: adminRole.id }] } },
     });
 
@@ -177,6 +177,14 @@ describe('Job (e2e)', () => {
         .set('Authorization', `Bearer ${agentAToken}`)
         .send({ customerId });
       expect(res.status).toBe(422);
+    });
+
+    it('Agent A cannot create a job with Agent B id → 403', async () => {
+      const res = await http()
+        .post('/api/jobs')
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .send({ customerId, insuranceTypeId, productId, agentId: agentBId, effectiveDate: '2026-11-01' });
+      expect(res.status).toBe(403);
     });
 
     it('401 without token', async () => {
@@ -325,6 +333,15 @@ describe('Job (e2e)', () => {
         .send({ values: { year: 'not-a-number', brand: 'Toyota', model: 'Camry', license_plate: 'กก-1234', vehicle_type: 'รถเก๋ง', usage_type: 'ส่วนบุคคล', sum_insured: '500000' } });
       expect(res.status).toBe(422);
       expect(res.body.errors).toHaveProperty('year');
+    });
+
+    it('PUT with invalid SELECT option → 422 per field', async () => {
+      const res = await http()
+        .put(`/api/jobs/${jobId}/risk`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .send({ values: { year: '2022', brand: 'Toyota', model: 'Camry', license_plate: 'กก-1234', vehicle_type: 'INVALID_VEHICLE_TYPE' } });
+      expect(res.status).toBe(422);
+      expect(res.body.errors).toHaveProperty('vehicle_type');
     });
 
     it('Agent B cannot GET risk for Agent A job → 403', async () => {

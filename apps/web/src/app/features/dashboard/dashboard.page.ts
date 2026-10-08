@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal, computed } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { MoneyPipe } from '../../shared/pipes/money.pipe';
 import { Router, RouterLink } from '@angular/router';
 import { AuthStore } from '../../core/auth/auth.store';
 import { AppStateComponent } from '../../shared/components/app-state/app-state.component';
@@ -20,7 +20,7 @@ const ACTIVE_STATUSES = ['DRAFT', 'OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQU
   selector: 'app-dashboard-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppStateComponent, RouterLink, DecimalPipe],
+  imports: [AppStateComponent, RouterLink, MoneyPipe],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -93,11 +93,11 @@ const ACTIVE_STATUSES = ['DRAFT', 'OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQU
               </a>
               <div class="stat-card">
                 <div class="stat-label">เบี้ยรวม (฿)</div>
-                <div class="stat-value stat-money">{{ m.totalPremium | number:'1.2-2' }}</div>
+                <div class="stat-value stat-money">{{ m.totalPremium | money }}</div>
               </div>
               <div class="stat-card accent-yellow">
                 <div class="stat-label">คอมมิชชันรวม (฿)</div>
-                <div class="stat-value stat-money">{{ m.totalCommission | number:'1.2-2' }}</div>
+                <div class="stat-value stat-money">{{ m.totalCommission | money }}</div>
               </div>
               <div class="stat-card accent-purple">
                 <div class="stat-label">Conversion (%)</div>
@@ -153,8 +153,8 @@ const ACTIVE_STATUSES = ['DRAFT', 'OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQU
                 <div class="metric-row"><span class="metric-label">Quotation Conversion</span><strong>{{ f.metrics.quotationConversion }}%</strong></div>
                 <div class="metric-row"><span class="metric-label">Proposal Conversion</span><strong>{{ f.metrics.proposalConversion }}%</strong></div>
                 <div class="metric-row"><span class="metric-label">Policy Conversion</span><strong>{{ f.metrics.policyConversion }}%</strong></div>
-                <div class="metric-row"><span class="metric-label">เบี้ยรวม</span><strong>฿{{ f.metrics.totalPremium | number:'1.2-2' }}</strong></div>
-                <div class="metric-row"><span class="metric-label">เบี้ยเฉลี่ย</span><strong>฿{{ f.metrics.averagePremium | number:'1.2-2' }}</strong></div>
+                <div class="metric-row"><span class="metric-label">เบี้ยรวม</span><strong>฿{{ f.metrics.totalPremium | money }}</strong></div>
+                <div class="metric-row"><span class="metric-label">เบี้ยเฉลี่ย</span><strong>฿{{ f.metrics.averagePremium | money }}</strong></div>
               </div>
             </div>
           </section>

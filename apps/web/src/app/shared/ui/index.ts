@@ -3,3 +3,4 @@ export * from './ui-form';
 export * from './ui-overlay';
 export * from './ui-table';
 export * from './ui-tabs';
+export * from '../pipes/money.pipe';

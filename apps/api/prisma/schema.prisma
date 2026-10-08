@@ -444,6 +444,34 @@ model ApprovalRule {
   @@map("approval_rules")
 }
 
+// ─── Company profile (letterhead for customer-facing documents) ─────────────
+
+/// Singleton row (id = "default") — broker/agent letterhead printed on the proposal PDF.
+model CompanyProfile {
+  id              String   @id @default("default")
+  nameTh          String   @map("name_th")
+  nameEn          String?  @map("name_en")
+  addressTh       String?  @map("address_th")
+  addressEn       String?  @map("address_en")
+  taxId           String?  @map("tax_id")
+  brokerLicenseNo String?  @map("broker_license_no")
+  phone           String?
+  email           String?
+  website         String?
+  /// Storage path of the uploaded logo (PNG/JPG)
+  logoPath        String?  @map("logo_path")
+  logoMimeType    String?  @map("logo_mime_type")
+  /// Standard terms printed on the proposal, one per line
+  proposalTerms   String?  @map("proposal_terms")
+  /// [{ bankName, branch, accountName, accountNo }]
+  bankAccounts    Json     @default("[]") @map("bank_accounts")
+  updatedById     String?  @map("updated_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("company_profile")
+}
+
 // ─── Running number (DESIGN §5.2) ──────────────────────────────────────────
 
 model DocumentSequence {

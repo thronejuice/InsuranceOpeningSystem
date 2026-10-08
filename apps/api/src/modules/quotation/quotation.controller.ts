@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { QuotationService } from './quotation.service.js';
@@ -56,5 +56,12 @@ export class QuotationController {
     @Body() dto: SelectQuotationDto,
   ) {
     return this.service.select(id, dto);
+  }
+
+  @Delete('quotations/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions('quotation.update')
+  delete(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.delete(id);
   }
 }

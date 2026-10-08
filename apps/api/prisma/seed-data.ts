@@ -61,13 +61,16 @@ export type PermissionCode = keyof typeof PERMISSIONS;
 
 const ALL = Object.keys(PERMISSIONS) as PermissionCode[];
 const VIEW = ALL.filter((code) => code.endsWith('.view'));
+const ADMIN_PERMISSIONS = process.env.NODE_ENV === 'production'
+  ? ALL.filter((code) => code !== 'approval.approve_own')
+  : ALL;
 
 /**
  * Default role → permission mapping. spec §4 lists roles but not their permissions,
  * so this is an assumption tracked as PLAN.md Open Question Q9.
  */
 export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
-  ADMIN: ALL,
+  ADMIN: ADMIN_PERMISSIONS,
   AGENT: [
     ...VIEW.filter((code) => code !== 'report.view'),
     'customer.create', 'customer.update', 'customer.delete',

@@ -19,8 +19,54 @@ describe('Approval API (e2e)', () => {
 
   let approvalSupId: string;  // SUPERVISOR-type approval
   let approvalMgrId: string;  // MANAGER-type approval
+  let customerId: string;
+  let insuranceTypeId: string;
+  let productId: string;
+  let companyId: string;
+  let passwordHash: string;
 
   const http = () => request(app.getHttpServer());
+
+  async function prepareApproval(grossPremium: string): Promise<{ approvalId: string; jobId: string }> {
+    const jobRes = await http()
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ customerId, insuranceTypeId, productId, agentId, effectiveDate: '2027-01-01' });
+    const jId = jobRes.body.data.id;
+
+    const quoRes = await http()
+      .post(`/api/jobs/${jId}/quotations`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ insuranceCompanyId: companyId, grossPremium, validUntil: '2027-12-31' });
+    const quoId = quoRes.body.data.id;
+
+    const recRes = await http()
+      .put(`/api/quotations/${quoId}`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ grossPremium });
+
+    await http()
+      .post(`/api/quotations/${quoId}/select`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ reason: 'เลือก', version: recRes.body.data.version });
+
+    const propRes = await http()
+      .post(`/api/jobs/${jId}/proposal`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ validUntil: '2027-06-30' });
+    const propId = propRes.body.data.id;
+
+    await http().post(`/api/proposals/${propId}/send`).set('Authorization', `Bearer ${agentToken}`);
+
+    const acceptRes = await http()
+      .post(`/api/proposals/${propId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`);
+
+    return {
+      approvalId: acceptRes.body.data.approvals[0].id as string,
+      jobId: jId,
+    };
+  }
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -42,6 +88,7 @@ describe('Approval API (e2e)', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -49,7 +96,7 @@ describe('Approval API (e2e)', () => {
     await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
     await prisma.role.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
 
-    const passwordHash = await hash(PASSWORD);
+    passwordHash = await hash(PASSWORD);
 
     const upsertPerm = (code: string) =>
       prisma.permission.upsert({ where: { code }, update: {}, create: { code, description: code } });
@@ -59,6 +106,7 @@ describe('Approval API (e2e)', () => {
       upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
       upsertPerm('approval.approve'),
+      upsertPerm('approval.approve_own'),
     ]);
 
     // AGENT role — no approval.approve
@@ -126,55 +174,22 @@ describe('Approval API (e2e)', () => {
     managerToken = managerLogin.body.data.accessToken;
 
     const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    insuranceTypeId = iType!.id;
     const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
+    productId = product!.id;
     const company = await prisma.insuranceCompany.create({
       data: { code: `${PREFIX.toUpperCase()}CO`, name: 'E2E Appr Company' },
     });
+    companyId = company.id;
     const customer = await prisma.customer.create({
       data: { customerCode: `${PREFIX.toUpperCase()}C001`, customerType: 'INDIVIDUAL', firstName: 'Appr', lastName: 'Test' },
     });
+    customerId = customer.id;
 
-    // Helper: create job → quotation → record → select → proposal → send → accept → get approval id
-    async function prepareApproval(grossPremium: string): Promise<string> {
-      const jobRes = await http()
-        .post('/api/jobs')
-        .set('Authorization', `Bearer ${agentToken}`)
-        .send({ customerId: customer.id, insuranceTypeId: iType!.id, productId: product!.id, agentId, effectiveDate: '2027-01-01' });
-      const jId = jobRes.body.data.id;
-
-      const quoRes = await http()
-        .post(`/api/jobs/${jId}/quotations`)
-        .set('Authorization', `Bearer ${agentToken}`)
-        .send({ insuranceCompanyId: company.id, grossPremium, validUntil: '2027-12-31' });
-      const quoId = quoRes.body.data.id;
-
-      const recRes = await http()
-        .put(`/api/quotations/${quoId}`)
-        .set('Authorization', `Bearer ${agentToken}`)
-        .send({ grossPremium });
-
-      await http()
-        .post(`/api/quotations/${quoId}/select`)
-        .set('Authorization', `Bearer ${agentToken}`)
-        .send({ reason: 'เลือก', version: recRes.body.data.version });
-
-      const propRes = await http()
-        .post(`/api/jobs/${jId}/proposal`)
-        .set('Authorization', `Bearer ${agentToken}`)
-        .send({ validUntil: '2027-06-30' });
-      const propId = propRes.body.data.id;
-
-      await http().post(`/api/proposals/${propId}/send`).set('Authorization', `Bearer ${agentToken}`);
-
-      const acceptRes = await http()
-        .post(`/api/proposals/${propId}/accept`)
-        .set('Authorization', `Bearer ${agentToken}`);
-
-      return acceptRes.body.data.approvals[0].id as string;
-    }
-
-    approvalSupId = await prepareApproval('50000.00');   // SUPERVISOR-type
-    approvalMgrId = await prepareApproval('150000.00');  // MANAGER-type
+    const prepSup = await prepareApproval('50000.00');   // SUPERVISOR-type
+    approvalSupId = prepSup.approvalId;
+    const prepMgr = await prepareApproval('150000.00');  // MANAGER-type
+    approvalMgrId = prepMgr.approvalId;
   });
 
   afterAll(async () => { await app.close(); });
@@ -199,21 +214,92 @@ describe('Approval API (e2e)', () => {
     expect(ids).toContain(approvalMgrId);
   });
 
-  // ─── POST /approvals/:id/approve ──────────────────────────────────────────
+  it('canDecide flag in /api/approvals and proposals (requester = false, approver = true)', async () => {
+    const inbox = await http().get('/api/approvals?status=PENDING').set('Authorization', `Bearer ${managerToken}`);
+    const supItem = inbox.body.data.find((a: { id: string }) => a.id === approvalSupId);
+    expect(supItem.canDecide).toBe(true);
 
-  it('POST /approvals/:id/approve — AGENT → 403', async () => {
-    const res = await http()
-      .post(`/api/approvals/${approvalSupId}/approve`)
-      .set('Authorization', `Bearer ${agentToken}`)
-      .send({});
-    expect(res.status).toBe(403);
+    const appSup = await prisma.approval.findUnique({ where: { id: approvalSupId } });
+    const agentRes = await http().get(`/api/jobs/${appSup!.jobId}/proposals`).set('Authorization', `Bearer ${agentToken}`);
+    const agentAppr = agentRes.body.data[0].approvals.find((a: { id: string }) => a.id === approvalSupId);
+    expect(agentAppr.canDecide).toBe(false);
+
+    const mgrRes = await http().get(`/api/jobs/${appSup!.jobId}/proposals`).set('Authorization', `Bearer ${managerToken}`);
+    const mgrAppr = mgrRes.body.data[0].approvals.find((a: { id: string }) => a.id === approvalSupId);
+    expect(mgrAppr.canDecide).toBe(true);
   });
 
-  it('POST /approvals/:id/approve — MANAGER self-approve own request → 422', async () => {
-    // Create a fresh approval where manager is the requester
-    // Not easily testable without agent+manager being same user — skip self-approve for now
-    // as the e2e setup uses agent as requester and manager as approver
-    // This test verifies the happy path instead
+  it('allowedActions of MANAGER who is not the job owner contains "approve" when WAITING_APPROVAL', async () => {
+    const appSup = await prisma.approval.findUnique({ where: { id: approvalSupId } });
+    const res = await http().get(`/api/jobs/${appSup!.jobId}`).set('Authorization', `Bearer ${managerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.allowedActions).toContain('approve');
+  });
+
+  it('POST /approvals/:id/approve — self-approval without approval.approve_own → 422', async () => {
+    await prisma.approval.update({
+      where: { id: approvalSupId },
+      data: { requestedById: managerId },
+    });
+
+    const res = await http()
+      .post(`/api/approvals/${approvalSupId}/approve`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ reason: 'Self approve attempt' });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('APPROVAL_SELF_APPROVE');
+
+    // Restore requestedById to agentId
+    await prisma.approval.update({
+      where: { id: approvalSupId },
+      data: { requestedById: agentId },
+    });
+  });
+
+  it('POST /approvals/:id/approve — user WITH approval.approve_own can self-approve → 201', async () => {
+    const adminRole = await prisma.role.create({
+      data: {
+        code: `${PREFIX.toUpperCase()}ADMIN`,
+        name: 'E2E Appr Admin',
+        permissions: {
+          create: [
+            { permission: { connect: { code: 'job.view' } } },
+            { permission: { connect: { code: 'job.view_all' } } },
+            { permission: { connect: { code: 'approval.approve' } } },
+            { permission: { connect: { code: 'approval.approve_own' } } },
+          ],
+        },
+      },
+    });
+
+    const adminUser = await prisma.user.create({
+      data: {
+        username: `${PREFIX}admin_self`,
+        email: `${PREFIX}admin_self@test.com`,
+        fullName: 'Admin Self Appr',
+        passwordHash,
+        roles: { create: [{ roleId: adminRole.id }] },
+      },
+    });
+
+    const adminLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}admin_self`, password: PASSWORD });
+    const adminToken = adminLogin.body.data.accessToken;
+
+    const { approvalId: ownApprId } = await prepareApproval('40000.00');
+    await prisma.approval.update({
+      where: { id: ownApprId },
+      data: { requestedById: adminUser.id },
+    });
+
+    const res = await http()
+      .post(`/api/approvals/${ownApprId}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Admin self-approval allowed' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('APPROVED');
+  });
+
+  it('MANAGER approve → job status becomes APPROVED', async () => {
     const res = await http()
       .post(`/api/approvals/${approvalSupId}/approve`)
       .set('Authorization', `Bearer ${managerToken}`)
@@ -222,9 +308,6 @@ describe('Approval API (e2e)', () => {
     expect(res.body.data.status).toBe('APPROVED');
     expect(res.body.data.approverId).toBe(managerId);
     expect(res.body.data.reason).toBe('อนุมัติ');
-  });
-
-  it('MANAGER approve → job status becomes APPROVED', async () => {
     // The job for approvalSupId should now be APPROVED
     // Find it via approval record
     const approvalRec = await http()

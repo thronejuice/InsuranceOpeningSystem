@@ -15,8 +15,7 @@ import type { UpdateJobDto } from './dto/update-job.dto.js';
 import { toJobResponse, type JobResponse } from './dto/job.response.js';
 import { TaskService } from '../task/task.service.js';
 import { NotificationService } from '../notification/notification.service.js';
-
-const EDITABLE_STATUSES = new Set(['DRAFT', 'OPEN', 'WAITING_INFORMATION']);
+import { EDITABLE_STATUSES, type JobStatus } from './domain/job-status.js';
 
 @Injectable()
 export class JobService {
@@ -31,7 +30,6 @@ export class JobService {
   ) {}
 
   async list(query: JobQueryDto): Promise<Paginated<JobResponse>> {
-    const userId = this.cls.get('userId')!;
     const permissions = this.cls.get('permissions') ?? [];
     const scopeWhere = this.scope.jobViewScope();
 
@@ -78,6 +76,9 @@ export class JobService {
   async create(dto: CreateJobDto): Promise<JobResponse> {
     const userId = this.cls.get('userId')!;
     const permissions = this.cls.get('permissions') ?? [];
+    if (!permissions.includes('job.view_all') && dto.agentId !== userId) {
+      throw new BusinessException('FORBIDDEN', 'Agents may only create jobs for themselves', 403);
+    }
     const jobNo = await this.sequence.next('JOB');
     const job = await this.repo.create({
       jobNo,
@@ -106,7 +107,7 @@ export class JobService {
     if (!this.scope.canUpdateJob(job.agentId)) {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
-    if (!EDITABLE_STATUSES.has(job.status)) {
+    if (!EDITABLE_STATUSES.includes(job.status as JobStatus)) {
       throw new BusinessException('JOB_NOT_EDITABLE', `Job in status ${job.status} cannot be edited`, 409);
     }
     const updated = await this.repo.update(id, {

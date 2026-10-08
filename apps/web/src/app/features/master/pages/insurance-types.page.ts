@@ -49,6 +49,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiTable, UiToggleSwitch } 
     }
 
     <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไขประเภทประกันภัย' : 'เพิ่มประเภทประกันภัย'"
+      [icon]="editId() ? 'pi pi-th-large' : 'pi pi-plus-circle'"
       [modal]="true" [style]="{width:'480px'}" [closable]="true">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="field">
@@ -70,8 +71,8 @@ import { MessageService, UiButton, UiDialog, UiInput, UiTable, UiToggleSwitch } 
           <ui-toggleswitch formControlName="active" />
         </div>
         <div class="dialog-actions">
-          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" icon="pi pi-check" type="submit" [loading]="saving()" />
         </div>
       </form>
     </ui-dialog>

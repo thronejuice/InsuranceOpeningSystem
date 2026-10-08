@@ -9,6 +9,7 @@ export interface CompanyColumn {
   netPremium: string;
   stampDuty: string;
   tax: string;
+  isLowest?: boolean;
 }
 
 export interface CoverageCell {

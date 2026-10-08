@@ -14,9 +14,13 @@ describe('Quotation (e2e)', () => {
   let prisma: PrismaService;
   let agentToken: string;
   let agentId: string;
+  let agentBToken: string;
+  let agentBId: string;
   let jobId: string;
+  let jobIdB: string;
   let companyId: string;
   let quotationId: string;
+  let quotationIdB: string;
 
   const http = () => request(app.getHttpServer());
 
@@ -35,6 +39,7 @@ describe('Quotation (e2e)', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -115,6 +120,33 @@ describe('Quotation (e2e)', () => {
         effectiveDate: '2027-01-01',
       });
     jobId = jobRes.body.data.id;
+
+    // Create Agent B & Job B for BR-014 scoping test
+    const agentBUser = await prisma.user.create({
+      data: {
+        username: `${PREFIX}agent_b`,
+        email: `${PREFIX}b@test.com`,
+        passwordHash,
+        fullName: 'E2E Quo Agent B',
+        roles: { create: [{ role: { connect: { id: agentRole.id } } }] },
+      },
+    });
+    agentBId = agentBUser.id;
+
+    const loginBRes = await http().post('/api/auth/login').send({ username: `${PREFIX}agent_b`, password: PASSWORD });
+    agentBToken = loginBRes.body.data.accessToken;
+
+    const jobBRes = await http()
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${agentBToken}`)
+      .send({
+        customerId: customer.id,
+        insuranceTypeId: iType!.id,
+        productId: product!.id,
+        agentId: agentBId,
+        effectiveDate: '2027-01-01',
+      });
+    jobIdB = jobBRes.body.data.id;
   });
 
   afterAll(async () => {
@@ -141,6 +173,19 @@ describe('Quotation (e2e)', () => {
     expect(q.stampDuty).toBe('40.00');
     expect(q.tax).toBe('702.80');
     expect(q.totalAmount).toBe('10742.80');
+  });
+
+  it('POST /jobs/:jobId/quotations — rejects duplicate insurance company for the same job', async () => {
+    const res = await http()
+      .post(`/api/jobs/${jobId}/quotations`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({
+        insuranceCompanyId: companyId,
+        grossPremium: '12000.00',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.code).toBe('QUOTATION_COMPANY_DUPLICATE');
   });
 
   it('GET /jobs/:jobId/quotations — lists quotations', async () => {
@@ -213,4 +258,57 @@ describe('Quotation (e2e)', () => {
 
     expect(res.status).toBe(409);
   });
+
+  it('GET /quotations — Agent sees only their own quotations (BR-014)', async () => {
+    // Agent B creates a quotation on Job B
+    const quoBRes = await http()
+      .post(`/api/jobs/${jobIdB}/quotations`)
+      .set('Authorization', `Bearer ${agentBToken}`)
+      .send({
+        insuranceCompanyId: companyId,
+        grossPremium: '20000.00',
+      });
+    expect(quoBRes.status).toBe(201);
+    quotationIdB = quoBRes.body.data.id;
+
+    // Agent A lists quotations → sees their own, but NOT Agent B's
+    const resA = await http()
+      .get('/api/quotations')
+      .set('Authorization', `Bearer ${agentToken}`);
+    expect(resA.status).toBe(200);
+    const idsA = resA.body.data.map((q: { id: string }) => q.id);
+    expect(idsA).toContain(quotationId);
+    expect(idsA).not.toContain(quotationIdB);
+
+    // Agent B lists quotations → sees their own, but NOT Agent A's
+    const resB = await http()
+      .get('/api/quotations')
+      .set('Authorization', `Bearer ${agentBToken}`);
+    expect(resB.status).toBe(200);
+    const idsB = resB.body.data.map((q: { id: string }) => q.id);
+    expect(idsB).toContain(quotationIdB);
+    expect(idsB).not.toContain(quotationId);
+  });
+
+  it('DELETE /quotations/:id — deletes quotation successfully (204)', async () => {
+    const res = await http()
+      .delete(`/api/quotations/${quotationIdB}`)
+      .set('Authorization', `Bearer ${agentBToken}`);
+    expect(res.status).toBe(204);
+
+    const getRes = await http()
+      .get(`/api/jobs/${jobIdB}/quotations`)
+      .set('Authorization', `Bearer ${agentBToken}`);
+    expect(getRes.status).toBe(200);
+    const ids = getRes.body.data.map((q: { id: string }) => q.id);
+    expect(ids).not.toContain(quotationIdB);
+  });
+
+  it('DELETE /quotations/:id — returns 404 for non-existent quotation', async () => {
+    const res = await http()
+      .delete('/api/quotations/01912345-6789-7abc-def0-123456789abc')
+      .set('Authorization', `Bearer ${agentBToken}`);
+    expect(res.status).toBe(404);
+  });
 });
+

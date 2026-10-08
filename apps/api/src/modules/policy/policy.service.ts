@@ -3,7 +3,6 @@ import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
-import type { JobStatus } from '../../generated/prisma/enums.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -18,6 +17,11 @@ import {
   type BindingResponse, type PolicyResponse, type PreconditionCheck,
 } from './dto/policy.response.js';
 
+import { DataScopeService } from '../../common/access/data-scope.service.js';
+import { JobWorkflowService } from '../job/job-workflow.service.js';
+import { todayInBangkok } from '../../common/utils/bangkok-date.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+
 @Injectable()
 export class PolicyService {
   constructor(
@@ -26,6 +30,8 @@ export class PolicyService {
     private readonly audit: AuditService,
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
+    private readonly workflow: JobWorkflowService,
   ) {}
 
   // ─── Preconditions ──────────────────────────────────────────────────────────
@@ -144,7 +150,7 @@ export class PolicyService {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInBangkok();
     const quotation = await this.txHost.tx.quotation.findFirst({ where: { id: job.selectedQuotationId } });
 
     const binding = await this.repo.createBinding({
@@ -163,9 +169,9 @@ export class PolicyService {
     }
 
     // Two-hop transition: CUSTOMER_ACCEPTED/APPROVED → BINDING → POLICY_PENDING
-    await this.transitionJob(jobId, job.status, job.version, 'BINDING', userId);
+    await this.workflow.transitionInTx(job, 'BINDING', userId);
     const refreshed = await this.txHost.tx.job.findFirst({ where: { id: jobId } });
-    await this.transitionJob(jobId, 'BINDING', refreshed!.version, 'POLICY_PENDING', userId);
+    await this.workflow.transitionInTx(refreshed!, 'POLICY_PENDING', userId);
 
     await this.audit.log({ action: 'BIND', entityType: 'BINDING', entityId: binding.id, jobId });
 
@@ -175,18 +181,23 @@ export class PolicyService {
   // ─── Policy CRUD ─────────────────────────────────────────────────────────────
 
   async listPolicies(dto: ListPolicyDto): Promise<PolicyResponse[]> {
-    const where = {
+    if (dto.jobId) {
+      await this.assertJobAccess(dto.jobId);
+    }
+    const where: Prisma.PolicyWhereInput = {
       ...(dto.insuranceCompanyId && { insuranceCompanyId: dto.insuranceCompanyId }),
       ...(dto.status && { status: dto.status as never }),
       ...(dto.jobId && { jobId: dto.jobId }),
+      job: { deletedAt: null, ...this.scope.jobViewScope() },
     };
-    const items = await this.repo.findPolicies(where);
+    const items = await this.repo.findPolicies(where, dto.skip, dto.take);
     return items.map(toPolicyResponse);
   }
 
   async getPolicyById(id: string): Promise<PolicyResponse> {
     const policy = await this.repo.findPolicyById(id);
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
     return toPolicyResponse(policy);
   }
 
@@ -244,7 +255,7 @@ export class PolicyService {
     });
 
     // Transition job POLICY_PENDING → POLICY_ISSUED
-    await this.transitionJob(jobId, job.status, job.version, 'POLICY_ISSUED', userId);
+    await this.workflow.transitionInTx(job, 'POLICY_ISSUED', userId);
 
     await this.audit.log({ action: 'ISSUE_POLICY', entityType: 'POLICY', entityId: policy.id, jobId });
 
@@ -256,6 +267,7 @@ export class PolicyService {
     const userId = this.cls.get('userId')!;
     const policy = await this.repo.findPolicyById(id);
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
 
     const updated = await this.repo.updatePolicy(id, {
       ...(dto.paymentDueDate !== undefined && {
@@ -287,18 +299,5 @@ export class PolicyService {
     if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
-  }
-
-  private async transitionJob(jobId: string, fromStatus: string, version: number, toStatus: JobStatus, userId: string) {
-    const { count } = await this.txHost.tx.job.updateMany({
-      where: { id: jobId, version },
-      data: { status: toStatus, version: { increment: 1 }, updatedById: userId },
-    });
-    if (count === 0) {
-      throw new BusinessException('CONCURRENT_MODIFICATION', 'Job was modified by another user', 409);
-    }
-    await this.txHost.tx.jobStatusHistory.create({
-      data: { jobId, fromStatus: fromStatus as JobStatus, toStatus, changedById: userId },
-    });
   }
 }

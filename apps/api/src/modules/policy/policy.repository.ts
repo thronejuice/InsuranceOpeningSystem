@@ -14,9 +14,11 @@ export class PolicyRepository {
     coverages: { orderBy: { createdAt: 'asc' as const } },
   } as const;
 
-  findPolicies(where: Prisma.PolicyWhereInput) {
+  findPolicies(where: Prisma.PolicyWhereInput, skip?: number, take?: number) {
     return this.db.policy.findMany({
       where,
+      skip,
+      take,
       include: PolicyRepository.POLICY_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });

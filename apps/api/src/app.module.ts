@@ -20,6 +20,7 @@ import { PrismaModule } from './common/prisma/prisma.module.js';
 import { PrismaService } from './common/prisma/prisma.service.js';
 import { SequenceModule } from './common/sequence/sequence.module.js';
 import { StorageModule } from './common/storage/storage.module.js';
+import { PdfModule } from './common/pdf/pdf.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CustomerModule } from './modules/customer/customer.module.js';
 import { DocumentModule } from './modules/document/document.module.js';
@@ -39,6 +40,7 @@ import { RenewalModule } from './modules/renewal/renewal.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
 import { ReportModule } from './modules/report/report.module.js';
 import { ImportModule } from './modules/import/import.module.js';
+import { CompanyProfileModule } from './modules/company-profile/company-profile.module.js';
 
 const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env');
 
@@ -86,6 +88,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     AuthCommonModule,
     DataScopeModule,
     StorageModule,
+    PdfModule,
     AuthModule,
     CustomerModule,
     DocumentModule,
@@ -104,6 +107,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     NotificationModule,
     ReportModule,
     ImportModule,
+    CompanyProfileModule,
     HealthModule,
   ],
   providers: [

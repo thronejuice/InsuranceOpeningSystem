@@ -15,10 +15,14 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGINS: Joi.string().default('http://localhost:4200'),
   // Storage: 'local' (default) or 's3' (MinIO-compatible)
   STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+  /* eslint-disable unicorn/no-thenable */
   S3_ENDPOINT: Joi.string().uri().when('STORAGE_DRIVER', { is: 's3', then: Joi.required() }),
   S3_BUCKET: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required() }),
   S3_ACCESS_KEY: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required() }),
   S3_SECRET_KEY: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required() }),
+  /* eslint-enable unicorn/no-thenable */
   S3_REGION: Joi.string().default('us-east-1'),
   UPLOAD_DIR: Joi.string().default('./uploads'),
+  // PDF rendering: path to a system Chromium (e.g. /usr/bin/chromium-browser in Docker); empty = Puppeteer's bundled browser
+  PUPPETEER_EXECUTABLE_PATH: Joi.string().optional(),
 });

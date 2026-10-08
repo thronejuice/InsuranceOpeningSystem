@@ -52,6 +52,7 @@ describe('Payment API', () => {
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
@@ -67,9 +68,7 @@ describe('Payment API', () => {
     // Advance PAY sequence past existing values
     const curYear = new Date().getFullYear();
     type MaxRow = [{ max: number | null }];
-    const [payR] = await Promise.all([
-      prisma.$queryRaw<MaxRow>`SELECT MAX(CAST(SPLIT_PART(payment_no, '-', 3) AS INTEGER)) as max FROM payments WHERE payment_no LIKE ${`PAY-${curYear}-%`}`,
-    ]);
+    const payR = await prisma.$queryRaw<MaxRow>`SELECT MAX(CAST(SPLIT_PART(payment_no, '-', 3) AS INTEGER)) as max FROM payments WHERE payment_no LIKE ${`PAY-${curYear}-%`}`;
     const paySafe = (Number(payR[0].max ?? 0)) + 50;
     await prisma.$executeRaw`
       INSERT INTO document_sequences (prefix, year, last_value, updated_at) VALUES ('PAY', ${curYear}, ${paySafe}, now())

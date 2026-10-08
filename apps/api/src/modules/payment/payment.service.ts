@@ -14,6 +14,9 @@ import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import { TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 
+import { DataScopeService } from '../../common/access/data-scope.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+
 @Injectable()
 export class PaymentService {
   constructor(
@@ -22,14 +25,40 @@ export class PaymentService {
     private readonly audit: AuditService,
     private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
   ) {}
 
-  async listAll(query: { policyId?: string; page?: number; limit?: number }): Promise<{ items: PaymentListResponse[]; total: number }> {
+  private async assertJobAccess(jobId: string) {
+    const userId = this.cls.get('userId')!;
+    const permissions = this.cls.get('permissions') ?? [];
+    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
+      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    }
+    return job;
+  }
+
+  private async assertPolicyAccess(policyId: string) {
+    const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+    return policy;
+  }
+
+  async listAll(query: { policyId?: string; page?: number; perPage?: number; limit?: number }): Promise<{ items: PaymentListResponse[]; total: number }> {
     const page = query.page ?? 1;
-    const limit = (query as { perPage?: number }).perPage ?? 20;
+    const limit = query.perPage ?? query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where = query.policyId ? { policyId: query.policyId } : {};
+    if (query.policyId) {
+      await this.assertPolicyAccess(query.policyId);
+    }
+
+    const where: Prisma.PaymentWhereInput = {
+      ...(query.policyId ? { policyId: query.policyId } : {}),
+      policy: { job: { deletedAt: null, ...this.scope.jobViewScope() } },
+    };
     const [payments, total] = await Promise.all([
       this.txHost.tx.payment.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
       this.txHost.tx.payment.count({ where }),
@@ -42,8 +71,7 @@ export class PaymentService {
   }
 
   async listByPolicy(policyId: string): Promise<PaymentListResponse> {
-    const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
-    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    const policy = await this.assertPolicyAccess(policyId);
 
     const payments = await this.repo.findByPolicy(policyId);
     const totalPaid = await this.repo.sumActive(policyId);
@@ -66,8 +94,7 @@ export class PaymentService {
     const userId = this.cls.get('userId')!;
     const permissions = this.cls.get('permissions') ?? [];
 
-    const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
-    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    const policy = await this.assertPolicyAccess(policyId);
     if (policy.status === 'CANCELLED') {
       throw new BusinessException('POLICY_INVALID_STATUS', 'Cannot add payment to a cancelled policy', 409);
     }
@@ -128,7 +155,7 @@ export class PaymentService {
       throw new BusinessException('PAYMENT_ALREADY_CANCELLED', 'Payment is already cancelled', 409);
     }
 
-    const policy = await this.txHost.tx.policy.findFirst({ where: { id: payment.policyId } });
+    const policy = await this.assertPolicyAccess(payment.policyId);
 
     await this.repo.update(id, { status: 'CANCELLED', cancelReason: dto.cancelReason });
 

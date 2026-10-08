@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canTransition, getAllowedActions, JOB_TRANSITIONS, NON_CANCELLABLE, type JobStatus } from './job-status.js';
+import { canTransition, getAllowedActions, getJobCapabilities, JOB_TRANSITIONS, NON_CANCELLABLE, type JobStatus } from './job-status.js';
 
 // ─── Table-driven: every explicit forward transition ─────────────────────────
 
@@ -108,5 +108,51 @@ describe('getAllowedActions', () => {
     expect(getAllowedActions('QUOTATION_REQUESTED', noQuotePerms, true)).not.toContain('recordQuotation');
     expect(getAllowedActions('QUOTATION_RECEIVED', noQuotePerms, true)).not.toContain('selectQuotation');
     expect(getAllowedActions('OPEN', [...noQuotePerms, 'quotation.create'], true)).toContain('requestQuotation');
+  });
+});
+
+describe('getJobCapabilities', () => {
+  it('returns all false when canWrite=false', () => {
+    expect(getJobCapabilities('OPEN', false)).toEqual({
+      editRisk: false,
+      manageDocuments: false,
+      manageQuotations: false,
+    });
+    expect(getJobCapabilities('DRAFT', false)).toEqual({
+      editRisk: false,
+      manageDocuments: false,
+      manageQuotations: false,
+    });
+  });
+
+  it('correctly sets editRisk only for EDITABLE_STATUSES', () => {
+    expect(getJobCapabilities('DRAFT', true).editRisk).toBe(true);
+    expect(getJobCapabilities('OPEN', true).editRisk).toBe(true);
+    expect(getJobCapabilities('WAITING_INFORMATION', true).editRisk).toBe(true);
+    expect(getJobCapabilities('QUOTATION_REQUESTED', true).editRisk).toBe(false);
+    expect(getJobCapabilities('BINDING', true).editRisk).toBe(false);
+    expect(getJobCapabilities('POLICY_ISSUED', true).editRisk).toBe(false);
+    expect(getJobCapabilities('CANCELLED', true).editRisk).toBe(false);
+  });
+
+  it('correctly sets manageDocuments except for DOCS_LOCKED_STATUSES', () => {
+    expect(getJobCapabilities('DRAFT', true).manageDocuments).toBe(true);
+    expect(getJobCapabilities('OPEN', true).manageDocuments).toBe(true);
+    expect(getJobCapabilities('BINDING', true).manageDocuments).toBe(true);
+    expect(getJobCapabilities('POLICY_ISSUED', true).manageDocuments).toBe(true);
+    expect(getJobCapabilities('CANCELLED', true).manageDocuments).toBe(false);
+    expect(getJobCapabilities('CLOSED', true).manageDocuments).toBe(false);
+    expect(getJobCapabilities('EXPIRED', true).manageDocuments).toBe(false);
+  });
+
+  it('correctly sets manageQuotations only for quotation lifecycle', () => {
+    expect(getJobCapabilities('DRAFT', true).manageQuotations).toBe(false);
+    expect(getJobCapabilities('OPEN', true).manageQuotations).toBe(true);
+    expect(getJobCapabilities('WAITING_INFORMATION', true).manageQuotations).toBe(true);
+    expect(getJobCapabilities('QUOTATION_REQUESTED', true).manageQuotations).toBe(true);
+    expect(getJobCapabilities('QUOTATION_RECEIVED', true).manageQuotations).toBe(true);
+    expect(getJobCapabilities('QUOTATION_SELECTED', true).manageQuotations).toBe(true);
+    expect(getJobCapabilities('PROPOSAL_SENT', true).manageQuotations).toBe(false);
+    expect(getJobCapabilities('BINDING', true).manageQuotations).toBe(false);
   });
 });

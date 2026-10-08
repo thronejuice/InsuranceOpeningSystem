@@ -80,6 +80,7 @@ const FIELD_TYPES = [
     }
 
     <ui-dialog [(visible)]="dialogVisible" [header]="editId() ? 'แก้ไข Risk Field' : 'เพิ่ม Risk Field'"
+      [icon]="editId() ? 'pi pi-list' : 'pi pi-plus-circle'"
       [modal]="true" [style]="{width:'520px'}">
       <form [formGroup]="form" (ngSubmit)="save()" class="dialog-form">
         <div class="form-grid">
@@ -116,8 +117,8 @@ const FIELD_TYPES = [
           <label>ใช้งาน</label>
         </div>
         <div class="dialog-actions">
-          <ui-button label="ยกเลิก" severity="secondary" [text]="true" (onClick)="dialogVisible=false" />
-          <ui-button label="บันทึก" type="submit" [loading]="saving()" />
+          <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" [outlined]="true" (onClick)="dialogVisible=false" />
+          <ui-button label="บันทึก" icon="pi pi-check" type="submit" [loading]="saving()" />
         </div>
       </form>
     </ui-dialog>
