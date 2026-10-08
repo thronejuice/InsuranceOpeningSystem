@@ -14,6 +14,7 @@ export type JobStatus =
   | 'CUSTOMER_ACCEPTED'
   | 'CUSTOMER_REJECTED'
   | 'WAITING_APPROVAL'
+  | 'APPROVAL_REJECTED'
   | 'APPROVED'
   | 'BINDING'
   | 'POLICY_PENDING'
@@ -35,6 +36,7 @@ export type JobAction =
   | 'sendProposal'
   | 'acceptProposal'
   | 'rejectProposal'
+  | 'revise'
   | 'approve'
   | 'bind'
   | 'issuePolicy';
@@ -65,11 +67,30 @@ export interface Job {
   agentId: string;
   agentName: string;
   assignedTo: string | null;
+  brokerStaffId?: string | null;
+  brokerStaffName?: string | null;
+  branchId?: string | null;
+  branchCode?: string | null;
+  branchName?: string | null;
   selectedQuotationId: string | null;
   createdAt: string;
   updatedAt: string;
   allowedActions: JobAction[];
   capabilities?: JobCapabilities;
+}
+
+export interface JobAssignmentHistory {
+  id: string;
+  jobId: string;
+  fromUserId?: string | null;
+  fromUser?: { id: string; username: string; fullName: string } | null;
+  toUserId?: string | null;
+  toUser?: { id: string; username: string; fullName: string } | null;
+  role: 'AGENT' | 'BROKER_STAFF';
+  reason?: string | null;
+  changedById?: string | null;
+  changedBy?: { id: string; username: string; fullName: string } | null;
+  changedAt: string;
 }
 
 export interface CreateJobDto {
@@ -154,6 +175,12 @@ export interface UpdateCoverageDto {
 
 // ─── Document ──────────────────────────────────────────────────────────────
 
+export interface DocumentUserSummary {
+  id: string;
+  username: string;
+  fullName: string;
+}
+
 export interface JobDocument {
   id: string;
   jobId: string;
@@ -162,21 +189,39 @@ export interface JobDocument {
   mimeType: string;
   size: number;
   version: number;
-  status: string;
+  status: 'REQUIRED' | 'UPLOADED' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED' | 'EXPIRED' | string;
   uploadedById: string | null;
+  uploadedBy?: DocumentUserSummary | null;
+  verifiedById?: string | null;
+  verifiedBy?: DocumentUserSummary | null;
+  verifiedAt?: string | null;
+  expiryDate?: string | null;
+  remark?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface DocumentChecklistUploadedItem {
+  documentType: string;
+  documentId: string;
+  originalName: string;
+  version: number;
+  status: string;
+  expiryDate: string | null;
+}
+
 export interface DocumentChecklist {
+  isComplete: boolean;
   required: { documentType: string; isRequired: boolean }[];
-  uploaded: { documentType: string; documentId: string; originalName: string }[];
+  uploaded: DocumentChecklistUploadedItem[];
   missing: string[];
 }
 
 // ─── Quotations ────────────────────────────────────────────────────────────
 
-export type QuotationStatus = 'REQUESTED' | 'RECEIVED' | 'SELECTED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
+export type QuotationStatus = 'REQUESTED' | 'RECEIVED' | 'SELECTED' | 'REJECTED' | 'EXPIRED' | 'WITHDRAWN' | 'CANCELLED';
+
+export type QuotationVersionStatus = 'ACTIVE' | 'SUPERSEDED' | 'SELECTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
 
 export interface QuotationItem {
   id: string;
@@ -188,6 +233,34 @@ export interface QuotationItem {
   deductible: string | null;
   premium: string;
   remark: string | null;
+}
+
+export interface QuotationVersion {
+  id: string;
+  quotationId: string;
+  version: number;
+  status: QuotationVersionStatus;
+  quotationDate: string | null;
+  validUntil: string | null;
+  grossPremium: string;
+  discount: string;
+  netPremium: string;
+  tax: string;
+  stampDuty: string;
+  totalAmount: string;
+  commissionRate: string | null;
+  commissionAmount: string | null;
+  deductible: string | null;
+  exclusion: string | null;
+  specialCondition: string | null;
+  insurerReference: string | null;
+  underwriter: string | null;
+  attachment: string | null;
+  remark: string | null;
+  createdById: string | null;
+  items: QuotationItem[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Quotation {
@@ -205,11 +278,20 @@ export interface Quotation {
   tax: string;
   stampDuty: string;
   totalAmount: string;
+  commissionRate?: string | null;
+  commissionAmount?: string | null;
+  deductible?: string | null;
+  exclusion?: string | null;
+  specialCondition?: string | null;
+  insurerReference?: string | null;
+  underwriter?: string | null;
+  attachment?: string | null;
   remark: string | null;
   version: number;
   requestedById: string | null;
   jobNo: string | null;
   items: QuotationItem[];
+  versions?: QuotationVersion[];
   createdAt: string;
   updatedAt: string;
 }
@@ -240,6 +322,14 @@ export interface RecordQuotationBody {
   discount?: string;
   stampDuty?: string;
   tax?: string;
+  commissionRate?: string;
+  commissionAmount?: string;
+  deductible?: string;
+  exclusion?: string;
+  specialCondition?: string;
+  insurerReference?: string;
+  underwriter?: string;
+  attachment?: string;
   quotationDate?: string;
   validUntil?: string;
   remark?: string;
@@ -257,24 +347,70 @@ export interface CompanyColumn {
   insuranceCompanyId: string;
   insuranceCompanyName: string;
   status: string;
+  version?: number;
+  quotationDate?: string | null;
   validUntil: string | null;
-  totalAmount: string;
+  grossPremium?: string;
+  discount?: string;
   netPremium: string;
   stampDuty: string;
   tax: string;
+  totalAmount: string;
+  deductible?: string | null;
+  commissionRate?: string | null;
+  commissionAmount?: string | null;
+  exclusion?: string | null;
+  specialCondition?: string | null;
+  underwriter?: string | null;
+  insurerReference?: string | null;
   isLowest?: boolean;
+}
+
+export interface ComparisonCoverageCell {
+  sumInsured: string | null;
+  rate?: string | null;
+  deductible: string | null;
+  premium: string | null;
+  remark?: string | null;
 }
 
 export interface ComparisonResponse {
   jobId: string;
   companies: CompanyColumn[];
-  coverages: { coverageName: string; cells: { sumInsured: string | null; deductible: string | null; premium: string | null }[] }[];
+  coverages: { coverageName: string; cells: ComparisonCoverageCell[] }[];
 }
 
 // ─── Proposal ──────────────────────────────────────────────────────────────
 
-export type ProposalStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+export type ProposalStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type AcceptanceMethod = 'EMAIL' | 'SIGNED_DOCUMENT' | 'LINE' | 'MANUAL';
+
+export interface ProposalAcceptanceResponse {
+  id: string;
+  proposalId: string;
+  proposalVersion: number;
+  acceptedByName: string;
+  acceptedAt: string;
+  method: AcceptanceMethod;
+  ipAddress: string | null;
+  evidenceFileId: string | null;
+  evidenceFile?: {
+    id: string;
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    size: number;
+  } | null;
+  remark: string | null;
+  recordedById: string | null;
+  recordedBy?: {
+    id: string;
+    username: string;
+    fullName?: string;
+  } | null;
+  createdAt: string;
+}
 
 export interface ApprovalResponse {
   id: string;
@@ -305,6 +441,8 @@ export interface ProposalResponse {
   proposalNo: string;
   jobId: string;
   quotationId: string;
+  quotationVersionId?: string | null;
+  paymentTermId?: string | null;
   customerId: string;
   proposalDate: string | null;
   validUntil: string | null;
@@ -313,8 +451,21 @@ export interface ProposalResponse {
   acceptedAt: string | null;
   rejectedAt: string | null;
   rejectReason: string | null;
+  coverageSummary?: string | null;
+  terms?: string | null;
+  conditions?: string | null;
   remark: string | null;
   version: number;
+  paymentTerm?: {
+    id: string;
+    code: string;
+    name: string;
+    installments: number;
+    intervalMonths: number;
+    firstDueDays: number;
+  } | null;
+  latestAcceptance?: ProposalAcceptanceResponse | null;
+  acceptances?: ProposalAcceptanceResponse[];
   approvals: ApprovalInProposal[];
   createdAt: string;
   updatedAt: string;
@@ -568,6 +719,7 @@ const ACTION_PATH: Partial<Record<JobAction, string>> = {
   resume: 'resume',
   cancel: 'cancel',
   close: 'close',
+  revise: 'revise',
 };
 
 @Injectable({ providedIn: 'root' })
@@ -602,6 +754,16 @@ export class JobsApi {
 
   update(id: string, body: UpdateJobDto): Observable<Job> {
     return this.http.put<ItemResponse<Job>>(`/api/jobs/${id}`, body).pipe(map((r) => r.data));
+  }
+
+  assign(id: string, body: { assigneeId?: string | null; role?: 'AGENT' | 'BROKER_STAFF'; reason?: string }): Observable<Job> {
+    return this.http.post<ItemResponse<Job>>(`/api/jobs/${id}/assign`, body).pipe(map((r) => r.data));
+  }
+
+  getAssignmentHistories(jobId: string): Observable<JobAssignmentHistory[]> {
+    return this.http
+      .get<{ success: boolean; data: JobAssignmentHistory[] }>(`/api/jobs/${jobId}/assignment-histories`)
+      .pipe(map((r) => r.data));
   }
 
   // ─── Workflow Actions ───────────────────────────────────────────────────
@@ -650,11 +812,22 @@ export class JobsApi {
     return this.http.get<ItemResponse<DocumentChecklist>>(`/api/jobs/${id}/documents/checklist`).pipe(map((r) => r.data));
   }
 
-  uploadDocument(jobId: string, documentType: string, file: File): Observable<JobDocument> {
+  uploadDocument(jobId: string, documentType: string, file: File, expiryDate?: string): Observable<JobDocument> {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('documentType', documentType);
+    if (expiryDate) {
+      fd.append('expiryDate', expiryDate);
+    }
     return this.http.post<ItemResponse<JobDocument>>(`/api/jobs/${jobId}/documents`, fd).pipe(map((r) => r.data));
+  }
+
+  verifyDocument(docId: string, dto: { expiryDate?: string; remark?: string } = {}): Observable<JobDocument> {
+    return this.http.post<ItemResponse<JobDocument>>(`/api/documents/${docId}/verify`, dto).pipe(map((r) => r.data));
+  }
+
+  rejectDocument(docId: string, dto: { reason: string }): Observable<JobDocument> {
+    return this.http.post<ItemResponse<JobDocument>>(`/api/documents/${docId}/reject`, dto).pipe(map((r) => r.data));
   }
 
   deleteDocument(docId: string): Observable<void> {
@@ -692,8 +865,16 @@ export class JobsApi {
     return this.http.put<ItemResponse<Quotation>>(`/api/quotations/${id}`, body).pipe(map((r) => r.data));
   }
 
+  recordQuotationVersion(id: string, body: RecordQuotationBody): Observable<Quotation> {
+    return this.http.post<ItemResponse<Quotation>>(`/api/quotations/${id}/versions`, body).pipe(map((r) => r.data));
+  }
+
   selectQuotation(id: string, body: SelectQuotationBody): Observable<Quotation> {
     return this.http.post<ItemResponse<Quotation>>(`/api/quotations/${id}/select`, body).pipe(map((r) => r.data));
+  }
+
+  withdrawQuotation(id: string, body: { reason?: string } = {}): Observable<Quotation> {
+    return this.http.post<ItemResponse<Quotation>>(`/api/quotations/${id}/withdraw`, body).pipe(map((r) => r.data));
   }
 
   quotationComparison(jobId: string): Observable<ComparisonResponse> {
@@ -710,7 +891,19 @@ export class JobsApi {
     return this.http.get<ItemResponse<ProposalResponse[]>>(`/api/jobs/${jobId}/proposals`).pipe(map((r) => r.data));
   }
 
-  createProposal(jobId: string, body: { validUntil?: string; remark?: string }): Observable<ProposalResponse> {
+  createProposal(
+    jobId: string,
+    body: {
+      proposalDate?: string;
+      validUntil?: string;
+      quotationVersionId?: string;
+      paymentTermId?: string;
+      coverageSummary?: string;
+      terms?: string;
+      conditions?: string;
+      remark?: string;
+    },
+  ): Observable<ProposalResponse> {
     return this.http.post<ItemResponse<ProposalResponse>>(`/api/jobs/${jobId}/proposal`, body).pipe(map((r) => r.data));
   }
 
@@ -722,12 +915,23 @@ export class JobsApi {
     return this.http.get(`/api/proposals/${proposalId}/pdf`, { responseType: 'blob' });
   }
 
-  acceptProposal(proposalId: string): Observable<ProposalResponse> {
-    return this.http.post<ItemResponse<ProposalResponse>>(`/api/proposals/${proposalId}/accept`, {}).pipe(map((r) => r.data));
+  acceptProposal(
+    proposalId: string,
+    payload?: FormData | { method?: string; remark?: string; acceptedByName?: string; evidenceFileId?: string },
+  ): Observable<ProposalResponse> {
+    return this.http.post<ItemResponse<ProposalResponse>>(`/api/proposals/${proposalId}/accept`, payload ?? {}).pipe(map((r) => r.data));
+  }
+
+  getProposalAcceptance(proposalId: string): Observable<ProposalAcceptanceResponse> {
+    return this.http.get<ItemResponse<ProposalAcceptanceResponse>>(`/api/proposals/${proposalId}/acceptance`).pipe(map((r) => r.data));
   }
 
   rejectProposal(proposalId: string, body: { reason: string }): Observable<ProposalResponse> {
     return this.http.post<ItemResponse<ProposalResponse>>(`/api/proposals/${proposalId}/reject`, body).pipe(map((r) => r.data));
+  }
+
+  reviseProposal(proposalId: string, body: { reason?: string } = {}): Observable<ProposalResponse> {
+    return this.http.post<ItemResponse<ProposalResponse>>(`/api/proposals/${proposalId}/revise`, body).pipe(map((r) => r.data));
   }
 
   // ─── Approval (global inbox) ─────────────────────────────────────────────

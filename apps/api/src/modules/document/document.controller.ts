@@ -7,7 +7,7 @@ import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { DocumentService } from './document.service.js';
-import { UploadDocumentDto } from './dto/document.dto.js';
+import { RejectDocumentDto, UploadDocumentDto, VerifyDocumentDto } from './dto/document.dto.js';
 
 @ApiTags('documents')
 @ApiBearerAuth()
@@ -43,6 +43,30 @@ export class DocumentController {
   }
 
   // ─── Document-level endpoints ─────────────────────────────────────────────
+
+  @Post('documents/expire-outdated')
+  @RequirePermissions('document.verify')
+  expireOutdated() {
+    return this.svc.expireOutdatedDocuments();
+  }
+
+  @Post('documents/:id/verify')
+  @RequirePermissions('document.verify')
+  verify(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VerifyDocumentDto,
+  ) {
+    return this.svc.verify(id, dto);
+  }
+
+  @Post('documents/:id/reject')
+  @RequirePermissions('document.verify')
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectDocumentDto,
+  ) {
+    return this.svc.reject(id, dto);
+  }
 
   @Get('documents/:id/download')
   @RequirePermissions('job.view')

@@ -15,6 +15,7 @@ import {
   hashRefreshToken,
   refreshTokenExpiry,
 } from './domain/refresh-token.js';
+import { DataScope, resolveEffectiveScope } from '../../common/access/domain/data-scope.js';
 import type { MeResponse, TokenResponse } from './dto/auth.response.js';
 
 type UserWithPermissions = NonNullable<Awaited<ReturnType<AuthRepository['findUserById']>>>;
@@ -146,6 +147,8 @@ export class AuthService implements OnModuleInit {
       username: me.username,
       roles: me.roles,
       permissions: me.permissions,
+      branchId: me.branchId,
+      dataScope: me.dataScope,
     };
     const accessToken = await this.jwt.signAsync(payload);
 
@@ -170,13 +173,20 @@ export class AuthService implements OnModuleInit {
 
 function toMe(user: UserWithPermissions): MeResponse {
   const roles = user.roles.map((ur) => ur.role);
+  const permissions = flattenPermissions(roles);
+  let effectiveScope = resolveEffectiveScope(roles.map((r) => r.dataScope as DataScope));
+  if (effectiveScope === DataScope.OWN && permissions.includes('job.view_all')) {
+    effectiveScope = DataScope.ALL;
+  }
   return {
     id: user.id,
     username: user.username,
     email: user.email,
     fullName: user.fullName,
     roles: roles.map((role) => role.code).sort(),
-    permissions: flattenPermissions(roles),
+    permissions,
+    branchId: user.branchId ?? null,
+    dataScope: effectiveScope,
   };
 }
 

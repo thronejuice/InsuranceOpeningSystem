@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { AuthStore } from '../../core/auth/auth.store';
 import { NotificationBellComponent } from '../../features/notifications/components/notification-bell.component';
+import { NotificationPreferencesDialogComponent } from '../../features/notifications/components/notification-preferences-dialog.component';
 import { UiButton, UiDivider, UiPopover } from '../../shared/ui';
 import { SidebarService } from './sidebar.service';
 
@@ -8,7 +9,7 @@ import { SidebarService } from './sidebar.service';
   selector: 'app-topbar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [UiButton, UiDivider, UiPopover, NotificationBellComponent],
+  imports: [UiButton, UiDivider, UiPopover, NotificationBellComponent, NotificationPreferencesDialogComponent],
   template: `
     <header class="topbar">
       <div class="topbar-left">
@@ -95,6 +96,17 @@ import { SidebarService } from './sidebar.service';
 
               <ui-divider styleClass="my-2" />
 
+              <div class="profile-card-actions" style="margin-bottom: 0.5rem;">
+                <ui-button
+                  label="ตั้งค่าการแจ้งเตือน"
+                  icon="pi pi-bell"
+                  [outlined]="true"
+                  size="small"
+                  styleClass="w-full"
+                  (onClick)="showPreferencesDialog.set(true); profilePanel.hide()"
+                />
+              </div>
+
               <div class="profile-card-footer">
                 <ui-button
                   label="ออกจากระบบ"
@@ -108,6 +120,8 @@ import { SidebarService } from './sidebar.service';
               </div>
             </div>
           </ui-popover>
+
+          <app-notification-preferences-dialog [(visible)]="showPreferencesDialog" />
         }
       </div>
     </header>
@@ -343,6 +357,7 @@ import { SidebarService } from './sidebar.service';
 export class TopbarComponent {
   protected readonly store = inject(AuthStore);
   protected readonly sidebarService = inject(SidebarService);
+  readonly showPreferencesDialog = signal(false);
 
   getInitials(name?: string): string {
     if (!name) return 'U';

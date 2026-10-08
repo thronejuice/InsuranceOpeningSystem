@@ -10,6 +10,7 @@ export type JobStatus =
   | 'CUSTOMER_ACCEPTED'
   | 'CUSTOMER_REJECTED'
   | 'WAITING_APPROVAL'
+  | 'APPROVAL_REJECTED'
   | 'APPROVED'
   | 'BINDING'
   | 'POLICY_PENDING'
@@ -21,15 +22,16 @@ export type JobStatus =
 
 export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
   DRAFT:               ['OPEN', 'QUOTATION_SELECTED'],
-  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_SELECTED'],
-  WAITING_INFORMATION: ['OPEN'],
+  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_SELECTED', 'CLOSED'],
+  WAITING_INFORMATION: ['OPEN', 'CLOSED'],
   QUOTATION_REQUESTED: ['QUOTATION_RECEIVED', 'QUOTATION_SELECTED'],
   QUOTATION_RECEIVED:  ['QUOTATION_SELECTED'],
   QUOTATION_SELECTED:  ['PROPOSAL_SENT'],
   PROPOSAL_SENT:       ['WAITING_CUSTOMER'],
-  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL'],
+  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL', 'QUOTATION_RECEIVED'],
   CUSTOMER_ACCEPTED:   ['WAITING_APPROVAL', 'BINDING'],
-  WAITING_APPROVAL:    ['APPROVED'],
+  WAITING_APPROVAL:    ['APPROVED', 'APPROVAL_REJECTED'],
+  APPROVAL_REJECTED:   ['WAITING_APPROVAL', 'QUOTATION_RECEIVED', 'CANCELLED'],
   APPROVED:            ['BINDING'],
   BINDING:             ['POLICY_PENDING'],
   POLICY_PENDING:      ['POLICY_ISSUED'],
@@ -62,6 +64,7 @@ export type JobAction =
   | 'sendProposal'
   | 'acceptProposal'
   | 'rejectProposal'
+  | 'revise'
   | 'approve'
   | 'bind'
   | 'issuePolicy';
@@ -74,9 +77,10 @@ const STATUS_ACTIONS: Partial<Record<JobStatus, JobAction[]>> = {
   QUOTATION_RECEIVED:  ['selectQuotation'],
   QUOTATION_SELECTED:  ['sendProposal'],
   PROPOSAL_SENT:       [],
-  WAITING_CUSTOMER:    ['acceptProposal', 'rejectProposal'],
+  WAITING_CUSTOMER:    ['acceptProposal', 'rejectProposal', 'revise'],
   CUSTOMER_ACCEPTED:   ['bind'],
   WAITING_APPROVAL:    ['approve'],
+  APPROVAL_REJECTED:   ['revise'],
   APPROVED:            ['bind'],
   BINDING:             [],
   POLICY_PENDING:      ['issuePolicy'],

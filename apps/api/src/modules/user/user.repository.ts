@@ -4,7 +4,11 @@ import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapt
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 
-const withRoles = { roles: { include: { role: true } } } as const;
+const userInclude = {
+  roles: { include: { role: true } },
+  branch: true,
+  manager: { select: { id: true, fullName: true, username: true } },
+} as const;
 
 @Injectable()
 export class UserRepository {
@@ -17,13 +21,13 @@ export class UserRepository {
   findAll() {
     return this.db.user.findMany({
       where: { deletedAt: null },
-      include: withRoles,
+      include: userInclude,
       orderBy: { username: 'asc' },
     });
   }
 
   findById(id: string) {
-    return this.db.user.findFirst({ where: { id, deletedAt: null }, include: withRoles });
+    return this.db.user.findFirst({ where: { id, deletedAt: null }, include: userInclude });
   }
 
   findByUsername(username: string) {
@@ -35,11 +39,11 @@ export class UserRepository {
   }
 
   create(data: Prisma.UserCreateInput) {
-    return this.db.user.create({ data, include: withRoles });
+    return this.db.user.create({ data, include: userInclude });
   }
 
   update(id: string, data: Prisma.UserUpdateInput) {
-    return this.db.user.update({ where: { id }, data, include: withRoles });
+    return this.db.user.update({ where: { id }, data, include: userInclude });
   }
 
   deleteRoles(userId: string) {

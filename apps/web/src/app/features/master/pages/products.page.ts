@@ -29,6 +29,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiSelect, UiTable, UiToggl
             <th style="width:160px">ประเภท</th>
             <th style="width:80px">ต้องมีเอกสาร (Submit)</th>
             <th style="width:80px">ต้องมีเอกสาร (Bind)</th>
+            <th style="width:80px">ต้อง Underwriting</th>
             <th style="width:80px">ใช้งาน</th>
             <th style="width:80px"></th>
           </tr>
@@ -40,6 +41,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiSelect, UiTable, UiToggl
             <td>{{ row.insuranceType?.name }}</td>
             <td><i [class]="row.requireDocsOnSubmit ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td><i [class]="row.requireDocsOnBind ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
+            <td><i [class]="row.requireUnderwriting ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td><i [class]="row.active ? 'pi pi-check text-green-500' : 'pi pi-times text-red-400'"></i></td>
             <td>
               <ui-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
@@ -47,7 +49,7 @@ import { MessageService, UiButton, UiDialog, UiInput, UiSelect, UiTable, UiToggl
           </tr>
         </ng-template>
         <ng-template #emptymessage>
-          <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบข้อมูล</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบข้อมูล</td></tr>
         </ng-template>
       </ui-table>
     }
@@ -82,6 +84,10 @@ import { MessageService, UiButton, UiDialog, UiInput, UiSelect, UiTable, UiToggl
         <div class="field-row">
           <ui-toggleswitch formControlName="requireDocsOnBind" />
           <label>ต้องมีเอกสารครบก่อน Bind</label>
+        </div>
+        <div class="field-row">
+          <ui-toggleswitch formControlName="requireUnderwriting" />
+          <label>ต้องผ่าน Underwriting ก่อนขอใบเสนอราคา</label>
         </div>
         <div class="field-row">
           <ui-toggleswitch formControlName="active" />
@@ -122,6 +128,7 @@ export class ProductsPage implements OnInit {
     description: [''],
     requireDocsOnSubmit: [false],
     requireDocsOnBind: [false],
+    requireUnderwriting: [false],
     active: [true],
   });
 
@@ -152,6 +159,7 @@ export class ProductsPage implements OnInit {
       description: row.description ?? '',
       requireDocsOnSubmit: row.requireDocsOnSubmit,
       requireDocsOnBind: row.requireDocsOnBind,
+      requireUnderwriting: row.requireUnderwriting,
       active: row.active,
     });
     this.form.get('code')!.disable();

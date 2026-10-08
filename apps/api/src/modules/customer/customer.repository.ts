@@ -21,8 +21,17 @@ export class CustomerRepository {
     ]);
   }
 
-  findById(id: string) {
-    return this.db.customer.findFirst({ where: { id, deletedAt: null }, include: withRelations });
+  findById(id: string, scopeWhere?: Prisma.CustomerWhereInput) {
+    const where: Prisma.CustomerWhereInput = {
+      id,
+      deletedAt: null,
+      ...(scopeWhere ? { AND: [scopeWhere] } : {}),
+    };
+    return this.db.customer.findFirst({ where, include: withRelations });
+  }
+
+  findFirst(where: Prisma.CustomerWhereInput) {
+    return this.db.customer.findFirst({ where, include: withRelations });
   }
 
   findByCode(customerCode: string) {

@@ -24,10 +24,8 @@ export class TaskService {
 
   /** Task inherits the access rule of its Job (BR-014). */
   private async assertJobAccess(jobId: string): Promise<void> {
-    const exists = await this.repo.findJob({ id: jobId });
-    if (!exists) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
     const visible = await this.repo.findJob({ AND: [{ id: jobId }, this.scope.jobViewScope()] });
-    if (!visible) throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    if (!visible) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
   }
 
   private toResponse(task: Task): TaskResponse {
@@ -94,7 +92,11 @@ export class TaskService {
   async complete(id: string): Promise<TaskResponse> {
     const task = await this.repo.findById(id);
     if (!task) throw new BusinessException('TASK_NOT_FOUND', 'Task not found', 404);
-    await this.assertJobAccess(task.jobId);
+    try {
+      await this.assertJobAccess(task.jobId);
+    } catch {
+      throw new BusinessException('TASK_NOT_FOUND', 'Task not found', 404);
+    }
     if (task.status === 'DONE') throw new BusinessException('TASK_ALREADY_DONE', 'Task already completed', 409);
     if (task.status === 'CANCELLED') throw new BusinessException('TASK_CANCELLED', 'Task is cancelled', 409);
 

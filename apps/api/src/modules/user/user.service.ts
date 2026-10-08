@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Transactional } from '@nestjs-cls/transactional';
 import { hash } from 'argon2';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import { UserRepository } from './user.repository.js';
 import type { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto/user.dto.js';
@@ -38,6 +39,8 @@ export class UserService {
       email: dto.email,
       fullName: dto.fullName,
       passwordHash,
+      branch: dto.branchId ? { connect: { id: dto.branchId } } : undefined,
+      manager: dto.managerId ? { connect: { id: dto.managerId } } : undefined,
     });
     if (dto.roleIds?.length) {
       await this.assignRoles(user.id, dto.roleIds);
@@ -55,8 +58,16 @@ export class UserService {
         throw new BusinessException('EMAIL_TAKEN', 'Email already in use', 409);
       }
     }
-    const { roleIds, ...data } = dto;
-    await this.repo.update(id, data);
+    if (dto.managerId && dto.managerId === id) {
+      throw new BusinessException('INVALID_MANAGER', 'User cannot be their own manager', 422);
+    }
+    const { roleIds, branchId, managerId, ...data } = dto;
+    const updateData: Prisma.UserUpdateInput = {
+      ...data,
+      ...(branchId !== undefined && { branch: branchId ? { connect: { id: branchId } } : { disconnect: true } }),
+      ...(managerId !== undefined && { manager: managerId ? { connect: { id: managerId } } : { disconnect: true } }),
+    };
+    await this.repo.update(id, updateData);
     if (roleIds !== undefined) {
       await this.assignRoles(id, roleIds);
     }
@@ -96,6 +107,10 @@ function toUserResponse(u: NonNullable<UserWithRoles>) {
     email: u.email,
     fullName: u.fullName,
     isActive: u.isActive,
+    branchId: u.branchId ?? null,
+    branch: u.branch ? { id: u.branch.id, code: u.branch.code, name: u.branch.name } : null,
+    managerId: u.managerId ?? null,
+    manager: u.manager ? { id: u.manager.id, fullName: u.manager.fullName, username: u.manager.username } : null,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),

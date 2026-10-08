@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { QuotationService } from './quotation.service.js';
 import { CreateQuotationDto } from './dto/create-quotation.dto.js';
-import { UpdateQuotationDto } from './dto/update-quotation.dto.js';
+import { RecordQuotationVersionDto, UpdateQuotationDto, WithdrawQuotationDto } from './dto/update-quotation.dto.js';
 import { SelectQuotationDto } from './dto/select-quotation.dto.js';
 import { ListQuotationDto } from './dto/list-quotation.dto.js';
 
@@ -49,6 +49,15 @@ export class QuotationController {
     return this.service.recordReceived(id, dto);
   }
 
+  @Post('quotations/:id/versions')
+  @RequirePermissions('quotation.update')
+  recordVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecordQuotationVersionDto,
+  ) {
+    return this.service.recordReceived(id, dto);
+  }
+
   @Post('quotations/:id/select')
   @RequirePermissions('quotation.select')
   select(
@@ -56,6 +65,21 @@ export class QuotationController {
     @Body() dto: SelectQuotationDto,
   ) {
     return this.service.select(id, dto);
+  }
+
+  @Post('quotations/:id/withdraw')
+  @RequirePermissions('quotation.update')
+  withdraw(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WithdrawQuotationDto,
+  ) {
+    return this.service.withdraw(id, dto);
+  }
+
+  @Post('quotations/process-daily')
+  @RequirePermissions('job.view')
+  processDaily() {
+    return this.service.processDaily();
   }
 
   @Delete('quotations/:id')

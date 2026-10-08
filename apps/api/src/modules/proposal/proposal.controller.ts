@@ -1,11 +1,25 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
-import { ApiBearerAuth, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Ip,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiConsumes, ApiProduces, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { ProposalService } from './proposal.service.js';
 import { ProposalDocumentService } from './proposal-document.service.js';
 import { CreateProposalDto } from './dto/create-proposal.dto.js';
 import { RejectProposalDto } from './dto/reject-proposal.dto.js';
+import { AcceptProposalDto } from './dto/accept-proposal.dto.js';
+import { WorkflowActionDto } from '../job/dto/workflow-action.dto.js';
 
 @ApiTags('proposals')
 @ApiBearerAuth()
@@ -49,10 +63,23 @@ export class ProposalController {
     return this.service.send(id);
   }
 
+  @Get('proposals/:id/acceptance')
+  @RequirePermissions('proposal.view')
+  getAcceptance(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getAcceptance(id);
+  }
+
   @Post('proposals/:id/accept')
   @RequirePermissions('proposal.accept')
-  accept(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.accept(id);
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @UseInterceptors(FileInterceptor('file', { storage: undefined, limits: { fileSize: 10 * 1024 * 1024 } }))
+  accept(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AcceptProposalDto,
+    @UploadedFile() file?: Express.Multer.File,
+    @Ip() ip?: string,
+  ) {
+    return this.service.accept(id, dto, file, ip);
   }
 
   @Post('proposals/:id/reject')
@@ -62,5 +89,20 @@ export class ProposalController {
     @Body() dto: RejectProposalDto,
   ) {
     return this.service.reject(id, dto);
+  }
+
+  @Post('proposals/:id/revise')
+  @RequirePermissions('proposal.create')
+  revise(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: WorkflowActionDto,
+  ) {
+    return this.service.revise(id, dto);
+  }
+
+  @Post('proposals/daily-check')
+  @RequirePermissions('proposal.create')
+  processDaily() {
+    return this.service.processDaily();
   }
 }

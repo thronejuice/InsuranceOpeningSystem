@@ -29,20 +29,21 @@ export class PaymentService {
   ) {}
 
   private async assertJobAccess(jobId: string) {
-    const userId = this.cls.get('userId')!;
-    const permissions = this.cls.get('permissions') ?? [];
-    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    const job = await this.txHost.tx.job.findFirst({
+      where: { id: jobId, deletedAt: null, ...this.scope.jobViewScope() },
+    });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
-    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
-      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
-    }
     return job;
   }
 
   private async assertPolicyAccess(policyId: string) {
     const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
-    await this.assertJobAccess(policy.jobId);
+    try {
+      await this.assertJobAccess(policy.jobId);
+    } catch {
+      throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    }
     return policy;
   }
 
@@ -142,7 +143,14 @@ export class PaymentService {
       });
     }
 
-    await this.audit.log({ action: 'CREATE_PAYMENT', entityType: 'PAYMENT', entityId: payment.id, jobId: policy.jobId });
+    await this.audit.log({
+      action: 'CREATE_PAYMENT',
+      entityType: 'PAYMENT',
+      entityId: payment.id,
+      jobId: policy.jobId,
+      after: payment,
+      remark: dto.remark,
+    });
 
     return this.listByPolicy(policyId);
   }
@@ -157,13 +165,16 @@ export class PaymentService {
 
     const policy = await this.assertPolicyAccess(payment.policyId);
 
-    await this.repo.update(id, { status: 'CANCELLED', cancelReason: dto.cancelReason });
+    const updated = await this.repo.update(id, { status: 'CANCELLED', cancelReason: dto.cancelReason });
 
     await this.audit.log({
       action: 'CANCEL_PAYMENT',
       entityType: 'PAYMENT',
       entityId: id,
       jobId: policy?.jobId,
+      before: payment,
+      after: updated,
+      remark: dto.cancelReason,
     });
 
     return this.listByPolicy(payment.policyId);

@@ -11,8 +11,14 @@ export class QuotationRepository {
   private get db() { return this.txHost.tx; }
 
   private static readonly INCLUDE = {
-    insuranceCompany: { select: { id: true, name: true } },
+    insuranceCompany: { select: { id: true, name: true, code: true } },
     items: { orderBy: { createdAt: 'asc' as const } },
+    versions: {
+      orderBy: { version: 'desc' as const },
+      include: {
+        items: { orderBy: { createdAt: 'asc' as const } },
+      },
+    },
   } as const;
 
   findAll(where: Prisma.QuotationWhereInput) {
@@ -64,4 +70,30 @@ export class QuotationRepository {
   delete(id: string) {
     return this.db.quotation.delete({ where: { id } });
   }
+
+  findOutdated(cutoffDate: Date) {
+    return this.db.quotation.findMany({
+      where: {
+        validUntil: { lt: cutoffDate },
+        status: { in: ['REQUESTED', 'RECEIVED'] },
+        deletedAt: null,
+      },
+      include: QuotationRepository.INCLUDE,
+    });
+  }
+
+  findExpiring(fromDate: Date, toDate: Date) {
+    return this.db.quotation.findMany({
+      where: {
+        validUntil: { gte: fromDate, lte: toDate },
+        status: { in: ['REQUESTED', 'RECEIVED'] },
+        deletedAt: null,
+      },
+      include: {
+        ...QuotationRepository.INCLUDE,
+        job: { select: { id: true, jobNo: true, agentId: true, brokerStaffId: true } },
+      },
+    });
+  }
 }
+

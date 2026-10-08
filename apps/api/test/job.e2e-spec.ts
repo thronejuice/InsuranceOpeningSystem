@@ -25,6 +25,7 @@ describe('Job (e2e)', () => {
   let agentAToken: string;
   let agentBToken: string;
   let adminToken: string;
+  let managerToken: string;
   let agentAId: string;
   let agentBId: string;
   let customerId: string;
@@ -48,8 +49,10 @@ describe('Job (e2e)', () => {
     await prisma.jobRisk.deleteMany({ where: { id: { in: prevRisks.map((r) => r.id) } } });
     await prisma.jobCoverage.deleteMany({ where: { jobId: { in: prevJobIds } } });
     await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
+    await prisma.jobAssignmentHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
     await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: prevJobIds } } });
     await prisma.activityLog.deleteMany({ where: { jobId: { in: prevJobIds } } });
+    await prisma.task.deleteMany({ where: { jobId: { in: prevJobIds } } });
     await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     await prisma.customer.deleteMany({ where: { customerCode: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
@@ -63,7 +66,7 @@ describe('Job (e2e)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('job.update'),
       upsertPerm('job.view_all'), upsertPerm('job.update_all'), upsertPerm('customer.view'),
-      upsertPerm('job.submit'), upsertPerm('job.cancel'),
+      upsertPerm('job.submit'), upsertPerm('job.cancel'), upsertPerm('job.assign'),
     ]);
 
     const agentRole = await prisma.role.create({
@@ -96,6 +99,22 @@ describe('Job (e2e)', () => {
             { permission: { connect: { code: 'job.update_all' } } },
             { permission: { connect: { code: 'job.submit' } } },
             { permission: { connect: { code: 'job.cancel' } } },
+            { permission: { connect: { code: 'job.assign' } } },
+            { permission: { connect: { code: 'customer.view' } } },
+          ],
+        },
+      },
+    });
+
+    const managerRole = await prisma.role.create({
+      data: {
+        code: `${PREFIX.toUpperCase()}MGR`,
+        name: 'E2E Manager',
+        permissions: {
+          create: [
+            { permission: { connect: { code: 'job.view' } } },
+            { permission: { connect: { code: 'job.view_all' } } },
+            { permission: { connect: { code: 'job.assign' } } },
             { permission: { connect: { code: 'customer.view' } } },
           ],
         },
@@ -109,20 +128,25 @@ describe('Job (e2e)', () => {
       data: { username: `${PREFIX}agent_b`, email: `${PREFIX}b@test.com`, fullName: 'Agent B', passwordHash, roles: { create: [{ roleId: agentRole.id }] } },
     });
     await prisma.user.create({
+      data: { username: `${PREFIX}manager`, email: `${PREFIX}mgr@test.com`, fullName: 'Manager M', passwordHash, roles: { create: [{ roleId: managerRole.id }] } },
+    });
+    await prisma.user.create({
       data: { username: `${PREFIX}admin`, email: `${PREFIX}admin@test.com`, fullName: 'Admin', passwordHash, roles: { create: [{ roleId: adminRole.id }] } },
     });
 
     agentAId = agentA.id;
     agentBId = agentB.id;
 
-    const [resA, resB, resAdmin] = await Promise.all([
+    const [resA, resB, resMgr, resAdmin] = await Promise.all([
       http().post('/api/auth/login').send({ username: `${PREFIX}agent_a`, password: PASSWORD }),
       http().post('/api/auth/login').send({ username: `${PREFIX}agent_b`, password: PASSWORD }),
+      http().post('/api/auth/login').send({ username: `${PREFIX}manager`, password: PASSWORD }),
       http().post('/api/auth/login').send({ username: `${PREFIX}admin`, password: PASSWORD }),
     ]);
 
     agentAToken = resA.body.data.accessToken as string;
     agentBToken = resB.body.data.accessToken as string;
+    managerToken = resMgr.body.data.accessToken as string;
     adminToken = resAdmin.body.data.accessToken as string;
 
     // Create customer and get master data IDs
@@ -147,8 +171,10 @@ describe('Job (e2e)', () => {
     await prisma.jobRisk.deleteMany({ where: { id: { in: riskIds } } });
     await prisma.jobCoverage.deleteMany({ where: { jobId: { in: jobIds } } });
     await prisma.document.deleteMany({ where: { jobId: { in: jobIds } } });
+    await prisma.jobAssignmentHistory.deleteMany({ where: { jobId: { in: jobIds } } });
     await prisma.jobStatusHistory.deleteMany({ where: { jobId: { in: jobIds } } });
     await prisma.activityLog.deleteMany({ where: { jobId: { in: jobIds } } });
+    await prisma.task.deleteMany({ where: { jobId: { in: jobIds } } });
     await prisma.job.deleteMany({ where: { id: { in: jobIds } } });
     await prisma.customer.deleteMany({ where: { customerCode: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
@@ -211,9 +237,9 @@ describe('Job (e2e)', () => {
       expect(res.status).toBe(200);
     });
 
-    it('Agent B (different agent) GET Agent A job → 403', async () => {
+    it('Agent B (different agent) GET Agent A job outside scope → 404', async () => {
       const res = await http().get(`/api/jobs/${jobIdByA}`).set('Authorization', `Bearer ${agentBToken}`);
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('Agent B (different agent) PUT Agent A job → 403', async () => {
@@ -515,4 +541,55 @@ describe('Job (e2e)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // ─── Assignment & History (Day 1) ─────────────────────────────────────────
+
+  describe('POST /api/jobs/:id/assign & GET /api/jobs/:id/assignment-histories', () => {
+    let jobId: string;
+
+    beforeAll(async () => {
+      const res = await http()
+        .post('/api/jobs')
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .send({ customerId, insuranceTypeId, productId, agentId: agentAId, effectiveDate: '2027-04-01' });
+      jobId = res.body.data.id as string;
+    });
+
+    it('Agent B cannot assign Agent A job → 403', async () => {
+      const res = await http()
+        .post(`/api/jobs/${jobId}/assign`)
+        .set('Authorization', `Bearer ${agentBToken}`)
+        .send({ assigneeId: agentBId, role: 'BROKER_STAFF' });
+      expect(res.status).toBe(403);
+    });
+
+    it('MANAGER can assign job to broker staff and records history', async () => {
+      const res = await http()
+        .post(`/api/jobs/${jobId}/assign`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ assigneeId: agentBId, role: 'BROKER_STAFF', reason: 'Initial assign' });
+      expect(res.status).toBe(200);
+      expect(res.body.data.brokerStaffId).toBe(agentBId);
+      expect(res.body.data.assignedTo).toBe(agentBId);
+    });
+
+    it('reassigning creates a second row in assignment history', async () => {
+      const reassignRes = await http()
+        .post(`/api/jobs/${jobId}/assign`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ assigneeId: agentAId, role: 'BROKER_STAFF', reason: 'Reassign to Agent A' });
+      expect(reassignRes.status).toBe(200);
+      expect(reassignRes.body.data.brokerStaffId).toBe(agentAId);
+
+      const historyRes = await http()
+        .get(`/api/jobs/${jobId}/assignment-histories`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(historyRes.status).toBe(200);
+      expect(historyRes.body.data).toHaveLength(2);
+      expect(historyRes.body.data[0].toUserId).toBe(agentBId);
+      expect(historyRes.body.data[1].fromUserId).toBe(agentBId);
+      expect(historyRes.body.data[1].toUserId).toBe(agentAId);
+    });
+  });
 });
+

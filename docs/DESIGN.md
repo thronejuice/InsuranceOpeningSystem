@@ -65,7 +65,7 @@ InsuranceOpening_System/
 │           ├── shared/     ← UI components, pipes, directives
 │           ├── layout/     ← shell (sidebar/topbar)
 │           └── features/   ← หนึ่งโฟลเดอร์ต่อหนึ่ง feature (ดู §9)
-└── e2e/                   ← Playwright (Phase 6)
+└── e2e/                   ← Playwright (เริ่มที่ spec acceptance-flow V1; เพิ่ม flow ย่อยต่อ V2 Phase ตอนจบ Phase นั้น)
 ```
 
 ---
@@ -80,7 +80,8 @@ modules/
 ├── master/        insurance types, products, companies, coverages,
 │                  risk field definitions, document checklists, approval rules
 ├── job/           jobs, status machine, assign, risk, coverage, status history
-├── document/      upload/download, checklist status
+├── document/      upload/download, version, checklist status, verify/reject (V2)
+├── underwriting/  request-review, review/approve/require-info/reject, resume (V2)
 ├── quotation/     quotations, items, comparison, select
 ├── proposal/      proposal, send, accept/reject
 ├── approval/      approval requests, rule evaluation
@@ -278,17 +279,19 @@ Request body ของ action มี `version` เสมอ (optimistic lock):
 
 ## 7. Job State Machine
 
+> **V2 (Day 8):** `OPEN` เพิ่ม `CLOSED` ตรง (underwriting ปฏิเสธ → `closeReason = UNDERWRITING_REJECTED`) และ `requestQuotation` (OPEN/WAITING_INFORMATION → QUOTATION_REQUESTED) ต้องมี underwriting `APPROVED` ก่อนถ้า product กำหนด `requireUnderwriting` (422 `UNDERWRITING_REQUIRED`) — ดูรายละเอียดเต็มใน PLAN_V2.md §"Job state machine V2"
+
 ```ts
 // modules/job/domain/job-status.ts
 export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
-  DRAFT:               ['OPEN'],
-  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED'],
-  WAITING_INFORMATION: ['OPEN'],
-  QUOTATION_REQUESTED: ['QUOTATION_RECEIVED'],
+  DRAFT:               ['OPEN', 'QUOTATION_SELECTED'],
+  OPEN:                ['WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_SELECTED', 'CLOSED'],
+  WAITING_INFORMATION: ['OPEN', 'CLOSED'],
+  QUOTATION_REQUESTED: ['QUOTATION_RECEIVED', 'QUOTATION_SELECTED'],
   QUOTATION_RECEIVED:  ['QUOTATION_SELECTED'],
   QUOTATION_SELECTED:  ['PROPOSAL_SENT'],
   PROPOSAL_SENT:       ['WAITING_CUSTOMER'],
-  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED'],
+  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL'],
   CUSTOMER_ACCEPTED:   ['WAITING_APPROVAL', 'BINDING'],
   WAITING_APPROVAL:    ['APPROVED'],
   APPROVED:            ['BINDING'],
@@ -315,11 +318,17 @@ export function canTransition(from: JobStatus, to: JobStatus): boolean {
 |---|---|---|
 | `submit` | DRAFT → OPEN | Risk required ครบ, เอกสารครบถ้า `require_docs_on_submit` |
 | `request-info` / `resume` | OPEN ⇄ WAITING_INFORMATION | |
-| create quotation (แรก) | OPEN → QUOTATION_REQUESTED | |
+| `underwriting/request-review` | (ไม่เปลี่ยน Job status) | OPEN เท่านั้น; เอกสารที่ checklist ต้องเป็น VERIFIED ครบ |
+| `underwriting/require-info` | OPEN → WAITING_INFORMATION | ต้องมี reason; underwriting → INFO_REQUIRED |
+| `underwriting/resume` | WAITING_INFORMATION → OPEN | underwriting กลับเป็น PENDING เพื่อ re-review |
+| `underwriting/reject` | OPEN → CLOSED | `closeReason = UNDERWRITING_REJECTED`; ต้องมี reason |
+| `underwriting/approve` | (ไม่เปลี่ยน Job status) | ต้องมี riskLevel (LOW/MEDIUM/HIGH); maker-checker (ผู้ขอ ≠ ผู้อนุมัติ) |
+| create quotation (แรก) | OPEN → QUOTATION_REQUESTED | ถ้า product `requireUnderwriting` ต้องมี underwriting ล่าสุด APPROVED (422 `UNDERWRITING_REQUIRED`) |
 | record quotation (แรกที่ RECEIVED) | QUOTATION_REQUESTED → QUOTATION_RECEIVED | |
 | `quotations/{id}/select` | QUOTATION_RECEIVED → QUOTATION_SELECTED | Quotation ยังไม่หมดอายุ, บันทึกเหตุผล |
 | `proposals/{id}/send` | QUOTATION_SELECTED → PROPOSAL_SENT → WAITING_CUSTOMER | ทำ 2 step ใน transaction เดียว (history 2 แถว) |
-| `proposals/{id}/accept` | WAITING_CUSTOMER → CUSTOMER_ACCEPTED → (WAITING_APPROVAL \| อยู่รอ bind) | ประเมิน `approval_rules`, proposal ไม่หมดอายุ |
+| `proposals/{id}/revise` / `jobs/{id}/revise` | WAITING_CUSTOMER / APPROVAL_REJECTED → QUOTATION_RECEIVED | Proposal ปัจจุบัน → SUPERSEDED; Approval ค้าง → CANCELLED; Quotation SELECTED → RECEIVED |
+| `proposals/{id}/accept` | WAITING_CUSTOMER → CUSTOMER_ACCEPTED → (WAITING_APPROVAL \| อยู่รอ bind) | ประเมิน `approval_rules`, proposal ไม่หมดอายุ, แนบ evidence หรือ remark ตาม method |
 | `proposals/{id}/reject` | WAITING_CUSTOMER → CUSTOMER_REJECTED | ต้องมี reject reason |
 | `approvals/{id}/approve` | WAITING_APPROVAL → APPROVED | approver ต้องมี role ตาม rule |
 | `bind` | CUSTOMER_ACCEPTED/APPROVED → BINDING → POLICY_PENDING | BR-006..009, idempotency key |
@@ -346,6 +355,72 @@ async transition(job: Job, to: JobStatus, opts: { expectedVersion: number; reaso
   await this.audit.log({ action: 'STATUS_CHANGED', entityType: 'JOB', entityId: job.id, jobId: job.id, oldValue: { status: job.status }, newValue: { status: to } });
 }
 ```
+
+### 7.3 Document Status & Underwriting (V2, Day 6 + Day 8)
+
+Document `status` ไม่ใช่ state machine แบบ Job (ไม่มี `canTransition`) แต่เป็นชุดสถานะคงที่ต่อไฟล์หนึ่งเวอร์ชัน:
+
+```text
+REQUIRED → UPLOADED → UNDER_REVIEW → VERIFIED
+                              └────→ REJECTED
+UPLOADED/UNDER_REVIEW/VERIFIED → EXPIRED  (งานรายวันเมื่อเลย expiryDate)
+```
+
+- อัปโหลดประเภทเดิมซ้ำบน Job เดียวกัน = แถวใหม่ `version = version เก่า + 1`; เวอร์ชันเก่าไม่ลบ (soft, `deletedAt` ไม่ถูกแตะ)
+- `verify` / `reject` ต้องมี permission `document.verify`; ห้าม verify เอกสารที่ตัวเอง upload (422) — maker-checker แบบเดียวกับ underwriting
+- `isComplete(checklist, docs, level)` (pure fn, `domain/document-checklist.ts`) เช็คสองระดับ: `UPLOADED` (พอสำหรับ `submit`) และ `VERIFIED` (ต้องใช้ก่อน `underwriting/request-review` และก่อน `bind`)
+- เอกสารที่ `EXPIRED` ไม่นับเป็น "มีแล้ว" ในทั้งสองระดับ
+
+`Underwriting` ไม่ใช่ sub-state ของ Job แต่เป็น record แยก (`underwritings`, unique ต่อ `(jobId, version)`) ที่ Job อ้างอิงทางอ้อมผ่านกฎ `requestQuotation` (§7.1):
+
+```text
+PENDING → APPROVED
+        → REJECTED        (→ Job CLOSED)
+        → INFO_REQUIRED   (→ Job WAITING_INFORMATION; resume ส่งกลับ PENDING เป็น re-review รอบเดิม ไม่สร้าง version ใหม่)
+```
+
+- `requestReview` สร้าง version ใหม่ (+1 จาก version ล่าสุดของ Job นั้น) เฉพาะตอนที่ยังไม่มีรอบ PENDING ค้างอยู่
+- `approve` ต้องระบุ `riskLevel` (`LOW | MEDIUM | HIGH`, D-3); ไม่มี rule engine คำนวณให้ ผู้ตรวจเลือกเอง
+- Maker-checker: `requestedById` ของรอบล่าสุด ≠ ผู้เรียก `review/approve/require-info/reject` (422 `MAKER_CHECKER_VIOLATION`)
+
+### 7.4 Quotation V2, Proposal V2 & Acceptance Evidence (V2, Day 11–16)
+
+#### Quotation Versioning & Actions (D11–D12)
+- **แยก Model:** `Quotation` (ต่อ Insurer ต่อ Job) และ `QuotationVersion` (ประวัติการเสนอราคาแต่ละรอบ `version = 1, 2, ...`)
+- **Immutable History:** การบันทึกเวอร์ชันใหม่ (`POST /quotations/:id/versions`) จะปรับเวอร์ชันก่อนหน้าเป็น `SUPERSEDED` โดยไม่ overwrite ข้อมูลเดิม
+- **Validation:** `validUntil > quotationDate` (422), `premium >= 0`, `insuranceCompanyId` จำเป็น
+- **Commission Rate Default:** ดึงอัตราจากตาราง master `commission_rates` (ตาม insurerId + productId ณ วันที่ `quotationDate`) คำนวณเป็น `commissionAmount = netPremium * rate / 100` อัตโนมัติ
+- **Quotation Actions:**
+  - `recordVersion`: บันทึกรอบราคาใหม่ (สถานะ `RECEIVED` $\to$ เพิ่ม `QuotationVersion`)
+  - `withdraw`: ถอนใบเสนอราคา (`WITHDRAWN`); ไม่อนุญาตหากถูกเลือกไปแล้ว (422 `QUOTATION_CANNOT_WITHDRAW_SELECTED`)
+  - `select`: ต้องเลือกเวอร์ชันล่าสุดของใบเสนอราคา และต้องไม่หมดอายุ (`validUntil >= today`)
+- **งานรายวัน / ปิดงาน:**
+  - ใบเสนอราคาที่เลย `validUntil` $\to$ ปรับเป็น `EXPIRED`, ส่งการแจ้งเตือน `QUOTATION_EXPIRING` ล่วงหน้า 3 วัน
+  - เมื่อ Job `CLOSED` หรือออกกรมธรรม์ $\to$ ใบเสนอราคาอื่นที่ไม่ถูกเลือกจะถูกปรับเป็น `REJECTED` อัตโนมัติ (D-5)
+- **Comparison API (`GET /jobs/:jobId/quotation-comparison`):** สรุปเปรียบเทียบจากเวอร์ชันล่าสุดของใบเสนอราคาที่ `RECEIVED` หรือ `SELECTED` (เบี้ยรวม, ส่วนลด, เบี้ยสุทธิ, อากร/ภาษี, รวมทั้งสิ้น, deductible, commission, exclusion, condition, sub-coverages พร้อมระบุ `isLowest` สำหรับข้อเสนอที่เบี้ยต่ำสุด)
+
+#### Proposal Versioning, Payment Terms & Revise (D13, D16)
+- **Proposal Model:** เวอร์ชันของ Proposal ต่อ Job (`v1, v2, ...`), อ้างอิง `QuotationVersion` และ `PaymentTerm` (`payment_terms` master: name, installments, intervalMonths, firstDueDays)
+- **Revise Flow (`POST /jobs/:id/revise` / `POST /proposals/:id/revise`):**
+  - อนุญาตให้เรียกจากสถานะ `WAITING_CUSTOMER` หรือ `APPROVAL_REJECTED`
+  - ปรับสถานะ Proposal ปัจจุบันเป็น `SUPERSEDED`
+  - ยกเลิกรายการ Approval ที่ค้างอยู่เป็น `CANCELLED`
+  - ถอยสถานะ Quotation ที่เลือกกลับเป็น `RECEIVED` และคืน Job สู่สถานะ `QUOTATION_RECEIVED` เพื่อให้สามารถเลือกหรือปรับปรุงราคาและออก Proposal v2 ได้
+- **Proposal Daily Check:** Proposal ที่เลย `validUntil` ปรับเป็น `EXPIRED` โดยสถานะ Job ยังคงเป็น `WAITING_CUSTOMER`
+- **PDF Template V2:** แสดงหัวกระดาษ "ฉบับที่ v{version}", เงื่อนไข Payment Term และตารางคำนวณงวดผ่อนชำระ (งวดที่, วันครบกำหนด, ยอดชำระต่องวด) ตาม OQ-3
+
+#### Acceptance Evidence (D14, D16)
+- **Model `ProposalAcceptance` (`proposal_acceptances` table):**
+  - ฟิลด์: `proposalId`, `proposalVersion`, `acceptedByName`, `acceptedAt`, `method` (`EMAIL | SIGNED_DOCUMENT | LINE | MANUAL`), `ipAddress`, `evidenceFileId`, `remark`, `recordedById`
+- **Domain Validation Rule (`validateAcceptanceEvidence`):**
+  - `method !== 'MANUAL'` ต้องมีเอกสารหลักฐาน (`file` multipart upload หรือ `evidenceFileId`)
+  - `method === 'MANUAL'` ต้องมี `remark` บันทึกรายละเอียดการตอบรับ
+  - หากไม่ตรงเงื่อนไข โยน 422 `ACCEPTANCE_EVIDENCE_REQUIRED`
+- **Acceptance Action (`POST /proposals/:id/accept`):**
+  - รองรับทั้ง `multipart/form-data` (อัปโหลดไฟล์หลักฐานและบันทึกเป็น Document โดยอัตโนมัติ) และ JSON
+  - บันทึกประวัติ `ProposalAcceptance` พร้อม IP Address
+  - ส่ง Notification `CUSTOMER_ACCEPTED` ไปยัง Agent, Broker Staff และเจ้าของ Job
+  - กรณีปฏิเสธ (`POST /proposals/:id/reject`) ส่ง Notification `CUSTOMER_REJECTED`
 
 ---
 
@@ -405,8 +480,12 @@ features/customers/
 
 ### 9.4 Job Detail Tabs (spec §38)
 
-`Info · Risk · Coverage · Documents · Quotations · Comparison · Proposal · Approval · Binding · Policy · Payment · Commission · Tasks · Timeline`
+`Info · Risk · Coverage · Documents · Quotations · Comparison · Proposal · Approval · Binding · Policy · Payment · Commission · Tasks · Timeline · Underwriting`
 
+- Tab **Quotations (ใบเสนอราคา V2, Day 15):** แสดงรายการใบเสนอราคาแต่ละบริษัทประกันพร้อม badge เวอร์ชัน `v{version}`, badge หมดอายุ (`EXPIRED`), ตารางประวัติเวอร์ชันย่อย (Version History Box) ที่ขยายดูได้, ปุ่ม "ขอราคา", ปุ่ม "บันทึกราคา", ปุ่ม "ปรับปรุงราคา (Version ใหม่)" ที่เปิด modal บันทึกเวอร์ชันใหม่ตาม D11-D12, และปุ่ม/dialog "ถอนใบเสนอราคา"
+- Tab **Comparison (เปรียบเทียบ V2, Day 15):** ตารางเปรียบเทียบหลายมิติ (ข้อมูลเบี้ยประกันภัย gross/discount/net/stamp/tax/total, เงื่อนไข deductible/exclusion/condition/commission, รายการความคุ้มครองย่อย), ไฮไลต์คอลัมน์สีเขียวและ badge "เบี้ยต่ำที่สุด" สำหรับบริษัทที่ `isLowest`, บล็อกการเลือกใบเสนอราคาที่หมดอายุ, และปุ่ม "เลือกข้อเสนอนี้" เพื่อเปลี่ยนสถานะ Job สู่ `QUOTATION_SELECTED`
+- Tab **Proposal (ใบเสนอ V2, Day 16):** แสดงรายการ Proposal พร้อม badge เวอร์ชัน `v{version}`, สถานะ (`DRAFT`, `SENT`, `SUPERSEDED`, `ACCEPTED`, `REJECTED`, `EXPIRED`), รายละเอียดเงื่อนไขการชำระเงิน (Payment Term) และงวดผ่อน, ปุ่มดาวน์โหลด PDF ที่มีฉบับร่าง/ฉบับจริงพร้อมงวดผ่อน, ปุ่ม "ส่งใบเสนอ", ปุ่ม "ปรับปรุงข้อเสนอ (Revise)" ที่ส่ง Job กลับสู่ `QUOTATION_RECEIVED`, ปุ่ม "ยอมรับ (Accept)" พร้อม dialog บันทึกหลักฐาน (EMAIL/SIGNED_DOCUMENT/LINE/MANUAL) และการ์ดแสดงข้อมูล Acceptance Evidence
+- Tab **Underwriting (V2 Day 9):** สถานะล่าสุด + ประวัติทุกรอบ (version), ฟอร์ม review (riskLevel/riskScore/reason/condition/exclusion/deductible/requiredSurvey/requiredDocuments) และปุ่ม request-review/approve/require-info/reject/resume ตาม permission `underwriting.review` + maker-checker (ผู้ขอ ≠ ผู้ตรวจ)
 - Tab **Risk** เป็น dynamic form สร้างจาก `risk_field_definitions` ของ product (TEXT/NUMBER/DATE/BOOLEAN/SELECT/MULTI_SELECT)
 - Tab ที่ยังไม่ถึงขั้น (เช่น Policy ตอนยัง OPEN) แสดงแต่ disabled พร้อมบอกว่าต้องถึงสถานะไหน
 

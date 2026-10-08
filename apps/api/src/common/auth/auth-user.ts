@@ -4,6 +4,8 @@ export interface AuthUser {
   username: string;
   roles: string[];
   permissions: string[];
+  branchId?: string | null;
+  dataScope?: string;
 }
 
 /** Access token claims (DESIGN §8: permissions are embedded, so role changes apply on the next refresh). */
@@ -12,4 +14,6 @@ export interface AccessTokenPayload {
   username: string;
   roles: string[];
   permissions: string[];
+  branchId?: string | null;
+  dataScope?: string;
 }

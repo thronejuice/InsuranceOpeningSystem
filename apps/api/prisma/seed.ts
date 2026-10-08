@@ -14,8 +14,12 @@ import {
   PERMISSIONS,
   PROPERTY_COVERAGES,
   ROLE_PERMISSIONS,
+  ROLE_DATA_SCOPE,
   ROLES,
+  SAMPLE_BRANCHES,
+  SAMPLE_COMMISSION_RATES,
   SAMPLE_COMPANIES,
+  SAMPLE_PAYMENT_TERMS,
   SAMPLE_USERS,
   type RoleCode,
 } from './seed-data.js';
@@ -27,6 +31,16 @@ const prisma = new PrismaClient();
 
 /** Idempotent: safe to re-run, keeps role → permission links in sync with seed-data.ts */
 async function main() {
+  // ─── Branches ──────────────────────────────────────────────────────────
+  for (const b of SAMPLE_BRANCHES) {
+    await prisma.branch.upsert({
+      where: { code: b.code },
+      update: { name: b.name, address: b.address },
+      create: { code: b.code, name: b.name, address: b.address },
+    });
+  }
+  const branchIds = new Map((await prisma.branch.findMany()).map((b) => [b.code, b.id]));
+
   // ─── Auth ──────────────────────────────────────────────────────────────
   for (const [code, description] of Object.entries(PERMISSIONS)) {
     await prisma.permission.upsert({ where: { code }, update: { description }, create: { code, description } });
@@ -34,7 +48,12 @@ async function main() {
   const permissionIds = new Map((await prisma.permission.findMany()).map((p) => [p.code, p.id]));
 
   for (const [code, name] of Object.entries(ROLES)) {
-    const role = await prisma.role.upsert({ where: { code }, update: { name }, create: { code, name } });
+    const dataScope = ROLE_DATA_SCOPE[code as RoleCode] ?? 'OWN';
+    const role = await prisma.role.upsert({
+      where: { code },
+      update: { name, dataScope },
+      create: { code, name, dataScope },
+    });
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({
       data: [...new Set(ROLE_PERMISSIONS[code as RoleCode])].map((permission) => ({
@@ -46,23 +65,39 @@ async function main() {
   const roleIds = new Map((await prisma.role.findMany()).map((r) => [r.code, r.id]));
 
   const passwordHash = await hash(password);
+  const userMap = new Map<string, string>();
   for (const sample of SAMPLE_USERS) {
+    const branchId = sample.branchCode ? branchIds.get(sample.branchCode) : undefined;
     const user = await prisma.user.upsert({
       where: { username: sample.username },
-      update: {},
+      update: { branchId },
       create: {
         username: sample.username,
         email: `${sample.username}@example.com`,
         fullName: sample.fullName,
         passwordHash,
+        branchId,
       },
     });
+    userMap.set(sample.username, user.id);
     const roleId = roleIds.get(sample.role)!;
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId: user.id, roleId } },
       update: {},
       create: { userId: user.id, roleId },
     });
+  }
+
+  // Link managerId
+  for (const sample of SAMPLE_USERS) {
+    if (sample.managerUsername && userMap.has(sample.managerUsername)) {
+      const userId = userMap.get(sample.username)!;
+      const managerId = userMap.get(sample.managerUsername)!;
+      await prisma.user.update({
+        where: { id: userId },
+        data: { managerId },
+      });
+    }
   }
 
   // ─── Insurance Types ───────────────────────────────────────────────────
@@ -156,6 +191,61 @@ async function main() {
       create: { code: co.code, name: co.name, phone: co.phone, email: co.email },
     });
   }
+  const companyMap = new Map((await prisma.insuranceCompany.findMany()).map((c) => [c.code, c.id]));
+
+  // ─── Commission Rates ──────────────────────────────────────────────────
+  for (const cr of SAMPLE_COMMISSION_RATES) {
+    const insuranceCompanyId = companyMap.get(cr.companyCode);
+    const productId = productMap.get(cr.productCode);
+    if (insuranceCompanyId && productId) {
+      const existing = await prisma.commissionRate.findFirst({
+        where: {
+          insuranceCompanyId,
+          productId,
+          effectiveFrom: new Date(cr.effectiveFrom),
+        },
+      });
+      if (existing) {
+        await prisma.commissionRate.update({
+          where: { id: existing.id },
+          data: { rate: cr.rate },
+        });
+      } else {
+        await prisma.commissionRate.create({
+          data: {
+            insuranceCompanyId,
+            productId,
+            rate: cr.rate,
+            effectiveFrom: new Date(cr.effectiveFrom),
+          },
+        });
+      }
+    }
+  }
+
+  // ─── Payment Terms (Phase 2 Day 13 / OQ-2) ─────────────────────────────
+  for (const pt of SAMPLE_PAYMENT_TERMS) {
+    await prisma.paymentTerm.upsert({
+      where: { code: pt.code },
+      update: {
+        name: pt.name,
+        description: pt.description,
+        installments: pt.installments,
+        intervalMonths: pt.intervalMonths,
+        firstDueDays: pt.firstDueDays,
+        active: pt.active,
+      },
+      create: {
+        code: pt.code,
+        name: pt.name,
+        description: pt.description,
+        installments: pt.installments,
+        intervalMonths: pt.intervalMonths,
+        firstDueDays: pt.firstDueDays,
+        active: pt.active,
+      },
+    });
+  }
 
   // ─── Approval Rules ────────────────────────────────────────────────────
   for (const rule of APPROVAL_RULES) {
@@ -177,7 +267,7 @@ async function main() {
   console.log(
     `Seeded ${Object.keys(PERMISSIONS).length} permissions, ${Object.keys(ROLES).length} roles, ${SAMPLE_USERS.length} users,`,
     `${INSURANCE_TYPES.length} insurance types, ${INSURANCE_PRODUCTS.length} products,`,
-    `${SAMPLE_COMPANIES.length} companies, ${APPROVAL_RULES.length} approval rules`,
+    `${SAMPLE_COMPANIES.length} companies, ${SAMPLE_COMMISSION_RATES.length} commission rates, ${SAMPLE_PAYMENT_TERMS.length} payment terms, ${APPROVAL_RULES.length} approval rules`,
   );
 }
 

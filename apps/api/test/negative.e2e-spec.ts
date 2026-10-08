@@ -88,7 +88,10 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
     if (targetStatus === 'WAITING_CUSTOMER') return { jobId, quotationId, proposalId };
 
     // Accept proposal → WAITING_APPROVAL
-    const accRes = await http().post(`/api/proposals/${proposalId}/accept`).set('Authorization', `Bearer ${agentToken}`);
+    const accRes = await http()
+      .post(`/api/proposals/${proposalId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
     const approvalId = accRes.body.data.approvals?.[0]?.id as string | undefined;
 
     if (targetStatus === 'WAITING_APPROVAL') return { jobId, quotationId, proposalId, approvalId };
@@ -117,6 +120,7 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });

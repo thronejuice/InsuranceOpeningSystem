@@ -1,3 +1,5 @@
+import { DataScope } from '../src/generated/prisma/enums.js';
+
 /** spec §4 */
 export const ROLES = {
   ADMIN: 'System administrator',
@@ -35,6 +37,7 @@ export const PERMISSIONS = {
   'proposal.send': 'Send proposals to customer',
   'proposal.accept': 'Record customer acceptance',
   'proposal.reject': 'Record customer rejection',
+  'proposal.revise': 'Revise proposals',
   'approval.manage': 'Request / manage approvals',
   'approval.approve': 'Approve or reject approval requests',
   'approval.approve_own': 'Approve or reject requests you raised yourself (bypasses maker-checker)',
@@ -53,14 +56,17 @@ export const PERMISSIONS = {
   'task.update': 'Update / complete follow-up tasks',
   'import.create': 'Import data from Excel',
   'report.view': 'View reports and dashboards',
+  'audit.view': 'View audit logs',
   'master.manage': 'Manage master data',
   'user.manage': 'Manage users and roles',
+  'document.verify': 'Verify or reject uploaded documents',
+  'underwriting.review': 'Review, approve, reject or require info for underwriting',
 } as const;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
 
 const ALL = Object.keys(PERMISSIONS) as PermissionCode[];
-const VIEW = ALL.filter((code) => code.endsWith('.view'));
+const VIEW = ALL.filter((code) => code.endsWith('.view') && code !== 'audit.view');
 const ADMIN_PERMISSIONS = process.env.NODE_ENV === 'production'
   ? ALL.filter((code) => code !== 'approval.approve_own')
   : ALL;
@@ -76,7 +82,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     'customer.create', 'customer.update', 'customer.delete',
     'job.create', 'job.update', 'job.submit', 'job.cancel',
     'quotation.select',
-    'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject',
+    'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject', 'proposal.revise',
     'approval.manage',
     'task.create', 'task.update',
   ],
@@ -84,8 +90,10 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     ...VIEW.filter((code) => code !== 'report.view'),
     'customer.create', 'customer.update', 'customer.delete',
     'job.view_all', 'job.update', 'job.update_all',
+    'document.verify',
+    'underwriting.review',
     'quotation.create', 'quotation.update', 'quotation.select',
-    'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject',
+    'proposal.create', 'proposal.send', 'proposal.accept', 'proposal.reject', 'proposal.revise',
     'approval.manage',
     'policy.create', 'policy.update',
     'renewal.create',
@@ -96,14 +104,20 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     ...VIEW,
     'customer.create', 'customer.update', 'customer.delete', 'customer.view_sensitive',
     'job.view_all', 'job.create', 'job.update', 'job.update_all', 'job.submit', 'job.assign', 'job.cancel',
+    'document.verify',
+    'underwriting.review',
     'quotation.select',
+    'proposal.revise',
     'approval.manage',
     'task.create', 'task.update',
   ],
   MANAGER: [
     ...VIEW,
+    'audit.view',
     'customer.view_sensitive',
     'job.view_all', 'job.assign', 'job.cancel',
+    'document.verify',
+    'underwriting.review',
     'approval.manage', 'approval.approve',
   ],
   FINANCE: [
@@ -115,16 +129,32 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
   VIEWER: [...VIEW, 'job.view_all'],
 };
 
+export const ROLE_DATA_SCOPE: Record<RoleCode, DataScope> = {
+  ADMIN: DataScope.ALL,
+  FINANCE: DataScope.ALL,
+  VIEWER: DataScope.ALL,
+  MANAGER: DataScope.TEAM,
+  SUPERVISOR: DataScope.TEAM,
+  BROKER_STAFF: DataScope.BRANCH,
+  AGENT: DataScope.OWN,
+};
+
+export const SAMPLE_BRANCHES = [
+  { code: 'HQ', name: 'สำนักงานใหญ่ (กรุงเทพฯ)', address: '123 ถนนสาทร แขวงยานนาวา เขตสาทร กรุงเทพฯ 10120' },
+  { code: 'CM', name: 'สาขาเชียงใหม่', address: '456 ถนนนิมมานเหมินท์ ตำบลสุเทพ อำเภอเมือง จังหวัดเชียงใหม่ 50200' },
+] as const;
+
 /** One sample user per role; `admin` gets ADMIN. */
-export const SAMPLE_USERS: { username: string; fullName: string; role: RoleCode }[] = [
-  { username: 'admin', fullName: 'System Administrator', role: 'ADMIN' },
-  { username: 'agent', fullName: 'Sample Agent', role: 'AGENT' },
-  { username: 'agent01', fullName: 'Agent One', role: 'AGENT' },
-  { username: 'staff', fullName: 'Sample Broker Staff', role: 'BROKER_STAFF' },
-  { username: 'supervisor', fullName: 'Sample Supervisor', role: 'SUPERVISOR' },
-  { username: 'manager', fullName: 'Sample Manager', role: 'MANAGER' },
-  { username: 'finance', fullName: 'Sample Finance', role: 'FINANCE' },
-  { username: 'viewer', fullName: 'Sample Viewer', role: 'VIEWER' },
+export const SAMPLE_USERS: { username: string; fullName: string; role: RoleCode; branchCode?: string; managerUsername?: string }[] = [
+  { username: 'admin', fullName: 'System Administrator', role: 'ADMIN', branchCode: 'HQ' },
+  { username: 'manager', fullName: 'Sample Manager', role: 'MANAGER', branchCode: 'HQ' },
+  { username: 'supervisor', fullName: 'Sample Supervisor', role: 'SUPERVISOR', branchCode: 'HQ', managerUsername: 'manager' },
+  { username: 'agent01', fullName: 'Agent One', role: 'AGENT', branchCode: 'HQ', managerUsername: 'supervisor' },
+  { username: 'staff', fullName: 'Sample Broker Staff', role: 'BROKER_STAFF', branchCode: 'HQ', managerUsername: 'supervisor' },
+  { username: 'agent', fullName: 'Sample Agent', role: 'AGENT', branchCode: 'CM' },
+  { username: 'staff_cm', fullName: 'Staff Chiang Mai', role: 'BROKER_STAFF', branchCode: 'CM' },
+  { username: 'finance', fullName: 'Sample Finance', role: 'FINANCE', branchCode: 'HQ' },
+  { username: 'viewer', fullName: 'Sample Viewer', role: 'VIEWER', branchCode: 'HQ' },
 ];
 
 // ─── Master Data seed (spec §8, §10, §11, §12.2, §16.2) ─────────────────────
@@ -804,3 +834,55 @@ export const APPROVAL_RULES = [
     sortOrder: 3,
   },
 ] as const;
+
+export const SAMPLE_COMMISSION_RATES = [
+  // Thai Insurance (INS-TH001)
+  { companyCode: 'INS-TH001', productCode: 'MOTOR-001', rate: '12.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH001', productCode: 'MOTOR-002', rate: '12.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH001', productCode: 'FIRE-001', rate: '18.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH001', productCode: 'PROPERTY-001', rate: '15.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH001', productCode: 'PA-001', rate: '18.0000', effectiveFrom: '2026-01-01' },
+
+  // Asia Insurance (INS-TH002)
+  { companyCode: 'INS-TH002', productCode: 'MOTOR-001', rate: '12.5000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH002', productCode: 'FIRE-001', rate: '20.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH002', productCode: 'PROPERTY-001', rate: '15.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH002', productCode: 'PA-001', rate: '17.5000', effectiveFrom: '2026-01-01' },
+
+  // Siam Insurance (INS-TH003)
+  { companyCode: 'INS-TH003', productCode: 'MOTOR-001', rate: '11.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH003', productCode: 'FIRE-001', rate: '18.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH003', productCode: 'PROPERTY-001', rate: '14.0000', effectiveFrom: '2026-01-01' },
+  { companyCode: 'INS-TH003', productCode: 'PA-001', rate: '16.0000', effectiveFrom: '2026-01-01' },
+] as const;
+
+export const SAMPLE_PAYMENT_TERMS = [
+  {
+    code: 'FULL',
+    name: 'เต็มจำนวน',
+    description: 'ชำระเต็มจำนวนภายใน 30 วัน',
+    installments: 1,
+    intervalMonths: 0,
+    firstDueDays: 30,
+    active: true,
+  },
+  {
+    code: 'INSTALLMENT_3',
+    name: 'ผ่อน 3 งวด',
+    description: 'ผ่อนชำระ 3 งวด ห่างงวดละ 1 เดือน',
+    installments: 3,
+    intervalMonths: 1,
+    firstDueDays: 30,
+    active: true,
+  },
+  {
+    code: 'INSTALLMENT_6',
+    name: 'ผ่อน 6 งวด',
+    description: 'ผ่อนชำระ 6 งวด ห่างงวดละ 1 เดือน',
+    installments: 6,
+    intervalMonths: 1,
+    firstDueDays: 30,
+    active: true,
+  },
+] as const;
+

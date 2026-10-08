@@ -47,6 +47,7 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -235,9 +236,11 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       const propRes = await http().post(`/api/jobs/${jobId}/proposal`).set('Authorization', `Bearer ${agentToken}`)
         .send({ validUntil: '2027-06-30', remark: 'dup policy test' });
       const proposalId = propRes.body.data.id as string;
-
       await http().post(`/api/proposals/${proposalId}/send`).set('Authorization', `Bearer ${agentToken}`);
-      const accRes = await http().post(`/api/proposals/${proposalId}/accept`).set('Authorization', `Bearer ${agentToken}`);
+      const accRes = await http()
+        .post(`/api/proposals/${proposalId}/accept`)
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
       const approvalId = accRes.body.data.approvals[0].id as string;
 
       await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${approverToken}`)

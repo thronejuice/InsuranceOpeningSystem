@@ -1,12 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ThDatePipe } from '../../../shared/pipes/th-date.pipe';
 import { AppPageHeaderComponent } from '../../../shared/components/app-page-header/app-page-header.component';
 import { AppStateComponent } from '../../../shared/components/app-state/app-state.component';
 import { AppFieldErrorComponent } from '../../../shared/components/app-field-error/app-field-error.component';
 import { UsersApi, type Role, type User } from '../data/users.api';
+import { BranchesApi, type Branch } from '../../master/data/branches.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
-import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialog, UiInput, UiMultiSelect, UiPassword, UiTable, UiToggleSwitch } from '../../../shared/ui';
+import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialog, UiInput, UiMultiSelect, UiPassword, UiSelect, UiTable, UiToggleSwitch } from '../../../shared/ui';
 import { MatTooltip } from '@angular/material/tooltip';
 
 @Component({
@@ -14,7 +15,7 @@ import { MatTooltip } from '@angular/material/tooltip';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ConfirmationService],
-  imports: [MatTooltip, ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiPassword, UiMultiSelect, UiToggleSwitch, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, ThDatePipe],
+  imports: [MatTooltip, ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiPassword, UiSelect, UiMultiSelect, UiToggleSwitch, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, ThDatePipe],
   template: `
     <ui-confirm-dialog />
 
@@ -31,6 +32,8 @@ import { MatTooltip } from '@angular/material/tooltip';
             <th>ชื่อผู้ใช้</th>
             <th>ชื่อ-นามสกุล</th>
             <th>อีเมล</th>
+            <th>สาขา</th>
+            <th>หัวหน้า</th>
             <th>Role</th>
             <th style="width:80px">สถานะ</th>
             <th style="width:140px">เข้าสู่ระบบล่าสุด</th>
@@ -42,6 +45,8 @@ import { MatTooltip } from '@angular/material/tooltip';
             <td><strong>{{ user.username }}</strong></td>
             <td>{{ user.fullName }}</td>
             <td>{{ user.email }}</td>
+            <td>{{ user.branch?.name || '-' }}</td>
+            <td>{{ user.manager?.fullName || '-' }}</td>
             <td>
               @for (r of user.roles; track r.id) {
                 <span class="badge-role">{{ r.code }}</span>
@@ -63,7 +68,7 @@ import { MatTooltip } from '@angular/material/tooltip';
           </tr>
         </ng-template>
         <ng-template #emptymessage>
-          <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบผู้ใช้งาน</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-color-secondary)">ไม่พบผู้ใช้งาน</td></tr>
         </ng-template>
       </ui-table>
     }
@@ -101,6 +106,16 @@ import { MatTooltip } from '@angular/material/tooltip';
           <label>Role</label>
           <ui-multiselect formControlName="roleIds" [options]="roles()" optionLabel="name" optionValue="id"
             placeholder="เลือก Role" display="chip" class="w-full" />
+        </div>
+        <div class="field">
+          <label>สาขา</label>
+          <ui-select formControlName="branchId" [options]="branches()" optionLabel="name" optionValue="id"
+            placeholder="เลือกสาขา" [showClear]="true" class="w-full" />
+        </div>
+        <div class="field">
+          <label>หัวหน้างาน</label>
+          <ui-select formControlName="managerId" [options]="managerOptions()" optionLabel="fullName" optionValue="id"
+            placeholder="เลือกหัวหน้างาน" [showClear]="true" class="w-full" />
         </div>
         @if (editUserId()) {
           <div class="field-row">
@@ -149,12 +164,15 @@ import { MatTooltip } from '@angular/material/tooltip';
 })
 export class UserListPage implements OnInit {
   private readonly api = inject(UsersApi);
+  private readonly branchesApi = inject(BranchesApi);
   private readonly toast = inject(MessageService);
   private readonly confirm = inject(ConfirmationService);
   private readonly fb = inject(FormBuilder);
 
   readonly users = signal<User[]>([]);
   readonly roles = signal<Role[]>([]);
+  readonly branches = signal<Branch[]>([]);
+  readonly managerOptions = computed(() => this.users().filter((u) => u.id !== this.editUserId()));
   readonly state = signal<'loading' | 'error' | 'none'>('loading');
   readonly saving = signal(false);
   readonly editUserId = signal<string | null>(null);
@@ -164,12 +182,14 @@ export class UserListPage implements OnInit {
   userDialogVisible = false;
   resetPwDialogVisible = false;
 
-  readonly userForm = this.fb.nonNullable.group({
+  readonly userForm = this.fb.group({
     username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(50)]],
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
     email: ['', [Validators.required, Validators.email, Validators.maxLength(200)]],
     password: ['', [Validators.required, Validators.minLength(8)]],
     roleIds: [[] as string[]],
+    branchId: [null as string | null],
+    managerId: [null as string | null],
     isActive: [true],
   });
 
@@ -180,6 +200,7 @@ export class UserListPage implements OnInit {
   ngOnInit() {
     this.load();
     this.api.listRoles().subscribe({ next: (res) => this.roles.set(res.data) });
+    this.branchesApi.listBranches().subscribe({ next: (res) => this.branches.set(res) });
   }
 
   load() {
@@ -192,7 +213,7 @@ export class UserListPage implements OnInit {
 
   openCreate() {
     this.editUserId.set(null);
-    this.userForm.reset({ roleIds: [], isActive: true });
+    this.userForm.reset({ roleIds: [], isActive: true, branchId: null, managerId: null });
     this.userForm.get('username')!.enable();
     this.userForm.get('password')!.setValidators([Validators.required, Validators.minLength(8)]);
     this.userForm.get('password')!.updateValueAndValidity();
@@ -207,6 +228,8 @@ export class UserListPage implements OnInit {
       email: user.email,
       password: '',
       roleIds: user.roles.map((r) => r.id),
+      branchId: user.branchId ?? null,
+      managerId: user.managerId ?? null,
       isActive: user.isActive,
     });
     this.userForm.get('username')!.disable();
@@ -244,15 +267,28 @@ export class UserListPage implements OnInit {
     const val = this.userForm.getRawValue();
 
     if (id) {
-      const updateData = { ...val } as Partial<typeof val>;
-      delete updateData.username;
-      delete updateData.password;
+      const updateData = {
+        fullName: val.fullName || undefined,
+        email: val.email || undefined,
+        isActive: val.isActive ?? undefined,
+        roleIds: val.roleIds || [],
+        branchId: val.branchId || null,
+        managerId: val.managerId || null,
+      };
       this.api.updateUser(id, updateData).subscribe({
         next: () => { this.toast.add({ severity: 'success', summary: 'บันทึกสำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
         error: (err) => this.handleSaveError(err),
       });
     } else {
-      this.api.createUser({ username: val.username, fullName: val.fullName, email: val.email, password: val.password, roleIds: val.roleIds }).subscribe({
+      this.api.createUser({
+        username: val.username!,
+        fullName: val.fullName!,
+        email: val.email!,
+        password: val.password!,
+        roleIds: val.roleIds || [],
+        branchId: val.branchId || null,
+        managerId: val.managerId || null,
+      }).subscribe({
         next: () => { this.toast.add({ severity: 'success', summary: 'สร้างผู้ใช้สำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
         error: (err) => this.handleSaveError(err),
       });

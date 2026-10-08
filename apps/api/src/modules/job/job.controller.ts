@@ -50,9 +50,15 @@ export class JobController {
   }
 
   @Post(':id/assign')
-  @RequirePermissions('job.update')
+  @RequirePermissions('job.assign')
   assign(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignJobDto) {
-    return this.service.assign(id, dto.assigneeId ?? null);
+    return this.service.assign(id, dto);
+  }
+
+  @Get(':id/assignment-histories')
+  @RequirePermissions('job.view')
+  getAssignmentHistories(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getAssignmentHistories(id);
   }
 
   @Post(':id/submit')
@@ -71,6 +77,12 @@ export class JobController {
   @RequirePermissions('job.update')
   resume(@Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkflowActionDto) {
     return this.workflow.transition(id, 'OPEN', { reason: dto.reason });
+  }
+
+  @Post(':id/revise')
+  @RequirePermissions('job.update')
+  revise(@Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkflowActionDto) {
+    return this.workflow.revise(id, { reason: dto.reason });
   }
 
   @Post(':id/cancel')

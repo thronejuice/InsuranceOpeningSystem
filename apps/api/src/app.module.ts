@@ -41,6 +41,7 @@ import { NotificationModule } from './modules/notification/notification.module.j
 import { ReportModule } from './modules/report/report.module.js';
 import { ImportModule } from './modules/import/import.module.js';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module.js';
+import { UnderwritingModule } from './modules/underwriting/underwriting.module.js';
 
 const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env');
 
@@ -108,6 +109,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     ReportModule,
     ImportModule,
     CompanyProfileModule,
+    UnderwritingModule,
     HealthModule,
   ],
   providers: [

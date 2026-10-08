@@ -60,7 +60,8 @@ describe('Approval API (e2e)', () => {
 
     const acceptRes = await http()
       .post(`/api/proposals/${propId}/accept`)
-      .set('Authorization', `Bearer ${agentToken}`);
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
 
     return {
       approvalId: acceptRes.body.data.approvals[0].id as string,
@@ -83,6 +84,7 @@ describe('Approval API (e2e)', () => {
     const prevJobIds = prevJobs.map((j) => j.id);
     if (prevJobIds.length > 0) {
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });

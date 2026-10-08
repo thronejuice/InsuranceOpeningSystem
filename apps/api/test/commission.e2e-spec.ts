@@ -56,6 +56,7 @@ describe('Commission API (spec §47 Step 23)', () => {
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -203,7 +204,10 @@ describe('Commission API (spec §47 Step 23)', () => {
 
     await http().post(`/api/proposals/${proposalId}/send`).set('Authorization', `Bearer ${agentToken}`);
 
-    const accRes = await http().post(`/api/proposals/${proposalId}/accept`).set('Authorization', `Bearer ${agentToken}`);
+    const accRes = await http()
+      .post(`/api/proposals/${proposalId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
     const approvalId = accRes.body.data.approvals[0].id as string;
 
     await http().post(`/api/approvals/${approvalId}/approve`).set('Authorization', `Bearer ${approverToken}`)

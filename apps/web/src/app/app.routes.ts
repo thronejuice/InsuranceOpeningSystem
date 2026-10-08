@@ -83,6 +83,16 @@ export const routes: Routes = [
         loadChildren: () =>
           import('./features/imports/imports.routes').then((m) => m.IMPORTS_ROUTES),
       },
+      {
+        path: 'audit-logs',
+        loadChildren: () =>
+          import('./features/audit-logs/audit-logs.routes').then((m) => m.AUDIT_LOGS_ROUTES),
+      },
+      {
+        path: 'underwriting',
+        loadChildren: () =>
+          import('./features/underwriting/underwriting.routes').then((m) => m.UNDERWRITING_ROUTES),
+      },
     ],
   },
   {

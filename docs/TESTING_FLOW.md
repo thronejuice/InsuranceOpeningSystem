@@ -9,9 +9,9 @@
 | Username | Password | Role | ทำได้ |
 |---|---|---|---|
 | `admin` | `Password@123` | ADMIN | ทุกอย่าง รวมถึงอนุมัติงานตัวเอง |
-| `agent01` | `Password@123` | AGENT | สร้าง Job, ดูงานตัวเอง |
-| `staff` | `Password@123` | BROKER_STAFF | ขอ/บันทึก/เลือก Quotation, Bind |
-| `manager` | `Password@123` | MANAGER | อนุมัติ Approval |
+| `agent01` | `Password@123` | AGENT | สร้าง Job, Submit Job, ยกเลิก Job, ดูงานตัวเอง |
+| `staff` | `Password@123` | BROKER_STAFF | ขอ/บันทึก/เลือก Quotation, Bind (หมายเหตุ: BROKER_STAFF ทำ Submit/ยกเลิกไม่ได้) |
+| `manager` | `Password@123` | MANAGER | อนุมัติ Approval, มอบหมายงาน (Assign), ยกเลิก Job |
 | `finance` | `Password@123` | FINANCE | บันทึก Payment, Commission |
 
 > ⚠️ **ข้อจำกัดที่รู้แล้ว (P2-1):** `agent01` ยังสร้าง Job ไม่ได้เพราะหน้าสร้างเรียก `GET /api/users` ซึ่งต้องการ `user.manage` ให้ใช้ `admin` สร้าง Job แทน
@@ -40,7 +40,8 @@ DRAFT → OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED → QUOTATION_SELE
                                                     POLICY_ISSUED → RENEWAL / CLOSED
 ```
 
-> ทุก status ยกเว้น POLICY_ISSUED / CANCELLED / CLOSED / EXPIRED / RENEWAL สามารถ **ยกเลิก (CANCELLED)** ได้
+> ทุก status ยกเว้น POLICY_ISSUED / CANCELLED / CLOSED / EXPIRED / RENEWAL สามารถ **ยกเลิก (CANCELLED)** ได้ (ต้องมีสิทธิ์ `job.cancel` ซึ่ง AGENT, SUPERVISOR, MANAGER, ADMIN มี แต่ BROKER_STAFF ไม่มี)
+> การ "ปิดงาน" (close) ทำได้เฉพาะที่สถานะ `POLICY_ISSUED` และ `CUSTOMER_REJECTED` เท่านั้น
 
 ---
 
@@ -122,6 +123,7 @@ DRAFT → OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED → QUOTATION_SELE
 
 ### ขั้นที่ 6 — Submit Job → Status: `OPEN`
 
+**Login:** `agent01`, `supervisor`, หรือ `admin` (BROKER_STAFF ไม่มีสิทธิ์ `job.submit` จึง Submit ไม่ได้)  
 **Permission:** `job.submit`  
 **ปุ่ม:** "ส่งงาน" (Submit)
 
@@ -195,29 +197,28 @@ DRAFT → OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED → QUOTATION_SELE
 
 ### ขั้นที่ 11 — บันทึกผลการตอบรับลูกค้า
 
-#### กรณีลูกค้า **ยอมรับ** → Status: `CUSTOMER_ACCEPTED`
-
-**ปุ่ม:** "ลูกค้ายอมรับ" (acceptProposal)
+#### กรณีลูกค้า **ยอมรับ**
+**ปุ่ม:** "ลูกค้ายอมรับ" (acceptProposal)  
+- ระบบจะประเมิน **Approval Rule** โดยอัตโนมัติ:
+  - **หากเข้าเกณฑ์อนุมัติ** (ตาม seed ปัจจุบัน กฎครอบคลุมเบี้ยทุกช่วง จึงเข้าเกณฑ์เสมอ): ระบบจะสร้าง Approval Request สถานะ `PENDING` และเปลี่ยนสถานะ Job เป็น `WAITING_APPROVAL` อัตโนมัติทันที (ไม่ใช่ขั้นที่ผู้ใช้ต้องกดส่งขออนุมัติต่างหาก)
+  - **หากไม่เข้าเกณฑ์อนุมัติ** (เช่น ปิดกฎใน Master Data): สถานะ Job จะเปลี่ยนเป็น `CUSTOMER_ACCEPTED`
 
 #### กรณีลูกค้า **ปฏิเสธ** → Status: `CUSTOMER_REJECTED` → `CLOSED`
-
 **ปุ่ม:** "ลูกค้าปฏิเสธ" (rejectProposal)  
-- ต้องระบุเหตุผลที่ปฏิเสธ
-- จากนั้น "ปิดงาน" (close) → `CLOSED`
+- ต้องระบุเหตุผลที่ปฏิเสธ (`PRICE`, `COVERAGE`, `COMPETITOR`, `CUSTOMER_CANCELLED`, `NO_RESPONSE`, `OTHER`)
+- จากนั้นกด "ปิดงาน" (close) → `CLOSED` (การปิดงานใช้ได้เฉพาะที่สถานะ `CUSTOMER_REJECTED` และ `POLICY_ISSUED` เท่านั้น)
 
 ---
 
-### ขั้นที่ 12 — ส่งขออนุมัติ (Approval) → Status: `WAITING_APPROVAL`
+### ขั้นที่ 12 — การอนุมัติ (Approval) → Status: `WAITING_APPROVAL`
 
-> ขั้นนี้เกิดขึ้นอัตโนมัติหรือด้วยปุ่ม ขึ้นอยู่กับ config Approval Rule
+> ขั้นตอนนี้เกิดขึ้นอัตโนมัติเมื่อลูกค้ายอมรับในขั้นที่ 11 (เข้ากฎอนุมัติของ seed เสมอ)
 
-**ปุ่ม:** จาก `CUSTOMER_ACCEPTED` → ระบบจะสร้าง Approval Request อัตโนมัติ  
 **Tab:** การอนุมัติ
-
-- Approval Rule กำหนดว่างานประเภทไหนต้องอนุมัติจาก Role ใด
+- Approval Rule กำหนดเงื่อนไขเบี้ย/ส่วนลด และบทบาทผู้อนุมัติ (SUPERVISOR / MANAGER)
 - ผู้อนุมัติ **ต้องไม่ใช่คนเดียวกับผู้ขออนุมัติ** (Maker-Checker) ยกเว้น ADMIN ที่มีสิทธิ์ `approval.approve_own`
 
-✅ ผลลัพธ์: Status = `WAITING_APPROVAL`
+✅ ผลลัพธ์: Status = `WAITING_APPROVAL` (คำขอรอผู้อนุมัติดำเนินการ)
 
 ---
 
@@ -252,12 +253,9 @@ DRAFT → OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED → QUOTATION_SELE
 **ปุ่ม:** "ออกกรมธรรม์" (issuePolicy)  
 **Tab:** กรมธรรม์
 
-| Field | ตัวอย่าง |
-|---|---|
-| เลขกรมธรรม์ | POL-2026-000001 |
-| วันที่เริ่มคุ้มครอง | 2026-10-06 |
-| วันที่สิ้นสุดคุ้มครอง | 2027-10-05 |
-| เบี้ยประกัน | 16050.00 |
+- **เลขกรมธรรม์ระบบออกให้อัตโนมัติ** (เช่น `POL-2026-000001` ผู้ใช้ไม่ต้องกรอกเอง)
+- วันเริ่มคุ้มครองและสิ้นสุดคุ้มครองของ Policy จะคัดลอกมาจาก Job โดยอัตโนมัติ
+- เบี้ยประกันและความคุ้มครองคัดลอกมาจาก Quotation ที่ถูกเลือก
 
 ✅ ผลลัพธ์: Status = `POLICY_ISSUED` — กรมธรรม์ออกแล้ว
 
@@ -280,8 +278,9 @@ DRAFT → OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED → QUOTATION_SELE
 **Permission:** `commission.create`  
 **Tab:** Commission
 
-- ระบบคำนวณ Commission จาก Net Premium × อัตรา Commission ของผลิตภัณฑ์
-- Finance บันทึกการจ่าย Commission ให้ Agent
+- Finance **กรอกฐานเบี้ย (Base) และอัตรา Commission (Rate) เอง** ระบบไม่ได้ดึงอัตราจากผลิตภัณฑ์โดยอัตโนมัติ
+- ระบบคำนวณจำนวนเงิน Commission = ฐาน × อัตรา
+- Finance บันทึกรายการ Commission ให้ Agent
 
 ---
 

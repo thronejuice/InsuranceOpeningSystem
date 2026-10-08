@@ -1,5 +1,31 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
+
+export interface CommissionRate {
+  id: string;
+  insuranceCompanyId: string;
+  productId: string;
+  rate: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  insuranceCompany?: { id: string; code: string; name: string };
+  product?: { id: string; code: string; name: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentTerm {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  installments: number;
+  intervalMonths: number;
+  firstDueDays: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface InsuranceType {
   id: string;
@@ -19,6 +45,7 @@ export interface InsuranceProduct {
   description?: string | null;
   requireDocsOnSubmit: boolean;
   requireDocsOnBind: boolean;
+  requireUnderwriting: boolean;
   active: boolean;
   insuranceType: { id: string; code: string; name: string };
   createdAt: string;
@@ -59,6 +86,17 @@ export interface RiskField {
   fieldType: string;
   isRequired: boolean;
   validationRule?: string | null;
+  sortOrder: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentChecklistMaster {
+  id: string;
+  productId: string;
+  documentType: string;
+  isRequired: boolean;
   sortOrder: number;
   active: boolean;
   createdAt: string;
@@ -155,6 +193,79 @@ export class MasterApi {
   }
   updateCoverage(id: string, body: object) {
     return this.http.put<ApiResponse<InsuranceCoverage>>(`/api/master/coverages/${id}`, body);
+  }
+
+  // Document Checklists
+  listDocumentChecklists(productId: string) {
+    return this.http.get<ApiResponse<DocumentChecklistMaster[]>>(`/api/master/document-checklists?productId=${productId}`);
+  }
+  createDocumentChecklist(body: { productId: string; documentType: string; isRequired?: boolean; sortOrder?: number; active?: boolean }) {
+    return this.http.post<ApiResponse<DocumentChecklistMaster>>('/api/master/document-checklists', body);
+  }
+  updateDocumentChecklist(id: string, body: { isRequired?: boolean; sortOrder?: number; active?: boolean }) {
+    return this.http.put<ApiResponse<DocumentChecklistMaster>>(`/api/master/document-checklists/${id}`, body);
+  }
+  deleteDocumentChecklist(id: string) {
+    return this.http.delete<void>(`/api/master/document-checklists/${id}`);
+  }
+
+  // Commission Rates
+  listCommissionRates(query?: { insuranceCompanyId?: string; productId?: string; activeAt?: string }) {
+    let params = new HttpParams();
+    if (query?.insuranceCompanyId) params = params.set('insuranceCompanyId', query.insuranceCompanyId);
+    if (query?.productId) params = params.set('productId', query.productId);
+    if (query?.activeAt) params = params.set('activeAt', query.activeAt);
+    return this.http.get<ApiResponse<CommissionRate[]>>('/api/master/commission-rates', { params });
+  }
+  getCommissionRate(id: string) {
+    return this.http.get<ApiResponse<CommissionRate>>(`/api/master/commission-rates/${id}`);
+  }
+  createCommissionRate(body: { insuranceCompanyId: string; productId: string; rate: string; effectiveFrom: string; effectiveTo?: string }) {
+    return this.http.post<ApiResponse<CommissionRate>>('/api/master/commission-rates', body);
+  }
+  updateCommissionRate(id: string, body: Partial<{ insuranceCompanyId: string; productId: string; rate: string; effectiveFrom: string; effectiveTo?: string | null }>) {
+    return this.http.put<ApiResponse<CommissionRate>>(`/api/master/commission-rates/${id}`, body);
+  }
+  deleteCommissionRate(id: string) {
+    return this.http.delete<void>(`/api/master/commission-rates/${id}`);
+  }
+
+  // Payment Terms
+  listPaymentTerms(query?: { active?: boolean }) {
+    let params = new HttpParams();
+    if (query?.active !== undefined) params = params.set('active', String(query.active));
+    return this.http.get<ApiResponse<PaymentTerm[]>>('/api/master/payment-terms', { params });
+  }
+  getPaymentTerm(id: string) {
+    return this.http.get<ApiResponse<PaymentTerm>>(`/api/master/payment-terms/${id}`);
+  }
+  createPaymentTerm(body: {
+    code: string;
+    name: string;
+    description?: string | null;
+    installments?: number;
+    intervalMonths?: number;
+    firstDueDays?: number;
+    active?: boolean;
+  }) {
+    return this.http.post<ApiResponse<PaymentTerm>>('/api/master/payment-terms', body);
+  }
+  updatePaymentTerm(
+    id: string,
+    body: Partial<{
+      code: string;
+      name: string;
+      description?: string | null;
+      installments?: number;
+      intervalMonths?: number;
+      firstDueDays?: number;
+      active?: boolean;
+    }>,
+  ) {
+    return this.http.put<ApiResponse<PaymentTerm>>(`/api/master/payment-terms/${id}`, body);
+  }
+  deletePaymentTerm(id: string) {
+    return this.http.delete<void>(`/api/master/payment-terms/${id}`);
   }
 
   // Company profile (letterhead)

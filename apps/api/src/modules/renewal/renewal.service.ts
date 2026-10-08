@@ -96,13 +96,16 @@ export class RenewalService {
     const db = this.txHost.tx;
 
     const policy = await db.policy.findFirst({
-      where: { id: policyId },
+      where: {
+        id: policyId,
+        job: { deletedAt: null, ...this.scope.jobViewScope() },
+      },
       include: {
         job: {
           include: {
             risk: { include: { values: true } },
             coverages: true,
-            documents: { where: { status: 'ACTIVE', documentType: { in: [...RENEWAL_COPY_DOCUMENT_TYPES] } } },
+            documents: { where: { deletedAt: null, status: { notIn: ['REJECTED', 'EXPIRED'] }, documentType: { in: [...RENEWAL_COPY_DOCUMENT_TYPES] } } },
           },
         },
       },

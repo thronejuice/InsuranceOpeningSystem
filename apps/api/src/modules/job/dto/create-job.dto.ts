@@ -14,6 +14,14 @@ export class CreateJobDto {
   @IsUUID()
   agentId!: string;
 
+  @IsUUID()
+  @IsOptional()
+  brokerStaffId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  branchId?: string;
+
   @IsDateString()
   effectiveDate!: string;
 

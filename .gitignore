@@ -20,6 +20,8 @@ npm-debug.log*
 
 # test / coverage
 coverage/
+apps/web/test-results/
+apps/web/playwright-report/
 
 # ide
 .vscode/*

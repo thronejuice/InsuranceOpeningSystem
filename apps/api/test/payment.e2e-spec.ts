@@ -47,6 +47,7 @@ describe('Payment API', () => {
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });

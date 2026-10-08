@@ -1,12 +1,14 @@
 ---
 name: daily-task
-description: เริ่มหรือทำงานต่อตามแผนรายวันใน docs/PLAN.md — หา Day ปัจจุบัน สรุปงาน ลงมือทำ verify ติ๊ก checkbox และเขียน Log ตอนจบวัน ใช้เมื่อผู้ใช้พูดว่า "เริ่มงาน", "ทำต่อ", "วันนี้ทำอะไร", "ปิดวัน", "start day", "continue", "status"
+description: เริ่มหรือทำงานต่อตามแผนรายวันใน docs/PLAN_V2.md (หรือ docs/PLAN.md) — หา Day ปัจจุบัน สรุปงาน ลงมือทำ verify ติ๊ก checkbox และเขียน Log ตอนจบวัน ใช้เมื่อผู้ใช้พูดว่า "เริ่มงาน", "ทำต่อ", "วันนี้ทำอะไร", "ปิดวัน", "start day", "continue", "status"
 argument-hint: "[day-number | status | close]"
 ---
 
 # Daily Task
 
-ขับเคลื่อนงานตาม `docs/PLAN.md` ทีละวัน โดยให้ `docs/DESIGN.md` เป็นแหล่งอ้างอิงทางเทคนิค และ `Insurance_Opening_System_V1.md` เป็นแหล่งอ้างอิงเชิงธุรกิจ
+ขับเคลื่อนงานตาม **แผนปัจจุบัน** ทีละวัน โดยให้ `docs/DESIGN.md` เป็นแหล่งอ้างอิงทางเทคนิค
+
+**แผนปัจจุบัน** = `docs/PLAN_V2.md` (spec: `docs/Insurance_Broker_Workflow_V2.md` อ้างเป็น "V2 §N" + ตารางการตัดสินใจ D-n ในแผน) ถ้าไม่มีไฟล์นี้ให้ใช้ `docs/PLAN.md` (spec: `Insurance_Opening_System_V1.md`) ทุกที่ด้านล่างที่เขียนว่า PLAN.md หมายถึงแผนปัจจุบัน
 
 ## Arguments
 
@@ -20,7 +22,7 @@ argument-hint: "[day-number | status | close]"
 ## ขั้นตอน
 
 ### 1. โหลด context
-1. อ่าน `docs/PLAN.md` แล้วหา Day เป้าหมาย รวมทั้งอ่าน Log entry ล่าสุด (ส่วน `<!-- LOG-START -->`) เพื่อดูงานที่ยกมา
+1. อ่านแผนปัจจุบันแล้วหา Day เป้าหมาย รวมทั้งอ่าน Log entry ล่าสุด (ส่วน `<!-- LOG-START -->`) เพื่อดูงานที่ยกมา
 2. อ่านเฉพาะหัวข้อใน `docs/DESIGN.md` และ spec ที่เกี่ยวกับ Day นั้น ไม่ต้องอ่านทั้งไฟล์
 3. เช็คสถานะ repo ด้วย `git status` และ `git log --oneline -5` (ถ้ามี git แล้ว)
 4. เช็ค **Open Questions** ใน PLAN.md ถ้ามีข้อที่คอลัมน์ "ต้องรู้ก่อน" ตรงกับวันนี้และยังไม่มีคำตอบ ให้ถามผู้ใช้ก่อนลงมือ หรือแจ้งว่าจะใช้ค่า default

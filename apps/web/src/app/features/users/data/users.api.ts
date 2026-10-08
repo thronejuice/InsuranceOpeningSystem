@@ -7,6 +7,18 @@ export interface UserRole {
   name: string;
 }
 
+export interface UserBranch {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface UserManager {
+  id: string;
+  fullName: string;
+  username: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -17,6 +29,10 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   roles: UserRole[];
+  branchId?: string | null;
+  branch?: UserBranch | null;
+  managerId?: string | null;
+  manager?: UserManager | null;
 }
 
 export interface Role {
@@ -42,11 +58,29 @@ export class UsersApi {
     return this.http.get<ApiResponse<User[]>>('/api/users');
   }
 
-  createUser(body: { username: string; email: string; fullName: string; password: string; roleIds?: string[] }) {
+  createUser(body: {
+    username: string;
+    email: string;
+    fullName: string;
+    password: string;
+    roleIds?: string[];
+    branchId?: string | null;
+    managerId?: string | null;
+  }) {
     return this.http.post<ApiResponse<User>>('/api/users', body);
   }
 
-  updateUser(id: string, body: { email?: string; fullName?: string; isActive?: boolean; roleIds?: string[] }) {
+  updateUser(
+    id: string,
+    body: {
+      email?: string;
+      fullName?: string;
+      isActive?: boolean;
+      roleIds?: string[];
+      branchId?: string | null;
+      managerId?: string | null;
+    },
+  ) {
     return this.http.put<ApiResponse<User>>(`/api/users/${id}`, body);
   }
 

@@ -41,7 +41,7 @@
 | Q-B | ข้อยกเว้น physical delete สำหรับ coverage/risk | อนุญาตลบแบบ physical สำหรับ `job_coverages` และ `job_risk_values` ที่อยู่ในสถานะแก้ไขได้ (`EDITABLE_STATUSES`) ก่อนถูก snapshot ลง quotation | P2-5 |
 | Q-C | สิทธิ์ `approval.approve_own` ของ ADMIN ใน production | ตัด `approval.approve_own` ออกจาก ADMIN ใน seed ของ production เพื่อรักษาหลัก maker-checker แต่คงไว้ใน non-production สำหรับ local flow testing | P1-4 |
 | Q10 | ควบคุมสิทธิ์การกระทำในหน้าเว็บจาก frontend หรือ backend | Backend คำนวณ `capabilities` (`editRisk`, `manageDocuments`, `manageQuotations`) ส่งมากับ `JobResponse` แทนการ hardcode สถานะเป็น Sets ใน frontend | P2-3 |
-| Q11 | Agent ควรเห็นลูกค้าทุกคนไหม (BR-014) | ตอนนี้เห็นทุกคนตามสิทธิ์ `customer.view`; เก็บเป็น open question ว่าควรจำกัดตาม `createdById` หรือ Job ที่ถืออยู่ | P3 |
+| Q11 | Agent ควรเห็นลูกค้าทุกคนไหม (BR-014) | **Resolved ใน V2 (D-21 / Phase 0 Day 3)**: จำกัดตาม DataScope — เห็นลูกค้าที่ตัวเองสร้าง (`createdById`) หรือลูกค้าของ Job ที่อยู่ใน view scope ของตน | P3 / V2 |
 | Q12 | ค่าตัวเลือก SELECT เดิมที่เป็นภาษาอังกฤษของ Job เก่า | ใช้ค่าตัวเลือกภาษาไทยตาม master data ปัจจุบัน; หากมีข้อมูลเก่าต้องรัน data migration แปลง | P3 |
 | Q13 | Excel export ใช้ parseFloat หรือ string + numFmt | ใช้ตัวเลขเพื่อให้ spreadsheet คำนวณได้; ยอมรับได้สำหรับทศนิยม 2 ตำแหน่งของเงิน | P3 |
 

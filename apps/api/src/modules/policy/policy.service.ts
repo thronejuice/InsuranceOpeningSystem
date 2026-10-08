@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Transactional, TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
@@ -21,6 +21,8 @@ import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { JobWorkflowService } from '../job/job-workflow.service.js';
 import { todayInBangkok } from '../../common/utils/bangkok-date.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { NotificationService } from '../notification/notification.service.js';
+import { NotificationType } from '../../generated/prisma/enums.js';
 
 @Injectable()
 export class PolicyService {
@@ -32,6 +34,7 @@ export class PolicyService {
     private readonly cls: ClsService<AppClsStore>,
     private readonly scope: DataScopeService,
     private readonly workflow: JobWorkflowService,
+    @Optional() private readonly notifications?: NotificationService,
   ) {}
 
   // ─── Preconditions ──────────────────────────────────────────────────────────
@@ -43,7 +46,7 @@ export class PolicyService {
         product: true,
         proposals: { where: { status: 'ACCEPTED' } },
         approvals: true,
-        documents: { where: { status: 'ACTIVE' } },
+        documents: { where: { deletedAt: null, status: { notIn: ['REJECTED', 'EXPIRED'] } } },
       },
     });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
@@ -136,7 +139,9 @@ export class PolicyService {
         where: { productId: job.productId, isRequired: true, active: true },
       });
       if (checklist.length > 0) {
-        const docs = await this.txHost.tx.document.findMany({ where: { jobId, status: 'ACTIVE' } });
+        const docs = await this.txHost.tx.document.findMany({
+          where: { jobId, deletedAt: null, status: { notIn: ['REJECTED', 'EXPIRED'] } },
+        });
         const uploadedTypes = new Set(docs.map((d) => d.documentType));
         const missing = checklist.filter((c) => !uploadedTypes.has(c.documentType));
         if (missing.length > 0) {
@@ -151,14 +156,17 @@ export class PolicyService {
     }
 
     const today = todayInBangkok();
-    const quotation = await this.txHost.tx.quotation.findFirst({ where: { id: job.selectedQuotationId } });
 
     const binding = await this.repo.createBinding({
       job: { connect: { id: jobId } },
       quotation: { connect: { id: job.selectedQuotationId } },
       bindingDate: new Date(dto.bindingDate ?? today),
-      effectiveDate: new Date((quotation?.quotationDate as Date | null)?.toISOString().slice(0, 10) ?? today),
-      expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+      effectiveDate: new Date((job.effectiveDate as Date | null)?.toISOString().slice(0, 10) ?? today),
+      expiryDate: dto.expiryDate
+        ? new Date(dto.expiryDate)
+        : job.expiryDate
+          ? new Date(job.expiryDate)
+          : null,
       confirmedBy: userId ? { connect: { id: userId } } : undefined,
       remark: dto.remark,
       ...(idempotencyKey && { idempotencyKey }),
@@ -197,7 +205,11 @@ export class PolicyService {
   async getPolicyById(id: string): Promise<PolicyResponse> {
     const policy = await this.repo.findPolicyById(id);
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
-    await this.assertJobAccess(policy.jobId);
+    try {
+      await this.assertJobAccess(policy.jobId);
+    } catch {
+      throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    }
     return toPolicyResponse(policy);
   }
 
@@ -257,7 +269,31 @@ export class PolicyService {
     // Transition job POLICY_PENDING → POLICY_ISSUED
     await this.workflow.transitionInTx(job, 'POLICY_ISSUED', userId);
 
-    await this.audit.log({ action: 'ISSUE_POLICY', entityType: 'POLICY', entityId: policy.id, jobId });
+    await this.audit.log({
+      action: 'ISSUE_POLICY',
+      entityType: 'POLICY',
+      entityId: policy.id,
+      jobId,
+      after: policy,
+      remark: dto.remark,
+    });
+
+    if (this.notifications) {
+      const recipientIds = [job.agentId, job.brokerStaffId].filter((id): id is string => Boolean(id));
+      if (recipientIds.length > 0) {
+        await this.notifications.emit(
+          NotificationType.POLICY_ISSUED,
+          recipientIds,
+          {
+            title: `กรมธรรม์ออกแล้ว (${policy.policyNo})`,
+            message: `กรมธรรม์เลขที่ ${policy.policyNo} สำหรับงาน ${job.jobNo} ออกเรียบร้อยแล้ว`,
+            entityType: 'POLICY',
+            entityId: policy.id,
+            jobId,
+          },
+        );
+      }
+    }
 
     return toPolicyResponse(policy);
   }
@@ -278,7 +314,15 @@ export class PolicyService {
       version: { increment: 1 },
     });
 
-    await this.audit.log({ action: 'UPDATE_POLICY', entityType: 'POLICY', entityId: id, jobId: policy.jobId });
+    await this.audit.log({
+      action: 'UPDATE_POLICY',
+      entityType: 'POLICY',
+      entityId: id,
+      jobId: policy.jobId,
+      before: policy,
+      after: updated,
+      remark: dto.remark,
+    });
 
     return toPolicyResponse(updated);
   }
@@ -286,18 +330,18 @@ export class PolicyService {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private async getJobOrThrow(jobId: string) {
-    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    const job = await this.txHost.tx.job.findFirst({
+      where: { id: jobId, deletedAt: null, ...this.scope.jobViewScope() },
+    });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
     return job;
   }
 
   private async assertJobAccess(jobId: string) {
-    const userId = this.cls.get('userId')!;
-    const permissions = this.cls.get('permissions') ?? [];
-    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    const job = await this.txHost.tx.job.findFirst({
+      where: { id: jobId, deletedAt: null, ...this.scope.jobViewScope() },
+    });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
-    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
-      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
-    }
+    return job;
   }
 }

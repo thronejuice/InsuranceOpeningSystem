@@ -27,20 +27,21 @@ export class CommissionService {
   ) {}
 
   private async assertJobAccess(jobId: string) {
-    const userId = this.cls.get('userId')!;
-    const permissions = this.cls.get('permissions') ?? [];
-    const job = await this.txHost.tx.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    const job = await this.txHost.tx.job.findFirst({
+      where: { id: jobId, deletedAt: null, ...this.scope.jobViewScope() },
+    });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
-    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
-      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
-    }
     return job;
   }
 
   private async assertPolicyAccess(policyId: string) {
     const policy = await this.txHost.tx.policy.findFirst({ where: { id: policyId } });
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
-    await this.assertJobAccess(policy.jobId);
+    try {
+      await this.assertJobAccess(policy.jobId);
+    } catch {
+      throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    }
     return policy;
   }
 

@@ -18,6 +18,12 @@ export class MeResponse {
 
   @ApiProperty({ type: [String], example: ['customer.view', 'job.view'] })
   permissions: string[];
+
+  @ApiProperty({ format: 'uuid', nullable: true, required: false })
+  branchId?: string | null;
+
+  @ApiProperty({ example: 'OWN', nullable: true, required: false })
+  dataScope?: string;
 }
 
 /** The refresh token is not in the body: it is set as an httpOnly cookie (DESIGN §8). */

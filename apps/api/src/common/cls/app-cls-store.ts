@@ -5,6 +5,9 @@ export interface AppClsStore extends ClsStore {
   userId?: string;
   roles?: string[];
   permissions?: string[];
+  branchId?: string | null;
+  dataScope?: string;
+  teamUserIds?: string[];
   ip?: string;
   userAgent?: string;
 }

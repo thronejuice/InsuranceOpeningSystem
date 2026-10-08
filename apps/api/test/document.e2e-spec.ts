@@ -30,7 +30,9 @@ describe('Document API (e2e)', () => {
   let prisma: PrismaService;
   let agentAToken: string;
   let agentBToken: string;
+  let checkerToken: string;
   let agentAId: string;
+  let checkerId: string;
   let jobId: string;
   let uploadedDocId: string;
   let customerId: string;
@@ -87,6 +89,7 @@ describe('Document API (e2e)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('job.update'),
       upsertPerm('job.view_all'), upsertPerm('job.submit'), upsertPerm('customer.view'),
+      upsertPerm('document.verify'),
     ]);
 
     const agentRole = await prisma.role.create({
@@ -100,6 +103,21 @@ describe('Document API (e2e)', () => {
             { permission: { connect: { code: 'job.update' } } },
             { permission: { connect: { code: 'job.submit' } } },
             { permission: { connect: { code: 'customer.view' } } },
+            { permission: { connect: { code: 'document.verify' } } },
+          ],
+        },
+      },
+    });
+
+    const checkerRole = await prisma.role.create({
+      data: {
+        code: `${PREFIX.toUpperCase()}CHECKER`,
+        name: 'E2E Doc Checker',
+        permissions: {
+          create: [
+            { permission: { connect: { code: 'job.view' } } },
+            { permission: { connect: { code: 'job.view_all' } } },
+            { permission: { connect: { code: 'document.verify' } } },
           ],
         },
       },
@@ -119,15 +137,25 @@ describe('Document API (e2e)', () => {
         roles: { create: [{ roleId: agentRole.id }] },
       },
     });
+    const checker = await prisma.user.create({
+      data: {
+        username: `${PREFIX}checker`, email: `${PREFIX}checker@test.com`,
+        fullName: 'Doc Checker', passwordHash,
+        roles: { create: [{ roleId: checkerRole.id }] },
+      },
+    });
 
     agentAId = agentA.id;
+    checkerId = checker.id;
 
-    const [resA, resB] = await Promise.all([
+    const [resA, resB, resC] = await Promise.all([
       http().post('/api/auth/login').send({ username: `${PREFIX}agent_a`, password: PASSWORD }),
       http().post('/api/auth/login').send({ username: `${PREFIX}agent_b`, password: PASSWORD }),
+      http().post('/api/auth/login').send({ username: `${PREFIX}checker`, password: PASSWORD }),
     ]);
     agentAToken = resA.body.data.accessToken as string;
     agentBToken = resB.body.data.accessToken as string;
+    checkerToken = resC.body.data.accessToken as string;
 
     const cus = await prisma.customer.create({
       data: { customerCode: `${PREFIX.toUpperCase()}C001`, customerType: 'INDIVIDUAL', firstName: 'Doc', lastName: 'Test' },
@@ -148,6 +176,7 @@ describe('Document API (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (!prisma) return;
     const jobs = await prisma.job.findMany({
       where: { agent: { username: { startsWith: PREFIX } } },
       select: { id: true },
@@ -201,7 +230,135 @@ describe('Document API (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.documentType).toBe('ID_CARD');
       expect(res.body.data.originalName).toBe('id_card.pdf');
+      expect(res.body.data.version).toBe(1);
+      expect(res.body.data.status).toBe('UPLOADED');
       uploadedDocId = res.body.data.id as string;
+    });
+  });
+
+  // ─── Versioning ───────────────────────────────────────────────────────
+
+  describe('POST /api/jobs/:id/documents — versioning', () => {
+    it('uploading same documentType on same Job increments version to 2 and keeps version 1', async () => {
+      const res = await http()
+        .post(`/api/jobs/${jobId}/documents`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .field('documentType', 'ID_CARD')
+        .attach('file', VALID_PDF_BUFFER, { filename: 'id_card_v2.pdf', contentType: 'application/pdf' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.version).toBe(2);
+      expect(res.body.data.status).toBe('UPLOADED');
+
+      // Check that both versions exist in list
+      const listRes = await http()
+        .get(`/api/jobs/${jobId}/documents`)
+        .set('Authorization', `Bearer ${agentAToken}`);
+      expect(listRes.status).toBe(200);
+      const idCards = listRes.body.data.filter((d: { documentType: string }) => d.documentType === 'ID_CARD');
+      expect(idCards.length).toBe(2);
+      expect(idCards.some((d: { version: number }) => d.version === 1)).toBe(true);
+      expect(idCards.some((d: { version: number }) => d.version === 2)).toBe(true);
+    });
+  });
+
+  // ─── Maker-Checker & Verification / Rejection ──────────────────────────
+
+  describe('Verification & Maker-Checker rules', () => {
+    it('uploader cannot verify own document → 422 MAKER_CHECKER_VIOLATION', async () => {
+      const res = await http()
+        .post(`/api/documents/${uploadedDocId}/verify`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .send({ remark: 'Self verify' });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('MAKER_CHECKER_VIOLATION');
+    });
+
+    it('uploader cannot reject own document → 422 MAKER_CHECKER_VIOLATION', async () => {
+      const res = await http()
+        .post(`/api/documents/${uploadedDocId}/reject`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .send({ reason: 'Self reject' });
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('MAKER_CHECKER_VIOLATION');
+    });
+
+    it('checker can reject a document with reason → 201/200 REJECTED', async () => {
+      const res = await http()
+        .post(`/api/documents/${uploadedDocId}/reject`)
+        .set('Authorization', `Bearer ${checkerToken}`)
+        .send({ reason: 'Image blurry' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.status).toBe('REJECTED');
+      expect(res.body.data.remark).toBe('Image blurry');
+    });
+
+    it('checker can verify a document → 201/200 VERIFIED', async () => {
+      const upRes = await http()
+        .post(`/api/jobs/${jobId}/documents`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .field('documentType', 'TAX_DOCUMENT')
+        .attach('file', VALID_PDF_BUFFER, { filename: 'tax.pdf', contentType: 'application/pdf' });
+      const docIdToVerify = upRes.body.data.id;
+
+      const res = await http()
+        .post(`/api/documents/${docIdToVerify}/verify`)
+        .set('Authorization', `Bearer ${checkerToken}`)
+        .send({ remark: 'Approved by checker' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.status).toBe('VERIFIED');
+      expect(res.body.data.verifiedById).toBe(checkerId);
+    });
+  });
+
+  // ─── Expiry Handling ───────────────────────────────────────────────────
+
+  describe('Document Expiry', () => {
+    it('expired documents are not counted as complete in checklist', async () => {
+      const pastDate = '2020-01-01';
+      const upRes = await http()
+        .post(`/api/jobs/${jobId}/documents`)
+        .set('Authorization', `Bearer ${agentAToken}`)
+        .field('documentType', 'VEHICLE_BOOK')
+        .field('expiryDate', pastDate)
+        .attach('file', VALID_PDF_BUFFER, { filename: 'expired_book.pdf', contentType: 'application/pdf' });
+      expect(upRes.status).toBe(201);
+
+      const chkRes = await http()
+        .get(`/api/jobs/${jobId}/documents/checklist`)
+        .set('Authorization', `Bearer ${agentAToken}`);
+      expect(chkRes.status).toBe(200);
+      expect(chkRes.body.data.missing).toContain('VEHICLE_BOOK');
+    });
+
+    it('cannot verify an expired document → 422 DOCUMENT_EXPIRED', async () => {
+      const doc = await prisma.document.create({
+        data: {
+          jobId,
+          documentType: 'OTHER',
+          originalName: 'old.pdf',
+          storedName: 'old.pdf',
+          mimeType: 'application/pdf',
+          size: 100,
+          storagePath: 'dummy/old.pdf',
+          status: 'EXPIRED',
+          uploadedById: agentAId,
+        },
+      });
+
+      const res = await http()
+        .post(`/api/documents/${doc.id}/verify`)
+        .set('Authorization', `Bearer ${checkerToken}`)
+        .send({});
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('DOCUMENT_EXPIRED');
+    });
+
+    it('POST /api/documents/expire-outdated expires documents past their expiryDate', async () => {
+      const res = await http()
+        .post('/api/documents/expire-outdated')
+        .set('Authorization', `Bearer ${checkerToken}`);
+      expect(res.status).toBe(201);
+      expect(res.body.data).toHaveProperty('count');
     });
   });
 
@@ -217,11 +374,11 @@ describe('Document API (e2e)', () => {
       expect(res.body.data.some((d: { id: string }) => d.id === uploadedDocId)).toBe(true);
     });
 
-    it('returns 403 when agentB tries to list agentA job documents', async () => {
+    it('returns 404 when agentB tries to list agentA job documents (out of data scope, D-21)', async () => {
       const res = await http()
         .get(`/api/jobs/${jobId}/documents`)
         .set('Authorization', `Bearer ${agentBToken}`);
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -242,10 +399,8 @@ describe('Document API (e2e)', () => {
       expect(required.length).toBeGreaterThanOrEqual(4);
       // ID_CARD was uploaded
       expect(uploaded.some((u) => u.documentType === 'ID_CARD')).toBe(true);
-      // VEHICLE_BOOK and VEHICLE_PHOTO are still missing
-      expect(missing).toContain('VEHICLE_BOOK');
+      // VEHICLE_PHOTO is still missing
       expect(missing).toContain('VEHICLE_PHOTO');
-      expect(missing).not.toContain('ID_CARD');
     });
   });
 
@@ -260,11 +415,11 @@ describe('Document API (e2e)', () => {
       expect(res.headers['content-type']).toMatch(/pdf/);
     });
 
-    it('returns 403 when unauthorized agentB tries to download', async () => {
+    it('returns 404 when unauthorized agentB tries to download (out of data scope, D-21)', async () => {
       const res = await http()
         .get(`/api/documents/${uploadedDocId}/download`)
         .set('Authorization', `Bearer ${agentBToken}`);
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -275,7 +430,7 @@ describe('Document API (e2e)', () => {
       // Fill risk fields (required for submit)
       await fillRequiredRisk(jobId, agentAToken);
 
-      // Only ID_CARD uploaded — VEHICLE_BOOK and VEHICLE_PHOTO still missing
+      // VEHICLE_PHOTO still missing
       const res = await http()
         .post(`/api/jobs/${jobId}/submit`)
         .set('Authorization', `Bearer ${agentAToken}`)
@@ -284,13 +439,14 @@ describe('Document API (e2e)', () => {
       expect(res.body.code).toBe('JOB_DOCUMENTS_MISSING');
     });
 
-    it('allows submit after uploading all required documents', async () => {
-      // Upload VEHICLE_BOOK
+    it('allows submit after uploading all required documents with valid expiry', async () => {
+      // Upload valid VEHICLE_BOOK (replacing the expired one with version 2)
       await http()
         .post(`/api/jobs/${jobId}/documents`)
         .set('Authorization', `Bearer ${agentAToken}`)
         .field('documentType', 'VEHICLE_BOOK')
-        .attach('file', VALID_PDF_BUFFER, { filename: 'vehicle_book.pdf', contentType: 'application/pdf' });
+        .field('expiryDate', '2030-01-01')
+        .attach('file', VALID_PDF_BUFFER, { filename: 'valid_book.pdf', contentType: 'application/pdf' });
 
       // Upload VEHICLE_PHOTO
       await http()

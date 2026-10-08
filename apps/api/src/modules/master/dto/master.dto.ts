@@ -1,10 +1,12 @@
 import {
   IsBoolean,
+  IsDateString,
   IsDecimal,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -42,6 +44,7 @@ export class CreateInsuranceProductDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requireDocsOnSubmit?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requireDocsOnBind?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requireUnderwriting?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }
 
@@ -50,6 +53,7 @@ export class UpdateInsuranceProductDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requireDocsOnSubmit?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requireDocsOnBind?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requireUnderwriting?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }
 
@@ -153,3 +157,72 @@ export class UpdateApprovalRuleDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) sortOrder?: number;
 }
+
+// ─── Branch ─────────────────────────────────────────────────────────────────
+
+export class CreateBranchDto {
+  @ApiProperty() @IsString() @MaxLength(50) code!: string;
+  @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class UpdateBranchDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) code?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+}
+
+// ─── Commission Rate (Phase 2 Day 11) ────────────────────────────────────────
+
+export class CreateCommissionRateDto {
+  @ApiProperty() @IsUUID() insuranceCompanyId!: string;
+  @ApiProperty() @IsUUID() productId!: string;
+  @ApiProperty({ example: '12.0000' }) @IsDecimal({ decimal_digits: '0,4' }) rate!: string;
+  @ApiProperty({ example: '2026-01-01' }) @IsDateString() effectiveFrom!: string;
+  @ApiPropertyOptional({ example: '2026-12-31' }) @IsOptional() @IsDateString() effectiveTo?: string;
+}
+
+export class UpdateCommissionRateDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() insuranceCompanyId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() productId?: string;
+  @ApiPropertyOptional({ example: '15.0000' }) @IsOptional() @IsDecimal({ decimal_digits: '0,4' }) rate?: string;
+  @ApiPropertyOptional({ example: '2026-01-01' }) @IsOptional() @IsDateString() effectiveFrom?: string;
+  @ApiPropertyOptional({ example: '2026-12-31' }) @IsOptional() @IsDateString() effectiveTo?: string;
+}
+
+export class CommissionRateQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() insuranceCompanyId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() productId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() activeAt?: string;
+}
+
+// ─── Payment Term (Phase 2 Day 13 / OQ-2) ───────────────────────────────────
+
+export class CreatePaymentTermDto {
+  @ApiProperty({ example: 'INSTALLMENT_3' }) @IsString() @MaxLength(50) code!: string;
+  @ApiProperty({ example: 'ผ่อน 3 งวด' }) @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional({ example: 'ผ่อนชำระ 3 งวด ห่างงวดละ 1 เดือน' }) @IsOptional() @IsString() description?: string;
+  @ApiProperty({ example: 3, default: 1 }) @IsInt() @Min(1) installments!: number;
+  @ApiProperty({ example: 1, default: 0 }) @IsInt() @Min(0) intervalMonths!: number;
+  @ApiProperty({ example: 30, default: 30 }) @IsInt() @Min(0) firstDueDays!: number;
+  @ApiPropertyOptional({ default: true }) @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class UpdatePaymentTermDto {
+  @ApiPropertyOptional({ example: 'INSTALLMENT_3' }) @IsOptional() @IsString() @MaxLength(50) code?: string;
+  @ApiPropertyOptional({ example: 'ผ่อน 3 งวด' }) @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional({ example: 'ผ่อนชำระ 3 งวด' }) @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ example: 3 }) @IsOptional() @IsInt() @Min(1) installments?: number;
+  @ApiPropertyOptional({ example: 1 }) @IsOptional() @IsInt() @Min(0) intervalMonths?: number;
+  @ApiPropertyOptional({ example: 30 }) @IsOptional() @IsInt() @Min(0) firstDueDays?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class PaymentTermQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
+}
+
+
+

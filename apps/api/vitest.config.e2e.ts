@@ -8,6 +8,7 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     setupFiles: ['./test/setup-e2e.ts'],
+    globalSetup: ['./test/global-setup-e2e.ts'],
     // e2e tests share the same DB, must run sequentially to avoid FK conflicts
     fileParallelism: false,
     // Each e2e suite loads the full NestJS AppModule (Prisma + BullMQ) and needs more heap

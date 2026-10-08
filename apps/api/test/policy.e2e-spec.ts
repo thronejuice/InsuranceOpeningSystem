@@ -41,6 +41,7 @@ describe('Policy API (e2e)', () => {
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -158,7 +159,8 @@ describe('Policy API (e2e)', () => {
 
       const acceptRes = await http()
         .post(`/api/proposals/${propId}/accept`)
-        .set('Authorization', `Bearer ${agentToken}`);
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
 
       if (approveIt && acceptRes.body.data.approvals?.length > 0) {
         const approvalId = acceptRes.body.data.approvals[0].id;

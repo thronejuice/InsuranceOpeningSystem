@@ -15,13 +15,17 @@ interface JobWithRelations {
   productId: string;
   agentId: string;
   assignedTo: string | null;
+  brokerStaffId?: string | null;
   selectedQuotationId: string | null;
   createdAt: Date;
   updatedAt: Date;
   customer?: { id: string; customerCode: string; firstName: string | null; lastName: string | null; companyName: string | null; customerType: string } | null;
   insuranceType?: { id: string; code: string; name: string } | null;
-  product?: { id: string; code: string; name: string } | null;
-  agent?: { id: string; username: string; fullName: string } | null;
+  product?: { id: string; code: string; name: string; requireUnderwriting?: boolean } | null;
+  agent?: { id: string; username: string; fullName: string; branchId?: string | null } | null;
+  brokerStaff?: { id: string; username: string; fullName: string; branchId?: string | null } | null;
+  branchId?: string | null;
+  branch?: { id: string; code: string; name: string } | null;
 }
 
 export interface JobResponse {
@@ -41,9 +45,15 @@ export interface JobResponse {
   insuranceTypeName: string;
   productId: string;
   productName: string;
+  requireUnderwriting: boolean;
   agentId: string;
   agentName: string;
   assignedTo: string | null;
+  brokerStaffId: string | null;
+  brokerStaffName: string | null;
+  branchId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   selectedQuotationId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -76,9 +86,15 @@ export function toJobResponse(job: JobWithRelations, permissions: string[], canW
     insuranceTypeName: job.insuranceType?.name ?? '',
     productId: job.productId,
     productName: job.product?.name ?? '',
+    requireUnderwriting: job.product?.requireUnderwriting ?? false,
     agentId: job.agentId,
     agentName: job.agent?.fullName ?? job.agent?.username ?? '',
     assignedTo: job.assignedTo,
+    brokerStaffId: job.brokerStaffId ?? null,
+    brokerStaffName: job.brokerStaff?.fullName ?? job.brokerStaff?.username ?? null,
+    branchId: job.branchId ?? job.branch?.id ?? null,
+    branchCode: job.branch?.code ?? null,
+    branchName: job.branch?.name ?? null,
     selectedQuotationId: job.selectedQuotationId,
     createdAt: (job.createdAt as Date).toISOString(),
     updatedAt: (job.updatedAt as Date).toISOString(),

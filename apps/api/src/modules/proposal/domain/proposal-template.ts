@@ -20,12 +20,26 @@ export interface ProposalDocumentData {
   };
   proposal: {
     proposalNo: string;
+    version?: number;
     proposalDate: Date | null;
     validUntil: Date | null;
     remark: string | null;
     /** DRAFT → watermark "ฉบับร่าง / DRAFT" */
     isDraft: boolean;
   };
+  paymentTerm?: {
+    name: string;
+    code: string;
+    description: string | null;
+    installments: number;
+    intervalMonths: number;
+    firstDueDays: number;
+    schedule: Array<{
+      installmentNo: number;
+      dueDate: Date | null;
+      amount: string;
+    }>;
+  } | null;
   jobNo: string;
   customer: {
     name: string;
@@ -206,6 +220,7 @@ export function renderProposalHtml(d: ProposalDocumentData, fontCss: string): st
       <div class="card">
         <table class="kv">
           ${infoRow('เลขที่', 'Proposal No.', `<b>${e(d.proposal.proposalNo)}</b>`)}
+          ${d.proposal.version ? infoRow('ฉบับที่', 'Version', `<b>v${d.proposal.version}</b>`) : ''}
           ${infoRow('วันที่', 'Date', e(formatThaiDate(d.proposal.proposalDate)))}
           ${infoRow('ยืนราคาถึง', 'Valid until', e(formatThaiDate(d.proposal.validUntil)))}
           ${infoRow('เลขที่งาน', 'Job No.', e(d.jobNo))}
@@ -273,7 +288,43 @@ export function renderProposalHtml(d: ProposalDocumentData, fontCss: string): st
       </table>
     </div>`);
 
-  const payment = section(5, 'ช่องทางการชำระเงิน', 'Payment Methods', d.bankAccounts.length
+  const pt = d.paymentTerm;
+  let paymentTermBody = '';
+  if (pt) {
+    const isInstallment = pt.installments > 1;
+    paymentTermBody = `
+      <div style="margin-bottom:8px">
+        <span style="font-weight:600">เงื่อนไขการชำระเงิน / Payment Term:</span>
+        <b>${e(pt.name)}</b>
+        ${pt.description ? `<span class="en">(${e(pt.description)})</span>` : ''}
+        <span class="en">· ${isInstallment ? `จำนวน ${pt.installments} งวด (ทุก ${pt.intervalMonths} เดือน)` : 'ชำระเต็มจำนวน'}</span>
+      </div>
+      <table class="grid">
+        <thead><tr>
+          <th style="width:80px">งวดที่ / No.</th>
+          <th>กำหนดชำระ / Due date</th>
+          <th class="num">ยอดชำระต่องวด (บาท) / Amount (THB)</th>
+        </tr></thead>
+        <tbody>
+          ${pt.schedule
+            .map(
+              (s) => `
+            <tr>
+              <td>งวดที่ ${s.installmentNo}</td>
+              <td>${s.dueDate ? e(formatThaiDate(s.dueDate)) : '-'}</td>
+              <td class="num"><b>${e(formatMoney(s.amount))}</b></td>
+            </tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>`;
+  } else {
+    paymentTermBody = '<p class="empty">ชำระเต็มจำนวน / Full Payment (ไม่มีเงื่อนไขผ่อนชำระพิเศษ)</p>';
+  }
+
+  const paymentTermsSection = section(5, 'เงื่อนไขและการแบ่งงวดชำระ', 'Payment Terms & Installments', paymentTermBody);
+
+  const payment = section(6, 'ช่องทางการชำระเงิน', 'Payment Methods', d.bankAccounts.length
     ? `<table class="grid">
         <thead><tr>
           <th>${label('ธนาคาร', 'Bank')}</th>
@@ -291,7 +342,7 @@ export function renderProposalHtml(d: ProposalDocumentData, fontCss: string): st
     d.terms.length ? `<ol class="terms">${d.terms.map((t) => `<li>${e(t)}</li>`).join('')}</ol>` : '',
     d.proposal.remark ? `<div class="remark"><b>หมายเหตุเพิ่มเติม / Additional remark:</b> ${lines(d.proposal.remark)}</div>` : '',
   ].join('');
-  const terms = termsBody ? section(6, 'เงื่อนไขและหมายเหตุ', 'Terms & Remarks', termsBody) : '';
+  const terms = termsBody ? section(7, 'เงื่อนไขและหมายเหตุ', 'Terms & Remarks', termsBody) : '';
 
   const signs = `
     <div class="signs">
@@ -316,7 +367,7 @@ export function renderProposalHtml(d: ProposalDocumentData, fontCss: string): st
 <style>${fontCss}${STYLES}</style></head>
 <body>
 ${d.proposal.isDraft ? '<div class="watermark">ฉบับร่าง DRAFT</div>' : ''}
-${letterhead}${title}${head}${insurance}${risks}${coverages}${premium}${payment}${terms}${signs}
+${letterhead}${title}${head}${insurance}${risks}${coverages}${premium}${paymentTermsSection}${payment}${terms}${signs}
 </body></html>`;
 }
 
@@ -324,9 +375,10 @@ ${letterhead}${title}${head}${insurance}${risks}${coverages}${premium}${payment}
  * Puppeteer footer: document number left, page x/y right. Footer templates cannot use the page's
  * @font-face, so it stays ASCII-only to render the same on hosts without Thai system fonts.
  */
-export function renderProposalFooter(proposalNo: string): string {
+export function renderProposalFooter(proposalNo: string, version?: number): string {
+  const label = version ? `${proposalNo} (v${version})` : proposalNo;
   return `<div style="width:100%;font-family:sans-serif;font-size:7.5pt;color:#6b7785;padding:0 14mm;display:flex;justify-content:space-between">
-    <span>${escapeHtml(proposalNo)}</span>
+    <span>${escapeHtml(label)}</span>
     <span>Page <span class="pageNumber"></span>/<span class="totalPages"></span></span>
   </div>`;
 }

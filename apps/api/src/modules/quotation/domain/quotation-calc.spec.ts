@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { computeQuotation, autoCalc } from './quotation-calc.js';
 import { Decimal } from 'decimal.js';
 
@@ -56,5 +57,23 @@ describe('computeQuotation', () => {
     expect(() =>
       computeQuotation({ gross: '100', discount: '0', stampDuty: '0', tax: '-200' }),
     ).toThrow('QUOTATION_TOTAL_NEGATIVE');
+  });
+
+  it('throws when gross premium is negative', () => {
+    expect(() =>
+      computeQuotation({ gross: '-100', discount: '0' }),
+    ).toThrow('PREMIUM_NEGATIVE');
+  });
+
+  it('throws when discount is negative', () => {
+    expect(() =>
+      computeQuotation({ gross: '1000', discount: '-50' }),
+    ).toThrow('DISCOUNT_NEGATIVE');
+  });
+
+  it('throws when discount exceeds gross (net is negative)', () => {
+    expect(() =>
+      computeQuotation({ gross: '1000', discount: '1500' }),
+    ).toThrow('NET_PREMIUM_NEGATIVE');
   });
 });

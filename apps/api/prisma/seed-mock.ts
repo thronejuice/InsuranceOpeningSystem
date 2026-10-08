@@ -83,6 +83,45 @@ async function nextPolicy()   { return nextSeq('POL', 2026); }
 async function nextPayment()  { return nextSeq('PAY', 2026); }
 async function nextCustomer() { return nextSeq('CUS', 0); }
 
+async function addStatusHistories(
+  jobId: string,
+  chain: Array<{ from: any; to: any; reason?: string; changedById?: string; daysAgo?: number }>,
+) {
+  const now = Date.now();
+  for (const step of chain) {
+    const changedAt = step.daysAgo !== undefined ? new Date(now - step.daysAgo * 86400000) : new Date();
+    await prisma.jobStatusHistory.create({
+      data: {
+        jobId,
+        fromStatus: step.from,
+        toStatus: step.to,
+        reason: step.reason ?? null,
+        changedById: step.changedById ?? USERS.admin,
+        changedAt,
+      },
+    });
+  }
+}
+
+async function addAssignment(
+  jobId: string,
+  role: 'AGENT' | 'BROKER_STAFF' | 'MANAGER',
+  fromUserId: string | null,
+  toUserId: string | null,
+  reason?: string,
+) {
+  await prisma.jobAssignmentHistory.create({
+    data: {
+      jobId,
+      role: role as any,
+      fromUserId,
+      toUserId,
+      reason: reason ?? null,
+      changedById: USERS.admin,
+    },
+  });
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   console.log('🌱 Creating mock data — all workflow steps...\n');
@@ -124,12 +163,14 @@ async function main() {
       productId: PRODUCTS.FIRE,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'DRAFT',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobDraft.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
   console.log('✅ DRAFT:', jobDraft.jobNo);
 
   // ─── 2. OPEN ──────────────────────────────────────────────────────────────
@@ -141,12 +182,17 @@ async function main() {
       productId: PRODUCTS.FIRE,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'OPEN',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobOpen.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobOpen.id, [
+    { from: 'DRAFT', to: 'OPEN', reason: 'Submit job', changedById: USERS.agent01, daysAgo: 5 },
+  ]);
   console.log('✅ OPEN:', jobOpen.jobNo);
 
   // ─── 3. WAITING_INFORMATION ───────────────────────────────────────────────
@@ -163,6 +209,10 @@ async function main() {
       createdById: USERS.admin,
     },
   });
+  await addStatusHistories(jobWaiting.id, [
+    { from: 'DRAFT', to: 'OPEN', reason: 'Submit job', changedById: USERS.agent01, daysAgo: 6 },
+    { from: 'OPEN', to: 'WAITING_INFORMATION', reason: 'ขอข้อมูลผู้ขับขี่เพิ่มเติม', changedById: USERS.staff, daysAgo: 5 },
+  ]);
   console.log('✅ WAITING_INFORMATION:', jobWaiting.jobNo);
 
   // ─── 4. QUOTATION_REQUESTED ───────────────────────────────────────────────
@@ -174,12 +224,18 @@ async function main() {
       productId: PRODUCTS.PA,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'QUOTATION_REQUESTED',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobQtReq.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobQtReq.id, [
+    { from: 'DRAFT', to: 'OPEN', reason: 'Submit job', changedById: USERS.agent01, daysAgo: 7 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', reason: 'ขอใบเสนอราคาจากบริษัทประกัน', changedById: USERS.staff, daysAgo: 6 },
+  ]);
   const qtReq = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -200,12 +256,19 @@ async function main() {
       productId: PRODUCTS.PA,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'QUOTATION_RECEIVED',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobQtRcv.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobQtRcv.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 10 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 9 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', reason: 'ได้รับใบเสนอราคาครบถ้วน', daysAgo: 8 },
+  ]);
   await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -263,12 +326,20 @@ async function main() {
       productId: PRODUCTS.FIRE,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'QUOTATION_SELECTED',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobQtSel.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobQtSel.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 12 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 11 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 10 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', reason: 'เลือกใบเสนอราคาของ บริษัท ไทยประกันภัย จำกัด', daysAgo: 9 },
+  ]);
   const qtSelA = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -330,12 +401,22 @@ async function main() {
       productId: PRODUCTS.MOTOR,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'WAITING_CUSTOMER',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobWaitCust.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobWaitCust.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 14 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 13 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 12 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 11 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 10 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', reason: 'ส่ง Proposal ให้ลูกค้าพิจารณา', daysAgo: 10 },
+  ]);
   const qtMotor = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -386,12 +467,23 @@ async function main() {
       productId: PRODUCTS.FIRE,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'WAITING_APPROVAL',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobWaitApproval.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobWaitApproval.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 16 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 15 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 14 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 13 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 12 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', daysAgo: 12 },
+    { from: 'WAITING_CUSTOMER', to: 'WAITING_APPROVAL', reason: 'ลูกค้ายอมรับ รอการอนุมัติตามกฎ', daysAgo: 10 },
+  ]);
   const qtApproval = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -452,12 +544,24 @@ async function main() {
       productId: PRODUCTS.FIRE,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'APPROVED',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobApproved.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobApproved.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 17 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 16 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 15 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 14 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 13 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', daysAgo: 13 },
+    { from: 'WAITING_CUSTOMER', to: 'WAITING_APPROVAL', daysAgo: 12 },
+    { from: 'WAITING_APPROVAL', to: 'APPROVED', reason: 'อนุมัติเรียบร้อย', changedById: USERS.manager, daysAgo: 10 },
+  ]);
   const qtApproved = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -519,12 +623,26 @@ async function main() {
       productId: PRODUCTS.MOTOR,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'POLICY_PENDING',
       effectiveDate: new Date('2026-11-01'),
       expiryDate: new Date('2027-11-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobPolicyPending.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobPolicyPending.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 18 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 17 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 16 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 15 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 14 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', daysAgo: 14 },
+    { from: 'WAITING_CUSTOMER', to: 'WAITING_APPROVAL', daysAgo: 13 },
+    { from: 'WAITING_APPROVAL', to: 'APPROVED', daysAgo: 12 },
+    { from: 'APPROVED', to: 'BINDING', daysAgo: 11 },
+    { from: 'BINDING', to: 'POLICY_PENDING', reason: 'ยืนยันความคุ้มครอง', daysAgo: 11 },
+  ]);
   const qtPolicyPending = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -596,12 +714,26 @@ async function main() {
       productId: PRODUCTS.PA,
       agentId: USERS.agent01,
       assignedTo: USERS.staff,
+      brokerStaffId: USERS.staff,
       status: 'POLICY_ISSUED',
       effectiveDate: new Date('2026-10-01'),
       expiryDate: new Date('2027-10-01'),
       createdById: USERS.admin,
     },
   });
+  await addAssignment(jobIssued.id, 'BROKER_STAFF', null, USERS.staff, 'มอบหมายผู้รับผิดชอบฝั่งโบรกเกอร์');
+  await addStatusHistories(jobIssued.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 20 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 19 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 18 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 17 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 16 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', daysAgo: 16 },
+    { from: 'WAITING_CUSTOMER', to: 'CUSTOMER_ACCEPTED', daysAgo: 15 },
+    { from: 'CUSTOMER_ACCEPTED', to: 'BINDING', daysAgo: 14 },
+    { from: 'BINDING', to: 'POLICY_PENDING', daysAgo: 14 },
+    { from: 'POLICY_PENDING', to: 'POLICY_ISSUED', reason: 'ออกกรมธรรม์เรียบร้อย', daysAgo: 10 },
+  ]);
   const qtIssued = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),
@@ -729,6 +861,15 @@ async function main() {
       createdById: USERS.admin,
     },
   });
+  await addStatusHistories(jobRejected.id, [
+    { from: 'DRAFT', to: 'OPEN', daysAgo: 15 },
+    { from: 'OPEN', to: 'QUOTATION_REQUESTED', daysAgo: 14 },
+    { from: 'QUOTATION_REQUESTED', to: 'QUOTATION_RECEIVED', daysAgo: 13 },
+    { from: 'QUOTATION_RECEIVED', to: 'QUOTATION_SELECTED', daysAgo: 12 },
+    { from: 'QUOTATION_SELECTED', to: 'PROPOSAL_SENT', daysAgo: 11 },
+    { from: 'PROPOSAL_SENT', to: 'WAITING_CUSTOMER', daysAgo: 11 },
+    { from: 'WAITING_CUSTOMER', to: 'CUSTOMER_REJECTED', reason: 'PRICE: ลูกค้าแจ้งว่าเบี้ยสูงเกินไป', daysAgo: 10 },
+  ]);
   const qtRej = await prisma.quotation.create({
     data: {
       quotationNo: await nextQuote(),

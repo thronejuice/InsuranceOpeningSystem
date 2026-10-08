@@ -156,6 +156,10 @@ export class MasterRepository {
     return this.db.documentChecklist.update({ where: { id }, data });
   }
 
+  deleteChecklist(id: string) {
+    return this.db.documentChecklist.delete({ where: { id } });
+  }
+
   // ─── Approval Rules ──────────────────────────────────────────────────────
 
   findAllApprovalRules() {
@@ -173,4 +177,138 @@ export class MasterRepository {
   updateApprovalRule(id: string, data: Prisma.ApprovalRuleUpdateInput) {
     return this.db.approvalRule.update({ where: { id }, data });
   }
+
+  // ─── Branches ────────────────────────────────────────────────────────────
+
+  findAllBranches() {
+    return this.db.branch.findMany({ orderBy: { code: 'asc' } });
+  }
+
+  findBranchById(id: string) {
+    return this.db.branch.findUnique({
+      where: { id },
+      include: { _count: { select: { users: true, jobs: true } } },
+    });
+  }
+
+  findBranchByCode(code: string) {
+    return this.db.branch.findUnique({ where: { code } });
+  }
+
+  createBranch(data: Prisma.BranchCreateInput) {
+    return this.db.branch.create({ data });
+  }
+
+  updateBranch(id: string, data: Prisma.BranchUpdateInput) {
+    return this.db.branch.update({ where: { id }, data });
+  }
+
+  deleteBranch(id: string) {
+    return this.db.branch.delete({ where: { id } });
+  }
+
+  // ─── Commission Rates (Phase 2 Day 11) ───────────────────────────────────
+
+  findCommissionRates(where: Prisma.CommissionRateWhereInput) {
+    return this.db.commissionRate.findMany({
+      where: { ...where, deletedAt: null },
+      include: {
+        insuranceCompany: { select: { id: true, code: true, name: true } },
+        product: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  findCommissionRateById(id: string) {
+    return this.db.commissionRate.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        insuranceCompany: { select: { id: true, code: true, name: true } },
+        product: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  findApplicableCommissionRate(insuranceCompanyId: string, productId: string, date: Date) {
+    return this.db.commissionRate.findFirst({
+      where: {
+        insuranceCompanyId,
+        productId,
+        effectiveFrom: { lte: date },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: date } }],
+        deletedAt: null,
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+  }
+
+  createCommissionRate(data: Prisma.CommissionRateCreateInput) {
+    return this.db.commissionRate.create({
+      data,
+      include: {
+        insuranceCompany: { select: { id: true, code: true, name: true } },
+        product: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  updateCommissionRate(id: string, data: Prisma.CommissionRateUpdateInput) {
+    return this.db.commissionRate.update({
+      where: { id },
+      data,
+      include: {
+        insuranceCompany: { select: { id: true, code: true, name: true } },
+        product: { select: { id: true, code: true, name: true } },
+      },
+    });
+  }
+
+  deleteCommissionRate(id: string) {
+    return this.db.commissionRate.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  // ─── Payment Terms (Phase 2 Day 13 / OQ-2) ───────────────────────────────
+
+  findPaymentTerms(where: Prisma.PaymentTermWhereInput = {}) {
+    return this.db.paymentTerm.findMany({
+      where,
+      orderBy: [{ installments: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  findPaymentTermById(id: string) {
+    return this.db.paymentTerm.findUnique({
+      where: { id },
+    });
+  }
+
+  findPaymentTermByCode(code: string) {
+    return this.db.paymentTerm.findUnique({
+      where: { code },
+    });
+  }
+
+  createPaymentTerm(data: Prisma.PaymentTermCreateInput) {
+    return this.db.paymentTerm.create({ data });
+  }
+
+  updatePaymentTerm(id: string, data: Prisma.PaymentTermUpdateInput) {
+    return this.db.paymentTerm.update({
+      where: { id },
+      data,
+    });
+  }
+
+  deletePaymentTerm(id: string) {
+    return this.db.paymentTerm.delete({
+      where: { id },
+    });
+  }
 }
+
+
+

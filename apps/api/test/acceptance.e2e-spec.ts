@@ -51,6 +51,7 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -289,7 +290,8 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
   it('Step 18: Customer Accept Proposal → WAITING_APPROVAL', async () => {
     const res = await http()
       .post(`/api/proposals/${proposalId}/accept`)
-      .set('Authorization', `Bearer ${agentToken}`);
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('ACCEPTED');

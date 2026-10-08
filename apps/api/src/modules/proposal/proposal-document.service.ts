@@ -87,8 +87,8 @@ export class ProposalDocumentService {
 
     // A re-sent proposal (should not happen today) keeps one active copy: retire older ones.
     await this.db.document.updateMany({
-      where: { jobId: proposal.jobId, documentType: 'PROPOSAL', originalName: fileName, status: 'ACTIVE' },
-      data: { status: 'DELETED' },
+      where: { jobId: proposal.jobId, documentType: 'PROPOSAL', originalName: fileName, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
     const userId = this.cls.get('userId');
     await this.db.document.create({
@@ -107,7 +107,7 @@ export class ProposalDocumentService {
 
   private findStored(jobId: string, fileName: string) {
     return this.db.document.findFirst({
-      where: { jobId, documentType: 'PROPOSAL', originalName: fileName, status: 'ACTIVE' },
+      where: { jobId, documentType: 'PROPOSAL', originalName: fileName, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       select: { storagePath: true },
     });
@@ -116,13 +116,14 @@ export class ProposalDocumentService {
   private async render(proposalId: string, opts: { forceFinal?: boolean } = {}): Promise<Buffer> {
     const data = await this.buildData(proposalId, opts.forceFinal ?? false);
     const html = renderProposalHtml(data, this.pdf.sarabunFontCss);
-    return this.pdf.render(html, { footerTemplate: renderProposalFooter(data.proposal.proposalNo) });
+    return this.pdf.render(html, { footerTemplate: renderProposalFooter(data.proposal.proposalNo, data.proposal.version) });
   }
 
   async buildData(proposalId: string, forceFinal = false): Promise<ProposalDocumentData> {
     const p = await this.db.proposal.findFirst({
       where: { id: proposalId },
       include: {
+        paymentTerm: true,
         customer: {
           include: {
             addresses: { orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
@@ -163,6 +164,57 @@ export class ProposalDocumentService {
       .map((f) => ({ label: f.fieldName, value: formatRiskValue(f.fieldType, riskValues.get(f.fieldCode)) }));
 
     const q = p.quotation;
+    const totalAmount = Number(q.totalAmount);
+    let paymentTermData: ProposalDocumentData['paymentTerm'] = null;
+
+    if (p.paymentTerm) {
+      const installments = Math.max(1, p.paymentTerm.installments);
+      const intervalMonths = p.paymentTerm.intervalMonths;
+      const firstDueDays = p.paymentTerm.firstDueDays;
+
+      const baseDate = p.proposalDate ?? p.createdAt;
+      const firstDueDate = new Date(baseDate);
+      firstDueDate.setDate(firstDueDate.getDate() + firstDueDays);
+
+      const schedule: Array<{ installmentNo: number; dueDate: Date | null; amount: string }> = [];
+      const baseInstallmentAmount = Math.floor((totalAmount / installments) * 100) / 100;
+      let runningSum = 0;
+
+      for (let i = 1; i <= installments; i++) {
+        let dueDate: Date | null = null;
+        if (i === 1) {
+          dueDate = new Date(firstDueDate);
+        } else {
+          dueDate = new Date(firstDueDate);
+          dueDate.setMonth(dueDate.getMonth() + (i - 1) * intervalMonths);
+        }
+
+        let amount: number;
+        if (i === installments) {
+          amount = Math.round((totalAmount - runningSum) * 100) / 100;
+        } else {
+          amount = baseInstallmentAmount;
+          runningSum += amount;
+        }
+
+        schedule.push({
+          installmentNo: i,
+          dueDate,
+          amount: amount.toFixed(2),
+        });
+      }
+
+      paymentTermData = {
+        name: p.paymentTerm.name,
+        code: p.paymentTerm.code,
+        description: p.paymentTerm.description,
+        installments: p.paymentTerm.installments,
+        intervalMonths: p.paymentTerm.intervalMonths,
+        firstDueDays: p.paymentTerm.firstDueDays,
+        schedule,
+      };
+    }
+
     const terms = (profile.proposalTerms ?? '')
       .split(/\r?\n/)
       .map((t) => t.trim())
@@ -183,11 +235,13 @@ export class ProposalDocumentService {
       },
       proposal: {
         proposalNo: p.proposalNo,
+        version: p.version,
         proposalDate: p.proposalDate ?? p.createdAt,
         validUntil: p.validUntil,
         remark: p.remark,
         isDraft: !forceFinal && p.status === 'DRAFT',
       },
+      paymentTerm: paymentTermData,
       jobNo: p.job.jobNo,
       customer: {
         name: customerName,

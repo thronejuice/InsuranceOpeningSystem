@@ -1,8 +1,9 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { NotificationService } from './notification.service.js';
 import { PaginationQueryDto } from '../../common/http/pagination.dto.js';
+import { UpdateNotificationPreferencesDto } from './dto/preference.dto.js';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
@@ -36,5 +37,19 @@ export class NotificationController {
   @ApiOperation({ summary: 'Mark all notifications as read' })
   markAllRead() {
     return this.service.markAllRead();
+  }
+
+  @Get('notifications/preferences')
+  @RequirePermissions('notification.view')
+  @ApiOperation({ summary: 'Get notification preferences for current user' })
+  getPreferences() {
+    return this.service.getPreferences();
+  }
+
+  @Put('notifications/preferences')
+  @RequirePermissions('notification.view')
+  @ApiOperation({ summary: 'Update notification preferences for current user' })
+  updatePreferences(@Body() dto: UpdateNotificationPreferencesDto) {
+    return this.service.updatePreferences(dto);
   }
 }

@@ -15,7 +15,10 @@ import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { MasterService } from './master.service.js';
 import {
+  CommissionRateQueryDto,
   CreateApprovalRuleDto,
+  CreateBranchDto,
+  CreateCommissionRateDto,
   CreateDocumentChecklistDto,
   CreateInsuranceCompanyDto,
   CreateInsuranceCoverageDto,
@@ -23,12 +26,17 @@ import {
   CreateInsuranceTypeDto,
   CreateRiskFieldDto,
   UpdateApprovalRuleDto,
+  UpdateBranchDto,
+  UpdateCommissionRateDto,
   UpdateDocumentChecklistDto,
   UpdateInsuranceCompanyDto,
   UpdateInsuranceCoverageDto,
   UpdateInsuranceProductDto,
   UpdateInsuranceTypeDto,
   UpdateRiskFieldDto,
+  CreatePaymentTermDto,
+  UpdatePaymentTermDto,
+  PaymentTermQueryDto,
 } from './dto/master.dto.js';
 
 @ApiTags('master')
@@ -209,6 +217,13 @@ export class MasterController {
     return this.service.updateDocumentChecklist(id, dto);
   }
 
+  @Delete('document-checklists/:id')
+  @RequirePermissions('master.manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDocumentChecklist(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.deleteDocumentChecklist(id);
+  }
+
   // ─── Approval Rules ──────────────────────────────────────────────────────
 
   @Get('approval-rules')
@@ -234,4 +249,104 @@ export class MasterController {
   updateApprovalRule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateApprovalRuleDto) {
     return this.service.updateApprovalRule(id, dto);
   }
+
+  // ─── Branches ────────────────────────────────────────────────────────────
+
+  @Get('branches')
+  @RequirePermissions()
+  listBranches() {
+    return this.service.listBranches();
+  }
+
+  @Get('branches/:id')
+  @RequirePermissions()
+  getBranch(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getBranch(id);
+  }
+
+  @Post('branches')
+  @RequirePermissions('master.manage')
+  createBranch(@Body() dto: CreateBranchDto) {
+    return this.service.createBranch(dto);
+  }
+
+  @Put('branches/:id')
+  @RequirePermissions('master.manage')
+  updateBranch(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBranchDto) {
+    return this.service.updateBranch(id, dto);
+  }
+
+  @Delete('branches/:id')
+  @RequirePermissions('master.manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteBranch(@Param('id', ParseUUIDPipe) id: string) {
+    await this.service.deleteBranch(id);
+  }
+
+  // ─── Commission Rates (Phase 2 Day 11) ───────────────────────────────────
+
+  @Get('commission-rates')
+  @RequirePermissions()
+  listCommissionRates(@Query() query: CommissionRateQueryDto) {
+    return this.service.listCommissionRates(query);
+  }
+
+  @Get('commission-rates/:id')
+  @RequirePermissions()
+  getCommissionRate(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getCommissionRate(id);
+  }
+
+  @Post('commission-rates')
+  @RequirePermissions('master.manage')
+  createCommissionRate(@Body() dto: CreateCommissionRateDto) {
+    return this.service.createCommissionRate(dto);
+  }
+
+  @Put('commission-rates/:id')
+  @RequirePermissions('master.manage')
+  updateCommissionRate(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCommissionRateDto) {
+    return this.service.updateCommissionRate(id, dto);
+  }
+
+  @Delete('commission-rates/:id')
+  @RequirePermissions('master.manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteCommissionRate(@Param('id', ParseUUIDPipe) id: string) {
+    await this.service.deleteCommissionRate(id);
+  }
+
+  // ─── Payment Terms (Phase 2 Day 13 / OQ-2) ───────────────────────────────
+
+  @Get('payment-terms')
+  @RequirePermissions()
+  listPaymentTerms(@Query() query: PaymentTermQueryDto) {
+    return this.service.listPaymentTerms(query);
+  }
+
+  @Get('payment-terms/:id')
+  @RequirePermissions()
+  getPaymentTerm(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getPaymentTerm(id);
+  }
+
+  @Post('payment-terms')
+  @RequirePermissions('master.manage')
+  createPaymentTerm(@Body() dto: CreatePaymentTermDto) {
+    return this.service.createPaymentTerm(dto);
+  }
+
+  @Put('payment-terms/:id')
+  @RequirePermissions('master.manage')
+  updatePaymentTerm(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePaymentTermDto) {
+    return this.service.updatePaymentTerm(id, dto);
+  }
+
+  @Delete('payment-terms/:id')
+  @RequirePermissions('master.manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePaymentTerm(@Param('id', ParseUUIDPipe) id: string) {
+    await this.service.deletePaymentTerm(id);
+  }
 }
+

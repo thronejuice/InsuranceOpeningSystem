@@ -69,6 +69,8 @@ export class DashboardService {
   async managerDashboard() {
     const tx = this.txHost.tx;
     const now = new Date();
+    const jobScope = this.scope.jobViewScope();
+    const policyJobScope = { job: { deletedAt: null, ...jobScope } };
 
     const jobStatuses = [
       'DRAFT', 'OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQUESTED', 'QUOTATION_RECEIVED',
@@ -86,32 +88,33 @@ export class DashboardService {
       policyCount,
       overdueCount,
     ] = await Promise.all([
-      tx.job.count({ where: { deletedAt: null } }),
+      tx.job.count({ where: { deletedAt: null, ...jobScope } }),
       tx.job.groupBy({
         by: ['status'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...jobScope },
         _count: { id: true },
       }),
       tx.job.groupBy({
         by: ['agentId'],
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...jobScope },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 10,
       }),
       tx.policy.aggregate({
-        where: { status: { notIn: ['CANCELLED'] } },
+        where: { status: { notIn: ['CANCELLED'] }, ...policyJobScope },
         _sum: { totalPremium: true },
       }),
       tx.commission.aggregate({
-        where: { status: { notIn: ['CANCELLED'] } },
+        where: { status: { notIn: ['CANCELLED'] }, policy: policyJobScope },
         _sum: { commissionAmount: true },
       }),
-      tx.policy.count({ where: { status: 'ISSUED' } }),
+      tx.policy.count({ where: { status: 'ISSUED', ...policyJobScope } }),
       tx.task.count({
         where: {
           status: { notIn: ['DONE', 'CANCELLED'] },
           dueDate: { lt: now },
+          job: { deletedAt: null, ...jobScope },
         },
       }),
     ]);

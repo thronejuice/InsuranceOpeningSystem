@@ -5,7 +5,11 @@ const TABS = [
   { label: 'ประเภทประกันภัย', route: 'insurance-types' },
   { label: 'ผลิตภัณฑ์', route: 'products' },
   { label: 'บริษัทประกันภัย', route: 'companies' },
+  { label: 'สาขา (Branches)', route: 'branches' },
+  { label: 'อัตราคอมมิชชัน', route: 'commission-rates' },
+  { label: 'เงื่อนไขการชำระเงิน', route: 'payment-terms' },
   { label: 'Risk Fields', route: 'risk-fields' },
+  { label: 'Document Checklist', route: 'document-checklists' },
   { label: 'ข้อมูลบริษัท (หัวกระดาษ)', route: 'company-profile' },
 ];
 

@@ -95,6 +95,7 @@ describe('Customer (e2e)', () => {
       data: {
         code: `${PREFIX.toUpperCase()}ADMIN`,
         name: 'E2E Customer Admin',
+        dataScope: 'ALL',
         permissions: {
           create: [
             { permissionId: pView.id },
@@ -112,6 +113,7 @@ describe('Customer (e2e)', () => {
       data: {
         code: `${PREFIX.toUpperCase()}VIEWER`,
         name: 'E2E Customer Viewer',
+        dataScope: 'ALL',
         permissions: { create: [{ permissionId: pView.id }] },
       },
     });

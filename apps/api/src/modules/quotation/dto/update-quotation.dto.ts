@@ -53,6 +53,38 @@ export class UpdateQuotationDto {
   @IsOptional()
   tax?: string;
 
+  @IsDecimal({ decimal_digits: '0,4' })
+  @IsOptional()
+  commissionRate?: string;
+
+  @IsDecimal({ decimal_digits: '0,2' })
+  @IsOptional()
+  commissionAmount?: string;
+
+  @IsDecimal({ decimal_digits: '0,2' })
+  @IsOptional()
+  deductible?: string;
+
+  @IsString()
+  @IsOptional()
+  exclusion?: string;
+
+  @IsString()
+  @IsOptional()
+  specialCondition?: string;
+
+  @IsString()
+  @IsOptional()
+  insurerReference?: string;
+
+  @IsString()
+  @IsOptional()
+  underwriter?: string;
+
+  @IsString()
+  @IsOptional()
+  attachment?: string;
+
   @IsString()
   @IsOptional()
   remark?: string;
@@ -63,3 +95,12 @@ export class UpdateQuotationDto {
   @IsOptional()
   items?: QuotationItemDto[];
 }
+
+export class RecordQuotationVersionDto extends UpdateQuotationDto {}
+
+export class WithdrawQuotationDto {
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+

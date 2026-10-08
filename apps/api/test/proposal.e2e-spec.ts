@@ -35,6 +35,39 @@ describe('Proposal API (e2e)', () => {
     stream.on('end', () => cb(null, Buffer.concat(chunks)));
   };
 
+  /** A fresh Job with a selected quotation, ready for a new proposal (each test needs its own —
+   * reusing jobSupId across tests breaks once it already has an active proposal attached). */
+  async function freshJobWithSelectedQuotation(grossPremium: string): Promise<string> {
+    const iType = await prisma.insuranceType.findFirst({ where: { code: 'FIRE' } });
+    const product = await prisma.insuranceProduct.findFirst({ where: { code: 'FIRE-001' } });
+    const cust = await prisma.customer.findFirst({ where: { customerCode: `${PREFIX.toUpperCase()}C001` } });
+    const company = await prisma.insuranceCompany.findFirst({ where: { code: `${PREFIX.toUpperCase()}CO` } });
+
+    const jobRes = await http()
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ customerId: cust!.id, insuranceTypeId: iType!.id, productId: product!.id, agentId, effectiveDate: '2027-01-01' });
+    const jId = jobRes.body.data.id;
+
+    const quoRes = await http()
+      .post(`/api/jobs/${jId}/quotations`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ insuranceCompanyId: company!.id, grossPremium, validUntil: '2027-12-31' });
+    const quoId = quoRes.body.data.id;
+
+    const recRes = await http()
+      .put(`/api/quotations/${quoId}`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ grossPremium });
+
+    await http()
+      .post(`/api/quotations/${quoId}/select`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ reason: 'เลือก', version: recRes.body.data.version });
+
+    return jId;
+  }
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
@@ -50,6 +83,7 @@ describe('Proposal API (e2e)', () => {
     const prevJobIds = prevJobs.map((j) => j.id);
     if (prevJobIds.length > 0) {
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });
+      await prisma.proposalAcceptance.deleteMany({ where: { proposal: { jobId: { in: prevJobIds } } } });
       await prisma.proposal.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });
       await prisma.quotation.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -269,7 +303,8 @@ describe('Proposal API (e2e)', () => {
   it('POST /proposals/:id/accept — premium 50,000 → approval PENDING (SUPERVISOR)', async () => {
     const res = await http()
       .post(`/api/proposals/${proposalSupId}/accept`)
-      .set('Authorization', `Bearer ${agentToken}`);
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('ACCEPTED');
@@ -289,7 +324,8 @@ describe('Proposal API (e2e)', () => {
 
     const res = await http()
       .post(`/api/proposals/${proposalMgrId}/accept`)
-      .set('Authorization', `Bearer ${agentToken}`);
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally' });
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('ACCEPTED');
@@ -299,6 +335,74 @@ describe('Proposal API (e2e)', () => {
 
     const jobRes = await http().get(`/api/jobs/${jobMgrId}`).set('Authorization', `Bearer ${agentToken}`);
     expect(jobRes.body.data.status).toBe('WAITING_APPROVAL');
+  });
+
+  // ─── Day 14: Acceptance Evidence rules ────────────────────────────────────
+
+  it('POST /proposals/:id/accept — EMAIL without evidence file returns 422 ACCEPTANCE_EVIDENCE_REQUIRED', async () => {
+    // Create and send a new proposal to test acceptance evidence
+    const freshJobId = await freshJobWithSelectedQuotation('45000.00');
+    const propRes = await http()
+      .post(`/api/jobs/${freshJobId}/proposal`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ validUntil: '2027-06-30' });
+    const pId = propRes.body.data.id;
+    await http().post(`/api/proposals/${pId}/send`).set('Authorization', `Bearer ${agentToken}`);
+
+    const res = await http()
+      .post(`/api/proposals/${pId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'EMAIL' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code ?? res.body.message).toMatch(/ACCEPTANCE_EVIDENCE_REQUIRED/i);
+  });
+
+  it('POST /proposals/:id/accept — MANUAL without remark returns 422 ACCEPTANCE_EVIDENCE_REQUIRED', async () => {
+    const freshJobId = await freshJobWithSelectedQuotation('45000.00');
+    const propRes = await http()
+      .post(`/api/jobs/${freshJobId}/proposal`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ validUntil: '2027-06-30' });
+    const pId = propRes.body.data.id;
+    await http().post(`/api/proposals/${pId}/send`).set('Authorization', `Bearer ${agentToken}`);
+
+    const res = await http()
+      .post(`/api/proposals/${pId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code ?? res.body.message).toMatch(/ACCEPTANCE_EVIDENCE_REQUIRED/i);
+  });
+
+  it('POST /proposals/:id/accept with MANUAL and remark succeeds and stores evidence for retrieval via GET', async () => {
+    const freshJobId = await freshJobWithSelectedQuotation('45000.00');
+    const propRes = await http()
+      .post(`/api/jobs/${freshJobId}/proposal`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ validUntil: '2027-06-30' });
+    const pId = propRes.body.data.id;
+    await http().post(`/api/proposals/${pId}/send`).set('Authorization', `Bearer ${agentToken}`);
+
+    const acceptRes = await http()
+      .post(`/api/proposals/${pId}/accept`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ method: 'MANUAL', remark: 'Customer agreed verbally over line', acceptedByName: 'Test Customer' });
+
+    expect(acceptRes.status).toBe(201);
+    expect(acceptRes.body.data.status).toBe('ACCEPTED');
+    expect(acceptRes.body.data.latestAcceptance).toBeDefined();
+    expect(acceptRes.body.data.latestAcceptance.method).toBe('MANUAL');
+    expect(acceptRes.body.data.latestAcceptance.remark).toBe('Customer agreed verbally over line');
+
+    const getRes = await http()
+      .get(`/api/proposals/${pId}/acceptance`)
+      .set('Authorization', `Bearer ${agentToken}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.data.method).toBe('MANUAL');
+    expect(getRes.body.data.remark).toBe('Customer agreed verbally over line');
   });
 
   // ─── Reject proposal — reason required ────────────────────────────────────

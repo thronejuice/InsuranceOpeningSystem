@@ -39,6 +39,7 @@ const MENU_SECTIONS: MenuSection[] = [
       { label: 'การชำระเงิน', icon: 'pi pi-credit-card', route: '/payments', permission: 'payment.view' },
       { label: 'ค่าคอมมิชชั่น', icon: 'pi pi-dollar', route: '/commissions', permission: 'commission.view' },
       { label: 'การอนุมัติ', icon: 'pi pi-check-circle', route: '/approvals', permission: 'approval.manage' },
+      { label: 'Underwriting', icon: 'pi pi-shield', route: '/underwriting', permission: 'underwriting.review' },
     ],
   },
   {
@@ -47,6 +48,7 @@ const MENU_SECTIONS: MenuSection[] = [
       { label: 'นำเข้าข้อมูล', icon: 'pi pi-upload', route: '/imports', permission: 'import.create' },
       { label: 'ข้อมูลหลัก', icon: 'pi pi-database', route: '/master', permission: 'master.manage' },
       { label: 'ผู้ใช้งาน', icon: 'pi pi-user-edit', route: '/users', permission: 'user.manage' },
+      { label: 'บันทึกประวัติ (Audit)', icon: 'pi pi-history', route: '/audit-logs', permission: 'audit.view' },
     ],
   },
 ];

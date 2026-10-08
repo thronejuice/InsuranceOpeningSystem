@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Transactional } from '@nestjs-cls/transactional';
+import { TransactionHost, Transactional } from '@nestjs-cls/transactional';
+import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
 import type { Prisma } from '../../generated/prisma/client.js';
+import type { PrismaService } from '../../common/prisma/prisma.service.js';
+import { AssignmentRole } from '../../generated/prisma/enums.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
 import { DataScopeService } from '../../common/access/data-scope.service.js';
@@ -9,6 +12,7 @@ import { BusinessException } from '../../common/errors/business.exception.js';
 import { Paginated } from '../../common/http/pagination.dto.js';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { JobRepository } from './job.repository.js';
+import type { AssignJobDto } from './dto/assign-job.dto.js';
 import type { CreateJobDto } from './dto/create-job.dto.js';
 import type { JobQueryDto } from './dto/job-query.dto.js';
 import type { UpdateJobDto } from './dto/update-job.dto.js';
@@ -27,6 +31,7 @@ export class JobService {
     private readonly cls: ClsService<AppClsStore>,
     private readonly taskSvc: TaskService,
     private readonly notifSvc: NotificationService,
+    private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>,
   ) {}
 
   async list(query: JobQueryDto): Promise<Paginated<JobResponse>> {
@@ -63,12 +68,10 @@ export class JobService {
 
   async getOne(id: string): Promise<JobResponse> {
     const job = await this.repo.findById(id);
-    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
-    const userId = this.cls.get('userId')!;
-    const permissions = this.cls.get('permissions') ?? [];
-    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
-      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    if (!job || !this.scope.canViewJob(job)) {
+      throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
     }
+    const permissions = this.cls.get('permissions') ?? [];
     return toJobResponse(job, permissions, this.scope.canUpdateJob(job.agentId));
   }
 
@@ -80,12 +83,18 @@ export class JobService {
       throw new BusinessException('FORBIDDEN', 'Agents may only create jobs for themselves', 403);
     }
     const jobNo = await this.sequence.next('JOB');
+    const branchId = dto.branchId ?? this.cls.get('branchId');
     const job = await this.repo.create({
       jobNo,
       customer: { connect: { id: dto.customerId } },
       insuranceType: { connect: { id: dto.insuranceTypeId } },
       product: { connect: { id: dto.productId } },
       agent: { connect: { id: dto.agentId } },
+      ...(branchId && { branch: { connect: { id: branchId } } }),
+      ...(dto.brokerStaffId && {
+        brokerStaff: { connect: { id: dto.brokerStaffId } },
+        assignee: { connect: { id: dto.brokerStaffId } },
+      }),
       ...(dto.expiryDate !== undefined && { expiryDate: new Date(dto.expiryDate) }),
       effectiveDate: new Date(dto.effectiveDate),
       priority: dto.priority,
@@ -123,19 +132,61 @@ export class JobService {
   }
 
   @Transactional()
-  async assign(id: string, assigneeId: string | null): Promise<JobResponse> {
+  async assign(id: string, dto: AssignJobDto): Promise<JobResponse> {
     const userId = this.cls.get('userId')!;
     const permissions = this.cls.get('permissions') ?? [];
     const job = await this.repo.findById(id);
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
-    if (!this.scope.canUpdateJob(job.agentId)) {
+    if (!this.scope.canAssignJob(job.agentId)) {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
-    const updated = await this.repo.update(id, {
-      assignee: assigneeId ? { connect: { id: assigneeId } } : { disconnect: true },
-      updatedById: userId,
+
+    const targetRole = dto.role ?? AssignmentRole.BROKER_STAFF;
+    const assigneeId = dto.assigneeId ?? null;
+
+    let fromUserId: string | null = null;
+    let updateData: Prisma.JobUpdateInput = { updatedById: userId };
+
+    if (targetRole === AssignmentRole.AGENT) {
+      fromUserId = job.agentId;
+      if (!assigneeId) {
+        throw new BusinessException('INVALID_ASSIGNMENT', 'Agent cannot be unassigned', 422);
+      }
+      updateData = {
+        ...updateData,
+        agent: { connect: { id: assigneeId } },
+      };
+    } else if (targetRole === AssignmentRole.BROKER_STAFF) {
+      fromUserId = job.brokerStaffId ?? job.assignedTo ?? null;
+      updateData = {
+        ...updateData,
+        brokerStaff: assigneeId ? { connect: { id: assigneeId } } : { disconnect: true },
+        assignee: assigneeId ? { connect: { id: assigneeId } } : { disconnect: true },
+      };
+    } else if (targetRole === AssignmentRole.MANAGER) {
+      fromUserId = null;
+    }
+
+    const updated = await this.repo.update(id, updateData);
+
+    await this.txHost.tx.jobAssignmentHistory.create({
+      data: {
+        jobId: id,
+        role: targetRole,
+        fromUserId,
+        toUserId: assigneeId,
+        reason: dto.reason ?? null,
+        changedById: userId,
+      },
     });
-    await this.audit.log({ action: 'ASSIGN_JOB', entityType: 'JOB', entityId: id, jobId: id });
+
+    await this.audit.log({
+      action: 'ASSIGN_JOB',
+      entityType: 'JOB',
+      entityId: id,
+      jobId: id,
+      newValue: { assigneeId, role: targetRole, reason: dto.reason },
+    });
 
     if (assigneeId) {
       await this.taskSvc.createAutoTask(id, 'CALL_CUSTOMER', 'โทรติดต่อลูกค้า', assigneeId);
@@ -150,5 +201,29 @@ export class JobService {
     }
 
     return toJobResponse(updated, permissions, true);
+  }
+
+  async getAssignmentHistories(id: string) {
+    const job = await this.repo.findById(id);
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+    const userId = this.cls.get('userId')!;
+    const permissions = this.cls.get('permissions') ?? [];
+    if (
+      !permissions.includes('job.view_all') &&
+      job.agentId !== userId &&
+      job.assignedTo !== userId &&
+      job.brokerStaffId !== userId
+    ) {
+      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    }
+    return this.txHost.tx.jobAssignmentHistory.findMany({
+      where: { jobId: id },
+      include: {
+        fromUser: { select: { id: true, username: true, fullName: true } },
+        toUser: { select: { id: true, username: true, fullName: true } },
+        changedBy: { select: { id: true, username: true, fullName: true } },
+      },
+      orderBy: { changedAt: 'asc' },
+    });
   }
 }

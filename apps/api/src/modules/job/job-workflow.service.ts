@@ -77,6 +77,22 @@ export class JobWorkflowService {
     return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
   }
 
+  @Transactional()
+  async revise(jobId: string, opts: { reason?: string } = {}): Promise<JobResponse> {
+    const job = await this.repo.findById(jobId);
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+
+    if (job.status !== 'WAITING_CUSTOMER' && job.status !== 'APPROVAL_REJECTED') {
+      throw new BusinessException(
+        'JOB_INVALID_STATUS',
+        `Cannot revise job in status ${job.status}. Must be in WAITING_CUSTOMER or APPROVAL_REJECTED.`,
+        409,
+      );
+    }
+
+    return this.transition(jobId, 'QUOTATION_RECEIVED', opts);
+  }
+
   /**
    * Internal transition executed within an existing transaction by other domain services
    * (Quotation, Proposal, Approval, Policy, Renewal).
@@ -94,9 +110,34 @@ export class JobWorkflowService {
       throw new BusinessException('JOB_INVALID_TRANSITION', `Cannot transition from ${from} to ${to}`, 409);
     }
 
+    if (to === 'QUOTATION_REQUESTED') {
+      const jobRecord = await this.txHost.tx.job.findFirst({
+        where: { id: job.id },
+        select: { productId: true, product: { select: { requireUnderwriting: true } } },
+      });
+      if (jobRecord?.product?.requireUnderwriting) {
+        const latestUw = await this.txHost.tx.underwriting.findFirst({
+          where: { jobId: job.id, deletedAt: null },
+          orderBy: { version: 'desc' },
+        });
+        if (!latestUw || latestUw.status !== 'APPROVED') {
+          throw new BusinessException(
+            'UNDERWRITING_REQUIRED',
+            'Underwriting approval is required before requesting quotation',
+            422,
+          );
+        }
+      }
+    }
+
     const { count } = await this.txHost.tx.job.updateMany({
       where: { id: job.id, version: job.version, status: job.status as JobStatus },
-      data: { status: to, version: { increment: 1 }, updatedById: userId },
+      data: {
+        status: to,
+        version: { increment: 1 },
+        updatedById: userId,
+        ...(to === 'QUOTATION_RECEIVED' ? { selectedQuotationId: null } : {}),
+      },
     });
 
     if (count === 0) {
@@ -112,6 +153,98 @@ export class JobWorkflowService {
         changedById: userId,
       },
     });
+
+    // Revise action (WAITING_CUSTOMER / APPROVAL_REJECTED → QUOTATION_RECEIVED)
+    if (to === 'QUOTATION_RECEIVED' && (from === 'WAITING_CUSTOMER' || from === 'APPROVAL_REJECTED')) {
+      // 1. Current Proposal(s) -> SUPERSEDED
+      if (this.txHost.tx.proposal?.updateMany) {
+        await this.txHost.tx.proposal.updateMany({
+          where: {
+            jobId: job.id,
+            status: { in: ['DRAFT', 'SENT', 'VIEWED', 'EXPIRED'] },
+          },
+          data: { status: 'SUPERSEDED' },
+        });
+      }
+
+      // 2. Pending Approval(s) -> CANCELLED
+      if (this.txHost.tx.approval?.updateMany) {
+        await this.txHost.tx.approval.updateMany({
+          where: {
+            jobId: job.id,
+            status: 'PENDING',
+          },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      // 3. Quotation SELECTED -> RECEIVED
+      if (this.txHost.tx.quotation?.updateMany) {
+        await this.txHost.tx.quotation.updateMany({
+          where: {
+            jobId: job.id,
+            status: 'SELECTED',
+          },
+          data: { status: 'RECEIVED' },
+        });
+      }
+
+      // 4. QuotationVersion SELECTED -> ACTIVE
+      if (this.txHost.tx.quotationVersion?.updateMany) {
+        await this.txHost.tx.quotationVersion.updateMany({
+          where: {
+            quotation: { jobId: job.id },
+            status: 'SELECTED',
+          },
+          data: { status: 'ACTIVE' },
+        });
+      }
+    }
+
+    if (from === 'WAITING_INFORMATION' && to === 'OPEN') {
+      const latestUw = await this.txHost.tx.underwriting.findFirst({
+        where: { jobId: job.id, deletedAt: null },
+        orderBy: { version: 'desc' },
+      });
+      if (latestUw && latestUw.status === 'INFO_REQUIRED') {
+        await this.txHost.tx.underwriting.update({
+          where: { id: latestUw.id },
+          data: { status: 'PENDING', reviewedAt: null, underwriterId: null },
+        });
+      }
+    }
+
+    // D-5: ตอน Job CLOSED หรือ POLICY_ISSUED → quotation ที่ไม่ถูกเลือก → REJECTED
+    if (to === 'CLOSED' || to === 'POLICY_ISSUED') {
+      if (this.txHost.tx.quotation?.findMany && this.txHost.tx.quotation?.updateMany) {
+        const unselectedQuotations = await this.txHost.tx.quotation.findMany({
+          where: {
+            jobId: job.id,
+            status: { notIn: ['SELECTED', 'REJECTED', 'WITHDRAWN'] },
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+
+        const unselectedIds = unselectedQuotations.map((q: { id: string }) => q.id);
+        if (unselectedIds.length > 0) {
+          await this.txHost.tx.quotation.updateMany({
+            where: { id: { in: unselectedIds } },
+            data: { status: 'REJECTED' },
+          });
+
+          if (this.txHost.tx.quotationVersion?.updateMany) {
+            await this.txHost.tx.quotationVersion.updateMany({
+              where: {
+                quotationId: { in: unselectedIds },
+                status: 'ACTIVE',
+              },
+              data: { status: 'REJECTED' },
+            });
+          }
+        }
+      }
+    }
 
     await this.audit.log({
       action: 'STATUS_CHANGED',
@@ -130,13 +263,18 @@ export class JobWorkflowService {
 
     const userId = this.cls.get('userId')!;
     const permissions = this.cls.get('permissions') ?? [];
-    if (!permissions.includes('job.view_all') && job.agentId !== userId && job.assignedTo !== userId) {
+    if (
+      !permissions.includes('job.view_all') &&
+      job.agentId !== userId &&
+      job.assignedTo !== userId &&
+      job.brokerStaffId !== userId
+    ) {
       throw new BusinessException('FORBIDDEN', 'Access denied', 403);
     }
 
-    const { histories, logs } = await this.repo.findActivities(jobId);
+    const { histories, logs, assignmentHistories } = await this.repo.findActivities(jobId);
 
-    type ActivityItem = { type: 'STATUS_CHANGE' | 'ACTIVITY'; occurredAt: string; data: unknown };
+    type ActivityItem = { type: 'STATUS_CHANGE' | 'ACTIVITY' | 'ASSIGNMENT'; occurredAt: string; data: unknown };
     const items: ActivityItem[] = [
       ...histories.map((h) => ({
         type: 'STATUS_CHANGE' as const,
@@ -156,6 +294,17 @@ export class JobWorkflowService {
           entityType: l.entityType,
           description: l.description,
           userId: l.userId,
+        },
+      })),
+      ...assignmentHistories.map((a) => ({
+        type: 'ASSIGNMENT' as const,
+        occurredAt: (a.changedAt as Date).toISOString(),
+        data: {
+          role: a.role,
+          fromUser: a.fromUser,
+          toUser: a.toUser,
+          reason: a.reason,
+          changedBy: a.changedBy,
         },
       })),
     ];

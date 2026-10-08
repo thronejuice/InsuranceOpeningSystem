@@ -2,13 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import type { Prisma } from '../../generated/prisma/client.js';
+import type { NotificationType } from '../../generated/prisma/enums.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 
 @Injectable()
 export class NotificationRepository {
   constructor(private readonly txHost: TransactionHost<TransactionalAdapterPrisma<PrismaService>>) {}
 
-  private get db() { return this.txHost.tx; }
+  private get db() {
+    return this.txHost.tx;
+  }
 
   findMany(where: Prisma.NotificationWhereInput, skip: number, take: number) {
     return this.db.notification.findMany({
@@ -33,5 +36,46 @@ export class NotificationRepository {
 
   updateMany(where: Prisma.NotificationWhereInput, data: Prisma.NotificationUpdateManyMutationInput) {
     return this.db.notification.updateMany({ where, data });
+  }
+
+  // ─── Notification Preferences ───────────────────────────────────────────────
+
+  findPreferences(userId: string) {
+    return this.db.notificationPreference.findMany({
+      where: { userId },
+    });
+  }
+
+  findPreference(userId: string, type: NotificationType) {
+    return this.db.notificationPreference.findUnique({
+      where: { userId_type: { userId, type } },
+    });
+  }
+
+  upsertPreference(
+    userId: string,
+    type: NotificationType,
+    data: { email?: boolean; inApp?: boolean },
+  ) {
+    return this.db.notificationPreference.upsert({
+      where: { userId_type: { userId, type } },
+      update: {
+        ...(data.email !== undefined && { email: data.email }),
+        ...(data.inApp !== undefined && { inApp: data.inApp }),
+      },
+      create: {
+        userId,
+        type,
+        email: data.email ?? true,
+        inApp: data.inApp ?? true,
+      },
+    });
+  }
+
+  findUsers(userIds: string[]) {
+    return this.db.user.findMany({
+      where: { id: { in: userIds }, deletedAt: null },
+      select: { id: true, email: true, fullName: true },
+    });
   }
 }

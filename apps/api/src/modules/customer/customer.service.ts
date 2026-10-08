@@ -13,6 +13,7 @@ import type { CreateCustomerDto } from './dto/create-customer.dto.js';
 import type { CustomerQueryDto } from './dto/customer-query.dto.js';
 import type { UpdateCustomerDto } from './dto/update-customer.dto.js';
 import { toCustomerResponse, type CustomerResponse } from './dto/customer-response.dto.js';
+import { DataScopeService } from '../../common/access/data-scope.service.js';
 
 @Injectable()
 export class CustomerService {
@@ -21,28 +22,35 @@ export class CustomerService {
     private readonly sequence: SequenceService,
     private readonly audit: AuditService,
     private readonly cls: ClsService<AppClsStore>,
+    private readonly scope: DataScopeService,
   ) {}
 
   async list(query: CustomerQueryDto, viewSensitive: boolean): Promise<Paginated<CustomerResponse>> {
     const search = query.q?.trim();
+    const scopeWhere = this.scope.customerViewScope();
 
     const where: Prisma.CustomerWhereInput = {
       deletedAt: null,
-      ...(query.customerType ? { customerType: query.customerType } : {}),
-      ...(query.status ? { status: query.status } : {}),
-      ...(search
-        ? {
-            OR: [
-              { customerCode: { contains: search, mode: 'insensitive' } },
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { lastName: { contains: search, mode: 'insensitive' } },
-              { companyName: { contains: search, mode: 'insensitive' } },
-              { phone: { contains: search } },
-              { mobile: { contains: search } },
-              { email: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      AND: [
+        scopeWhere,
+        ...(query.customerType ? [{ customerType: query.customerType }] : []),
+        ...(query.status ? [{ status: query.status }] : []),
+        ...(search
+          ? [
+              {
+                OR: [
+                  { customerCode: { contains: search, mode: 'insensitive' as const } },
+                  { firstName: { contains: search, mode: 'insensitive' as const } },
+                  { lastName: { contains: search, mode: 'insensitive' as const } },
+                  { companyName: { contains: search, mode: 'insensitive' as const } },
+                  { phone: { contains: search } },
+                  { mobile: { contains: search } },
+                  { email: { contains: search, mode: 'insensitive' as const } },
+                ],
+              },
+            ]
+          : []),
+      ],
     };
 
     const orderBy = this.buildOrderBy(query.sort);
@@ -56,7 +64,7 @@ export class CustomerService {
   }
 
   async findOne(id: string, viewSensitive: boolean): Promise<CustomerResponse> {
-    const customer = await this.repo.findById(id);
+    const customer = await this.repo.findById(id, this.scope.customerViewScope());
     if (!customer) throw new BusinessException('CUSTOMER_NOT_FOUND', 'Customer not found', 404);
     return toCustomerResponse(customer, viewSensitive);
   }
@@ -102,7 +110,7 @@ export class CustomerService {
 
   @Transactional()
   async update(id: string, dto: UpdateCustomerDto, viewSensitive: boolean): Promise<CustomerResponse> {
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, this.scope.customerViewScope());
     if (!existing) throw new BusinessException('CUSTOMER_NOT_FOUND', 'Customer not found', 404);
 
     // Validate name fields for the (possibly updated) type
@@ -171,7 +179,7 @@ export class CustomerService {
 
   @Transactional()
   async remove(id: string): Promise<void> {
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, this.scope.customerViewScope());
     if (!existing) throw new BusinessException('CUSTOMER_NOT_FOUND', 'Customer not found', 404);
 
     const userId = this.cls.get('userId');

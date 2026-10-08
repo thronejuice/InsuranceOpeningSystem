@@ -21,6 +21,34 @@ export interface NotificationListResponse {
   unreadCount: number;
 }
 
+export type NotificationType =
+  | 'JOB_ASSIGNED'
+  | 'DOCUMENT_MISSING'
+  | 'QUOTATION_RECEIVED'
+  | 'APPROVAL_REQUIRED'
+  | 'APPROVAL_REQUESTED'
+  | 'PROPOSAL_SENT'
+  | 'CUSTOMER_ACCEPTED'
+  | 'CUSTOMER_REJECTED'
+  | 'POLICY_ISSUED'
+  | 'PAYMENT_OVERDUE'
+  | 'TASK_DUE'
+  | 'RENEWAL_DUE';
+
+export interface NotificationPreferenceItem {
+  type: NotificationType;
+  email: boolean;
+  inApp: boolean;
+}
+
+export interface UpdateNotificationPreferencesDto {
+  preferences: {
+    type: NotificationType;
+    email?: boolean;
+    inApp?: boolean;
+  }[];
+}
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -53,6 +81,18 @@ export class NotificationsApi {
   markAllRead(): Observable<{ updated: number }> {
     return this.http
       .post<ApiResponse<{ updated: number }>>('/api/notifications/read-all', {})
+      .pipe(map((r) => r.data));
+  }
+
+  getPreferences(): Observable<NotificationPreferenceItem[]> {
+    return this.http
+      .get<ApiResponse<NotificationPreferenceItem[]>>('/api/notifications/preferences')
+      .pipe(map((r) => r.data));
+  }
+
+  updatePreferences(dto: UpdateNotificationPreferencesDto): Observable<NotificationPreferenceItem[]> {
+    return this.http
+      .put<ApiResponse<NotificationPreferenceItem[]>>('/api/notifications/preferences', dto)
       .pipe(map((r) => r.data));
   }
 }

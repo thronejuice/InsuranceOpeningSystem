@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "notification_type" ADD VALUE IF NOT EXISTS 'QUOTATION_EXPIRING';
+
