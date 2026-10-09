@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import { SETTING_DEFINITIONS } from '../src/modules/system-setting/domain/settings.js';
 import {
   APPROVAL_RULES,
   INSURANCE_PRODUCTS,
@@ -244,6 +245,15 @@ async function main() {
         firstDueDays: pt.firstDueDays,
         active: pt.active,
       },
+    });
+  }
+
+  // ─── System Settings (Phase 4 D26) — defaults only; a re-seed never overwrites an admin's value ───
+  for (const def of SETTING_DEFINITIONS) {
+    await prisma.systemSetting.upsert({
+      where: { key: def.key },
+      update: { description: def.description },
+      create: { key: def.key, value: def.defaultValue, description: def.description },
     });
   }
 

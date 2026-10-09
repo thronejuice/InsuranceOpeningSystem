@@ -57,7 +57,7 @@ export default async function setup() {
 }
 
 function tableForPrefix(prefix: string): string | null {
-  return { CUS: 'customers', JOB: 'jobs', QT: 'quotations', PP: 'proposals', PL: 'policies', PAY: 'payments' }[prefix] ?? null;
+  return { CUS: 'customers', JOB: 'jobs', QT: 'quotations', PP: 'proposals', PL: 'policies', PAY: 'payments', INV: 'invoices', RC: 'receipts', CS: 'commission_statements' }[prefix] ?? null;
 }
 
 function columnForPrefix(prefix: string): string | null {
@@ -68,5 +68,8 @@ function columnForPrefix(prefix: string): string | null {
     PP: 'proposal_no',
     PL: 'policy_no',
     PAY: 'payment_no',
+    INV: 'invoice_no',
+    RC: 'receipt_no',
+    CS: 'statement_no',
   }[prefix] ?? null;
 }

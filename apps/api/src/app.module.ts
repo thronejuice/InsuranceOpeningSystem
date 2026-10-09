@@ -33,6 +33,7 @@ import { ApprovalModule } from './modules/approval/approval.module.js';
 import { PolicyModule } from './modules/policy/policy.module.js';
 import { PaymentModule } from './modules/payment/payment.module.js';
 import { CommissionModule } from './modules/commission/commission.module.js';
+import { SystemSettingModule } from './modules/system-setting/system-setting.module.js';
 import { TaskModule } from './modules/task/task.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
 import { UserModule } from './modules/user/user.module.js';
@@ -42,6 +43,7 @@ import { ReportModule } from './modules/report/report.module.js';
 import { ImportModule } from './modules/import/import.module.js';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module.js';
 import { UnderwritingModule } from './modules/underwriting/underwriting.module.js';
+import { InvoiceModule } from './modules/invoice/invoice.module.js';
 
 const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env');
 
@@ -101,6 +103,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     PolicyModule,
     PaymentModule,
     CommissionModule,
+    SystemSettingModule,
     TaskModule,
     DashboardModule,
     UserModule,
@@ -110,6 +113,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     ImportModule,
     CompanyProfileModule,
     UnderwritingModule,
+    InvoiceModule,
     HealthModule,
   ],
   providers: [

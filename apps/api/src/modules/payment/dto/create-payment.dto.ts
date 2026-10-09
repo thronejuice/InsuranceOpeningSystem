@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { PaymentMethod } from '../../../generated/prisma/client.js';
 
 export class CreatePaymentDto {
@@ -15,7 +15,18 @@ export class CreatePaymentDto {
   @IsString()
   @IsOptional()
   @MaxLength(100)
+  bank?: string;
+
+  /** Bank transaction / cheque / slip reference. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
   referenceNo?: string;
+
+  /** An already-uploaded Document (e.g. the transfer slip) belonging to the policy's job. */
+  @IsUUID()
+  @IsOptional()
+  attachmentId?: string;
 
   @IsString()
   @IsOptional()

@@ -98,6 +98,20 @@
 | OQ-7 | ค่าใน short-rate table ที่ seed | ตารางตัวอย่างที่ใช้กันทั่วไป (ต้องให้ธุรกิจยืนยันก่อนใช้จริง) | D33 |
 | OQ-8 | Task status | คงชื่อ V1 (`TODO/IN_PROGRESS/DONE/CANCELLED`) OVERDUE เป็นค่าที่คำนวณ ไม่เก็บ | D37 |
 | OQ-9 | Approval Rule seed สำหรับ ENDORSEMENT | เบี้ยปรับ (absolute) ≥ 10,000 → MANAGER | D32 |
+| OQ-10 | Payment V1 ระดับ Policy (`POST /policies/:id/payments`, สิทธิ์ `payment.overpay`) | เลิกใช้: Payment บันทึกได้เฉพาะผูก Invoice (`POST /invoices/:id/payments`); Payment เดิมที่ไม่มี invoice เก็บไว้อ่านได้/ยกเลิกได้ ตัด overpay (ขัดกับ OQ-4) หน้าจอ payment เดิมต้องปรับใน D28 | D24 |
+| OQ-11 | OVERDUE ของ Invoice | เก็บใน DB: งานรายวันตั้ง OVERDUE และ recompute ทุกครั้งที่ payment เปลี่ยน (ใช้ `computeInvoiceStatus` ตัวเดียวกัน); จ่ายบางส่วนหลังเลย due ยังเป็น OVERDUE; แจ้งเตือน PAYMENT_DUE/OVERDUE อย่างละครั้งต่อ invoice (`dueReminderSentAt`/`overdueNotifiedAt`) | D24 |
+| OQ-12 | Aging ของ `/receivables` | นับวันเลย due (Asia/Bangkok): วัน due ไม่ถือว่าเลย, 1–30 = "0–30", 31–60, 61–90, ≥91 = "90+"; ยังไม่ถึงกำหนดแยก bucket `NOT_DUE`; ไม่นับ CREDIT_NOTE/CANCELLED/PAID | D24 |
+| OQ-13 | ผู้รับ PAYMENT_DUE/PAYMENT_OVERDUE และฟิลด์ Receipt | เจ้าของ Job (agent) + broker staff; Receipt เก็บ `issuedAt/voidedAt/voidReason/voidedBy` | D24 |
+| OQ-14 | รูปแบบ Billing PDF | เรนเดอร์สดจาก DB ทุกครั้ง ไม่เก็บเป็น Document (ตัวเลขไม่เคยเพี้ยนจากระบบ); "ตัวเลขไทย/บาท" = วันที่ พ.ศ. + จำนวนเงินตัวอักษร (`thaiBahtText`) ส่วนตัวเลขใช้เลขอารบิกเหมือน Proposal; Invoice CANCELLED / Receipt VOID พิมพ์ได้แต่มี watermark; Receipt แสดง "ชำระสะสม/คงเหลือ ณ ใบเสร็จนั้น" (นับจาก payment ที่ยัง active และเกิดไม่หลังใบนั้น); Credit/Debit Note ยังไม่มีบรรทัดอ้างอิงใบแจ้งหนี้เดิม (ยังไม่มีฟิลด์ลิงก์ — เพิ่มใน Phase 5 ตอนสร้าง note จริง); สิทธิ์ = `invoice.view` (invoice) / `payment.view` (receipt) + data scope ของ Job | D25 |
+| OQ-15 | สูตรค่าคอม | Gross = เบี้ยสุทธิของ Policy × อัตรา; agent = Gross × agentShare%; override = Gross × override% (ให้ manager โดยตรงของ Agent, ตัดจากส่วน broker); broker = Gross − agent − override (เศษอยู่ที่ broker จึงรวมเท่า Gross เสมอ); ปัดครึ่งขึ้น 2 ตำแหน่ง | D26 |
+| OQ-16 | ที่มาของอัตรา | อัตราของ quotation version ที่ถูกเลือก (ซึ่งตอนบันทึกราคาจะถูกเติมจาก master ให้อยู่แล้ว D11) → ถ้าไม่มีใช้ `commission_rates` ตามบริษัท+ผลิตภัณฑ์+วันเริ่มคุ้มครองของกรมธรรม์; ไม่พบเลย → ออกกรมธรรม์ได้ ไม่สร้างค่าคอม บันทึก audit `COMMISSION_SKIPPED` แล้วให้ FINANCE เรียก `POST /policies/:id/commissions/calculate` ภายหลัง | D26 |
+| OQ-17 | WHT / Net | WHT 3% หักจากยอดของแต่ละผู้รับ (agent, manager) ส่วน broker ไม่หัก; net = share − WHT; Override rate default 0% (ยังไม่คิดจนกว่าตั้งค่าใน System Setting `commission.override_rate`) | D26 |
+| OQ-18 | โครงสร้างข้อมูลค่าคอมและ lifecycle | หนึ่งแถวต่อผู้รับต่อ Policy (`AGENT`, `TEAM` สำหรับ override); `commissionAmount` = ส่วนของผู้รับก่อน WHT, `grossAmount` = ค่าคอมทั้งกรมธรรม์, `brokerShareAmount` เก็บที่แถว AGENT; แถว V1 ที่กรอกเองคงไว้อ่านได้แต่อนุมัติไม่ได้; คำนวณใหม่ได้เฉพาะตอนทุกแถวยัง CALCULATED (แถวเก่า → CANCELLED); APPROVED → PAYABLE เมื่อ invoice ที่ไม่ยกเลิกทุกใบ PAID และกลับเป็น APPROVED ถ้ามีการยกเลิก payment; อนุมัติหลังจ่ายครบแล้วเป็น PAYABLE ทันที | D26 |
+| OQ-19 | งวดของ Statement | statement หนึ่งใบต่อผู้รับต่อเดือน (Asia/Bangkok, ไม่นับใบ CANCELLED); รวมทุกแถวที่ PAYABLE และยังไม่อยู่ใน statement โดย `payableAt` ≤ สิ้นเดือนนั้น (ยกยอดเดือนก่อนที่ตกค้างมาด้วย); เดือนอนาคตสร้างไม่ได้ | D27 |
+| OQ-20 | Adjustment และ WHT | adjustment เป็นแถวใหม่ที่มีเครื่องหมาย (+/−) ไม่แก้แถวเดิม; WHT คิดจาก `whtRate` ของแถวค่าคอมเดิม (ไม่ใช้เรตปัจจุบัน) ทำได้กับแถว V2 ที่ APPROVED/PAYABLE/PAID; ผูกอ้างอิง endorsement/cancellation ต้องใส่ทั้ง type+id หรือไม่ใส่เลย | D27 |
+| OQ-21 | หักคืน (clawback) | ยอดติดลบรวมต่อแถวเดิมต้องไม่เกินส่วนแบ่งเดิม; statement ห้ามติดลบ — adjustment เรียงเก่าสุดก่อน นำมาหักได้ตราบที่ยอดสุทธิสะสม ≥ 0 ที่เหลือค้าง PENDING ยกไป statement ถัดไป; ยืนยัน statement ที่ net < 0 ไม่ได้ (`STATEMENT_NEGATIVE`) | D27 |
+| OQ-22 | แถวที่อยู่ใน Statement แล้ว | ไม่ถูกดึงกลับเมื่อ payment/invoice เปลี่ยนภายหลัง (syncPayable ข้ามแถวที่มี statementId); ยกเลิก statement ที่ยังไม่จ่ายจะปล่อยรายการกลับ; ใบที่ PAID ยกเลิกไม่ได้ | D27 |
+| OQ-23 | `GET /commissions/summary` | จัดกลุ่ม agent/policy/insurer/period/product; period = เดือนที่ออกกรมธรรม์; gross และ broker share นับครั้งเดียวต่อ policy (จากแถว AGENT); แสดงยอด adjustment แยก (`adjustmentNet`) และ `totalNet`; ผู้ไม่มี scope เห็นเฉพาะของตน | D27 |
 
 ---
 
@@ -324,46 +338,46 @@
 ## Phase 4 — Billing / AR / Commission
 
 ### Day 23 — Invoice
-- [ ] Model `invoices` (number INV-, policyId, customerId, type INVOICE/DEBIT_NOTE/CREDIT_NOTE, installmentNo, amount, net/stamp/vat, dueDate, status PENDING/PARTIALLY_PAID/PAID/OVERDUE/CANCELLED, outstanding คำนวณ)
-- [ ] `domain/installments.ts`: แบ่งงวดจาก Payment Term (OQ-3) + unit test (ปัดเศษ, 1/3/6 งวด, วันสิ้นเดือน)
-- [ ] issue Policy → สร้าง Invoice ทุกงวดใน transaction เดียว
-- [ ] `GET /policies/:id/invoices`, `GET /invoices` (filter status/customer/due), สถานะคำนวณจากยอด + วันที่
+- [x] Model `invoices` (number INV-, policyId, customerId, type INVOICE/DEBIT_NOTE/CREDIT_NOTE, installmentNo, amount, net/stamp/vat, dueDate, status PENDING/PARTIALLY_PAID/PAID/OVERDUE/CANCELLED, outstanding คำนวณ)
+- [x] `domain/installments.ts`: แบ่งงวดจาก Payment Term (OQ-3) + unit test (ปัดเศษ, 1/3/6 งวด, วันสิ้นเดือน)
+- [x] issue Policy → สร้าง Invoice ทุกงวดใน transaction เดียว
+- [x] `GET /policies/:id/invoices`, `GET /invoices` (filter status/customer/due), สถานะคำนวณจากยอด + วันที่
 
 **Done เมื่อ:**
-- [ ] unit test installments; e2e issue ผ่อน 3 งวด → 3 invoice ยอดรวม = gross premium
+- [x] unit test installments; e2e issue ผ่อน 3 งวด → 3 invoice ยอดรวม = gross premium
 
 ### Day 24 — Payment / Receipt / AR
-- [ ] Payment ผูก Invoice (amount, paymentDate, method, bank, transactionRef, attachment, recordedBy); ห้ามเกิน outstanding (OQ-4)
-- [ ] Receipt (RC-) ออกอัตโนมัติต่อ Payment; cancel payment → receipt VOID (ไม่ลบ)
-- [ ] งานรายวัน: เลย dueDate ยังค้าง → OVERDUE + notification PAYMENT_DUE (ก่อน 3 วัน), PAYMENT_OVERDUE (email)
-- [ ] AR: `GET /receivables` outstanding ต่อ customer/policy + aging (0–30/31–60/61–90/90+)
+- [x] Payment ผูก Invoice (amount, paymentDate, method, bank, transactionRef, attachment, recordedBy); ห้ามเกิน outstanding (OQ-4)
+- [x] Receipt (RC-) ออกอัตโนมัติต่อ Payment; cancel payment → receipt VOID (ไม่ลบ)
+- [x] งานรายวัน: เลย dueDate ยังค้าง → OVERDUE + notification PAYMENT_DUE (ก่อน 3 วัน), PAYMENT_OVERDUE (email)
+- [x] AR: `GET /receivables` outstanding ต่อ customer/policy + aging (0–30/31–60/61–90/90+)
 
 **Done เมื่อ:**
-- [ ] e2e: จ่ายบางส่วน → PARTIALLY_PAID; ครบ → PAID + receipt; จ่ายเกิน → 422; overdue job ทำงาน
+- [x] e2e: จ่ายบางส่วน → PARTIALLY_PAID; ครบ → PAID + receipt; จ่ายเกิน → 422; overdue job ทำงาน
 
 ### Day 25 — Billing PDF
-- [ ] PDF Invoice / Receipt / Credit Note / Debit Note (หัวกระดาษ Company Profile เหมือน Proposal PDF, ตัวเลขไทย/บาท)
-- [ ] `GET /invoices/:id/pdf`, `GET /receipts/:id/pdf`
+- [x] PDF Invoice / Receipt / Credit Note / Debit Note (หัวกระดาษ Company Profile เหมือน Proposal PDF, ตัวเลขไทย/บาท)
+- [x] `GET /invoices/:id/pdf`, `GET /receipts/:id/pdf`
 
 **Done เมื่อ:**
-- [ ] เปิด PDF ทั้ง 4 แบบได้ ตัวเลขตรง DB
+- [x] เปิด PDF ทั้ง 4 แบบได้ ตัวเลขตรง DB
 
 ### Day 26 — Commission V2 (calculate)
-- [ ] System Setting: WHT rate (OQ-5), default agent share (OQ-6); `User.agentSharePct`
-- [ ] `domain/commission.ts`: gross, agentShare, brokerShare, override, WHT, net + unit test (Decimal)
-- [ ] issue Policy → Commission CALCULATED อัตโนมัติ (ยกเลิกการกรอกเองแบบ V1)
-- [ ] Status: approve (FINANCE) → APPROVED; event "invoice ทุกงวด PAID" → PAYABLE (D-13)
+- [x] System Setting: WHT rate (OQ-5), default agent share (OQ-6); `User.agentSharePct`
+- [x] `domain/commission.ts`: gross, agentShare, brokerShare, override, WHT, net + unit test (Decimal)
+- [x] issue Policy → Commission CALCULATED อัตโนมัติ (ยกเลิกการกรอกเองแบบ V1)
+- [x] Status: approve (FINANCE) → APPROVED; event "invoice ทุกงวด PAID" → PAYABLE (D-13)
 
 **Done เมื่อ:**
-- [ ] unit test commission; e2e issue → CALCULATED ยอดตรงสูตร; approve; จ่ายครบ → PAYABLE
+- [x] unit test commission; e2e issue → CALCULATED ยอดตรงสูตร; approve; จ่ายครบ → PAYABLE
 
 ### Day 27 — Commission Adjustment + Statement
-- [ ] `commission_adjustments` (+/-, reason, ref endorsement/cancellation) ไม่แก้รายการเดิม
-- [ ] `commission_statements` (agent, period, รายการ PAYABLE + adjustments, total, status DRAFT/CONFIRMED/PAID) → markPaid → commission PAID
-- [ ] สรุปตาม Agent / Policy / Insurer / Period / Product (`GET /commissions/summary`)
+- [x] `commission_adjustments` (+/-, reason, ref endorsement/cancellation) ไม่แก้รายการเดิม
+- [x] `commission_statements` (agent, period, รายการ PAYABLE + adjustments, total, status DRAFT/CONFIRMED/PAID) → markPaid → commission PAID
+- [x] สรุปตาม Agent / Policy / Insurer / Period / Product (`GET /commissions/summary`)
 
 **Done เมื่อ:**
-- [ ] e2e: สร้าง statement เดือน → mark paid → commission PAID; adjustment ติดลบหักใน statement
+- [x] e2e: สร้าง statement เดือน → mark paid → commission PAID; adjustment ติดลบหักใน statement
 
 ### Day 28 — Billing UI
 - [ ] Policy detail: tab Invoice (งวด, สถานะ, outstanding), บันทึก payment ต่อ invoice, ดาวน์โหลด PDF
@@ -556,6 +570,50 @@
 
 <!-- LOG-START -->
 
+### 2026-10-09 — Day 27 เสร็จสิ้น (Commission Adjustment + Statement)
+- **เสร็จ:**
+  - Migration `20261009140000_commission_adjustment_statement`: `commission_adjustments`, `commission_statements`, `commissions.statement_id`; CHECK (amount ≠ 0, net = amount − wht, ref ครบคู่, PENDING ⇔ ไม่มี statement, รูปแบบ period, CONFIRMED/PAID ต้อง net ≥ 0); unique บางส่วน หนึ่ง statement ที่ไม่ CANCELLED ต่อผู้รับต่อเดือน
+  - Domain (pure + unit test): `adjustment.ts`, `statement.ts` (ช่วงเดือน Bangkok, คัดรายการ/หักไม่ให้ติดลบ), `summary.ts`
+  - Services/Endpoints: `POST/GET /commissions/:id/adjustments`, `GET /commission-adjustments`, `/commission-statements` (create/list/get/confirm/mark-paid/cancel), `GET /commissions/summary`; permission `commission.adjust` / `commission.statement` (FINANCE); lock แถวด้วย `FOR UPDATE`, claim รายการแบบมีเงื่อนไข (แข่งกัน → `STATEMENT_CONFLICT`), audit ทุก action, ผู้รับเห็นเฉพาะ statement ของตน
+  - ตรวจ: unit 620/620; e2e `commission.e2e-spec.ts` 28/28; e2e ทั้งชุดมี fail เฉพาะ 11 เคสเดิม; seed permission แล้ว
+- **ยกไป:** UI ค่าคอม/statement → D29
+- **ถัดไป:** Day 28 — Billing UI
+
+### 2026-10-09 — Day 26 เสร็จสิ้น (Commission V2 — calculate)
+- **เสร็จ:**
+  - Migration `20261009130000_commission_v2_calculation`: `commissions` เพิ่ม `gross_amount/share_pct/broker_share_amount/wht_rate/wht_amount/net_amount/rate_source/approved_at/approved_by_id/payable_at` + CHECK `net = share − wht`, unique index บางส่วน (หนึ่งแถว calculated ที่ยังไม่ CANCELLED ต่อ policy+ผู้รับ — กันคำนวณซ้ำแม้เรียกพร้อมกัน), enum `PAYABLE`; `users.agent_share_pct` (CHECK 0–100); ตาราง `system_settings`
+  - `domain/commission.ts` (pure, Decimal, unit test 10 เคส: สูตร, override, ปัดครึ่งขึ้น, รวมเท่า Gross เสมอ, เกิน 100% → error)
+  - System Setting module: `GET/PUT /system-settings` (`commission.wht_rate` 3, `commission.default_agent_share_pct` 50, `commission.override_rate` 0; validate 0–100 ทศนิยม ≤ 2 และ agent share + override ≤ 100) พร้อม audit; seed ค่าตั้งต้นโดยไม่ทับค่าที่แก้ไว้
+  - ออกกรมธรรม์ → คำนวณค่าคอมในทรานแซกชันเดียวกัน (`PolicyService.createPolicy`); `POST /policies/:id/commissions/calculate` (FINANCE) คำนวณใหม่; `POST /commissions/:id/approve` (permission ใหม่ `commission.approve` ให้ FINANCE); `syncPayable` ผูกกับการเปลี่ยนสถานะ invoice (จ่าย/ยกเลิก payment/ยกเลิก invoice) ทุกจุด
+  - ตัด `POST /policies/:id/commission` (กรอกเองแบบ V1) และ `CreateCommissionDto`; `User.agentSharePct` รับ/คืนผ่าน `/users` พร้อมกันเกิน 100% ร่วมกับ override
+  - ตรวจ: unit 571/571; e2e `commission.e2e-spec.ts` เขียนใหม่ 14/14 (ยอดตรงสูตรทุกช่อง, quotation rate ชนะ master, agent share เฉพาะคน, recalc/lock, approve→PAYABLE, ยกเลิก payment → กลับ APPROVED, ผ่อน 3 งวดต้องครบทุกงวด, ไม่มีอัตรา → ออกกรมธรรม์ได้, scope/403/401, settings); mutation check: เปลี่ยน "ทุก invoice จ่ายครบ" เป็น "บางใบ" → P4 ล้ม; e2e ทั้งชุดมี fail เฉพาะ 11 เคสเดิม
+- **ยกไป:** หน้าจอ `/commissions` และ tab ค่าคอมใน job-detail ยังเรียก `POST /policies/:id/commission` ที่ถูกตัด → ปรับใน D29 (ระหว่างนี้บันทึกค่าคอมเองจากหน้าจอใช้ไม่ได้); `commissions` summary → D27
+- **ถัดไป:** Day 27 — Commission Adjustment + Statement
+
+### 2026-10-09 — Day 25 เสร็จสิ้น (Billing PDF)
+- **เสร็จ:**
+  - แยกส่วนที่ใช้ร่วมของ PDF (`escapeHtml`, หัวกระดาษ Company Profile, stylesheet, footer) ออกจาก template ของ Proposal ไปที่ `common/pdf/document-parts.ts`; ตรวจเทียบ HTML ของ Proposal ก่อน/หลังแยกด้วยข้อมูลเดียวกัน → เหมือนกันทุกไบต์
+  - `invoice/domain/billing-template.ts` (pure + unit test 10 เคส): Invoice / Debit Note / Credit Note (ชื่อเอกสาร, ใบลดหนี้ยอดติดลบ, ไม่แสดง due date/ยอดค้างใน note) และ Receipt; watermark `ยกเลิก CANCELLED` / `ยกเลิก VOID`, ตราประทับ PAID, ซ่อนช่องทางชำระเมื่อจ่ายครบหรือยกเลิก, escape ทุกค่า
+  - `BillingDocumentService` ประกอบข้อมูลจาก DB ผ่าน data scope ของ Job (404 ถ้าไม่ใช่งานของตน), เลขบัตร mask ตาม `customer.view_sensitive` เหมือน Proposal; `GET /invoices/:id/pdf`, `GET /receipts/:id/pdf` (`common/pdf/send-pdf.ts`)
+  - ตรวจ: unit 543/543; e2e `payment.e2e-spec.ts` 25/25 (เพิ่ม G1–G5: PDF ทั้ง 4 แบบเป็น `%PDF-` จริง, ข้อมูลที่ใส่ใน PDF = ค่าใน DB, ยอดสะสมของ receipt เก่าไม่เปลี่ยนเมื่อมี payment ใหม่, receipt VOID พิมพ์เป็น VOID, scope/401); เรนเดอร์ตัวอย่างเป็นภาพตรวจ layout ครบ 5 แบบ (ทุกแบบ 1 หน้า A4)
+  - แก้ cleanup ของ e2e เก่า 5 ไฟล์ (`acceptance`, `commission`, `document-risk`, `negative`, `renewal`) ให้ลบ receipt → payment → invoice ก่อน policy — ตาราง child ใหม่ของ D23/D24 ทำให้ `policy.deleteMany` ใน beforeAll พังทั้งไฟล์ (regression ลักษณะเดียวกับ `proposal_acceptances` ใน Phase 2)
+- **ข้อจำกัด:** ไม่ได้ดึงข้อความออกจากไฟล์ PDF มาเทียบ (ไม่มี PDF parser ในโปรเจกต์) — "ตัวเลขตรง DB" ยืนยันเป็นสองช่วง: e2e เทียบข้อมูลที่ builder ส่งเข้า template กับ DB, unit เทียบค่าที่ template พิมพ์; Credit/Debit Note ยังสร้างผ่านระบบไม่ได้จนกว่า Phase 5 (ทดสอบด้วยแถวที่สร้างตรง)
+- **ยกไป:** ปุ่มดาวน์โหลด PDF บนหน้าจอ → D28
+- **ถัดไป:** Day 26 — Commission V2 (calculate)
+
+### 2026-10-09 — Day 24 เสร็จสิ้น (Payment / Receipt / AR)
+- **เสร็จ:**
+  - Migration `20261009120000_payment_receipt_ar`: `payments` เพิ่ม `invoice_id` (FK RESTRICT, nullable สำหรับ Payment V1 เดิม), `bank`, `attachment_id`; `invoices` เพิ่ม `due_reminder_sent_at`/`overdue_notified_at`; ตาราง `receipts` (`RC-`, unique ต่อ payment, `CHECK amount > 0`, status `ISSUED/VOID`); enum `PAYMENT_DUE`; permission ใหม่ `receivable.view`
+  - Domain (Decimal ล้วน + unit test): `invoice-status.ts` (`computeInvoiceStatus`, วันตาม Asia/Bangkok), `aging.ts`, `receivables.ts` (group ต่อ customer/policy + bucket), `payment-amount.ts` (OQ-4)
+  - `POST /invoices/:id/payments` (+`Idempotency-Key`): lock แถว invoice (`SELECT … FOR UPDATE`) กันจ่ายซ้อนทะลุ outstanding, ห้ามเกิน outstanding → 422 `PAYMENT_EXCEEDS_OUTSTANDING`, ออก Receipt อัตโนมัติ, recompute status; `attachmentId` ต้องเป็นเอกสารของ Job เดียวกับ policy (กัน IDOR แบบเดียวกับ binder/policy document)
+  - `POST /payments/:id/cancel`: payment → CANCELLED, receipt → VOID (เก็บไว้), invoice recompute; ยกเลิก Invoice ที่ยังมี payment ใช้งานอยู่ไม่ได้ (409 `INVOICE_HAS_PAYMENTS`)
+  - `GET /receipts`, `GET /receipts/:id`, `GET /invoices/:id/payments`; `GET /receivables?groupBy=customer|policy` (page, summary รวม, aging) ผ่าน data scope ของ Job
+  - งานรายวัน invoice (BullMQ `invoice` 02:30 + `POST /invoices/process-daily`): เลย due → OVERDUE + PAYMENT_OVERDUE, ครบกำหนดใน 3 วัน → PAYMENT_DUE, อย่างละครั้งต่อ invoice
+  - ตัด `POST /policies/:id/payments` และ `payment.overpay` (OQ-10); ตัด Number/float ใน `toInvoiceResponse`
+  - ตรวจ: unit 533/533, e2e `payment.e2e-spec.ts` ใหม่ 19/19 (partial→PARTIALLY_PAID, ครบ→PAID+receipt, เกิน→422, cancel→VOID, idempotency, attachment ข้าม Job, scope, daily job, aging) — e2e ทั้งชุด fail เฉพาะ 11 เคสเดิมที่ track ไว้
+- **ยกไป:** หน้าจอ Payment เดิม (tab Payment ใน job-detail, `/payments`) ยังเรียก endpoint ระดับ policy ที่ถูกตัด → ต้องปรับให้เลือก Invoice ใน D28 (ระหว่างนี้บันทึก/ยกเลิก payment จากหน้าจอใช้ไม่ได้); `openapi.json`/`schema.d.ts` ยังไม่ regenerate (เก่าตั้งแต่ D23)
+- **ถัดไป:** Day 25 — Billing PDF
+
 ### 2026-10-08 — Day 17 เสร็จสิ้น (Phase 2 Buffer + Review)
 - **เสร็จ:**
   - สร้างชุดทดสอบ Playwright E2E สำหรับ Phase 2 ทั้งหมด (`apps/web/e2e/phase2-quotation-proposal.spec.ts`) ครอบคลุม:
@@ -582,6 +640,38 @@
   - ตรวจสอบคุณภาพโค้ด:
     - `npm run test -w apps/api`: 456/456 passed (39 test files)
     - `npm run test -w apps/web`: 14/14 passed (5 test files)
+### 2026-10-09 — Day 23 เสร็จสิ้น (Invoice)
+- **เสร็จ:**
+  - สร้าง Prisma Schema และ Migration `20261009110000_invoice_lifecycle` สำหรับตาราง `invoices` (ฟิลด์ `id`, `invoiceNo` INV-, `policyId`, `customerId`, `type` `INVOICE/DEBIT_NOTE/CREDIT_NOTE`, `installmentNo`, `amount`, `netAmount`, `stampDuty`, `vat`, `dueDate`, `status` `PENDING/PARTIALLY_PAID/PAID/OVERDUE/CANCELLED`, `cancelledAt`, `cancelledById`, `createdById`)
+  - อัปเดต `SequenceService` และ `document-type.ts` รองรับการออกเลขที่เอกสาร `INV-{YEAR}-{RUNNING:6}` สำหรับ Invoice
+  - พัฒนา Pure Domain Function `calculateInstallments()` และ `calculateDueDate()` ใน `apps/api/src/modules/invoice/domain/installments.ts`:
+    - แบ่งงวดเงินตาม Payment Term (`installments`, `intervalMonths`, `firstDueDays`)
+    - ปัดเศษทศนิยม 2 ตำแหน่งอย่างแม่นยำด้วย `Decimal.js` พร้อมเกลี่ยเศษส่วนที่เหลือไปยังงวดสุดท้าย เพื่อให้ผลรวมยอดเงินทุกงวดตรงกับยอดรวมกรมธรรม์ (`totalAmount`) 100%
+    - จัดการเลื่อนวันครบกำหนดชำระรายเดือนและ clamp วันสิ้นเดือน (เช่น 31 Jan -> 28 Feb) อย่างถูกต้อง
+    - พัฒนา Unit Test `installments.spec.ts` ครอบคลุม 1 งวด, 3 งวด, 6 งวด และวันสิ้นเดือน (4/4 passed)
+  - เชื่อมโยง Issue Policy กับการสร้าง Invoice อัตโนมัติ:
+    - ปรับปรุง `createPolicy()` ใน `PolicyService` ให้ดึง Proposal ที่ลูกค้าตกลงรับ (`status: ACCEPTED`) พร้อม `paymentTerm`
+    - คำนวณตารางแบ่งงวดและสร้างบันทึก `Invoice` ครบทุกงวดใน Database Transaction เดียวกันกับ Policy และ Job Auto-close (Atomic)
+  - พัฒนา `InvoiceModule` (Repository, Service, Controller, DTOs):
+    - `GET /policies/:policyId/invoices`: ดึงรายการ Invoice ทั้งหมดของกรมธรรม์ พร้อมคำนวณ `outstandingAmount`
+    - `GET /invoices`: ดึงรายการ Invoice พร้อมตัวกรอง `policyId`, `customerId`, `status`, `type`, `dueBefore`, `dueAfter` และแบ่งหน้า
+    - `GET /invoices/:id`: ดึงรายละเอียดใบแจ้งหนี้รายฉบับ
+    - `POST /invoices/:id/cancel`: ยกเลิก Invoice พร้อมบันทึกเหตุผลและ Audit Log (ป้องกันการยกเลิก Invoice ที่จ่ายแล้วหรือถูกยกเลิกไปแล้ว)
+    - กำหนดสิทธิ์ `invoice.view` และ `invoice.update` ใน RBAC และ Seed Data
+  - พัฒนา E2E Test `apps/api/test/invoice.e2e-spec.ts`:
+    - ทดสอบขั้นตอนออกกรมธรรม์ที่มี Payment Term ผ่อน 3 งวด → ระบบสร้าง 3 Invoices โดยอัตโนมัติ ผลรวมยอดเงินตรงกับ Gross Premium (รวมภาษี) ครบถ้วน
+    - ทดสอบการดึงรายการและการกรองข้อมูลผ่าน API
+    - ทดสอบการยกเลิก Invoice ผ่าน API
+  - ตรวจสอบคุณภาพโค้ด:
+    - `npm run test -w apps/api`: 43 test files, 500 passed (เพิ่มจาก 496 เป็น 500)
+    - `npm run test -w apps/web`: 5 test files, 14 passed
+    - `npm run test:e2e -w apps/api -- invoice.e2e-spec.ts`: ผ่าน 100%
+    - `npm run test:e2e -w apps/api -- policy.e2e-spec.ts`: ผ่าน 100%
+    - `npm run lint -w apps/api` และ `npm run lint -w apps/web`: 0 errors, 0 warnings
+    - `npm run build -w apps/api` และ `npm run build -w apps/web`: compile ผ่าน 100%
+- **ยกไป:** -
+- **ถัดไป:** Phase 4 — Billing / AR / Commission: Day 24 — Payment / Receipt / AR
+
 ### 2026-10-09 — Day 22 เสร็จสิ้น (Phase 3 Buffer + Review)
 - **เสร็จ:**
   - สร้างชุดทดสอบ Playwright E2E สำหรับ Phase 3 ทั้งหมด (`apps/web/e2e/phase3-approval-binding-policy.spec.ts`, 12 steps ครอบคลุม end-to-end lifecycle):

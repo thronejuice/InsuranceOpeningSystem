@@ -117,6 +117,9 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
     if (prevJobIds.length > 0) {
       await prisma.idempotencyKey.deleteMany({ where: { entityId: { in: prevJobIds } } });
       await prisma.policyCoverage.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.receipt.deleteMany({ where: { invoice: { policy: { jobId: { in: prevJobIds } } } } });
+      await prisma.payment.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.invoice.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.approval.deleteMany({ where: { jobId: { in: prevJobIds } } });

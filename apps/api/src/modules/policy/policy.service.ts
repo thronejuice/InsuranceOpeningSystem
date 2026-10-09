@@ -25,11 +25,13 @@ import { JobWorkflowService } from '../job/job-workflow.service.js';
 import { todayInBangkok } from '../../common/utils/bangkok-date.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { NotificationService } from '../notification/notification.service.js';
-import { NotificationType, PolicyStatus } from '../../generated/prisma/enums.js';
+import { NotificationType, PolicyStatus, InvoiceStatus } from '../../generated/prisma/enums.js';
 import {
   evaluateInitialPolicyStatus,
   evaluatePolicyDailyStatus,
 } from './domain/policy-status.js';
+import { calculateInstallments } from '../invoice/domain/installments.js';
+import { CommissionService } from '../commission/commission.service.js';
 
 @Injectable()
 export class PolicyService {
@@ -42,6 +44,7 @@ export class PolicyService {
     private readonly scope: DataScopeService,
     private readonly workflow: JobWorkflowService,
     @Optional() private readonly notifications?: NotificationService,
+    @Optional() private readonly commissions?: CommissionService,
   ) {}
 
   // ─── Preconditions ──────────────────────────────────────────────────────────
@@ -430,6 +433,51 @@ export class PolicyService {
         })),
       },
     });
+
+    // Phase 4 Day 23: Generate Invoices in the same transaction
+    const acceptedProposal = await this.txHost.tx.proposal.findFirst({
+      where: { jobId, status: 'ACCEPTED' },
+      include: { paymentTerm: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const paymentTerm = acceptedProposal?.paymentTerm ?? {
+      installments: 1,
+      intervalMonths: 0,
+      firstDueDays: 30,
+    };
+
+    const installmentSchedules = calculateInstallments(
+      policy.totalPremium,
+      policy.netPremium,
+      policy.stampDuty,
+      policy.tax,
+      paymentTerm,
+      new Date(),
+    );
+
+    for (const schedule of installmentSchedules) {
+      const invoiceNo = await this.sequence.next('INVOICE');
+      await this.txHost.tx.invoice.create({
+        data: {
+          invoiceNo,
+          policyId: policy.id,
+          customerId: job.customerId,
+          installmentNo: installmentSchedules.length > 1 ? schedule.installmentNo : null,
+          amount: schedule.amount,
+          netAmount: schedule.netAmount,
+          stampDuty: schedule.stampDuty,
+          vat: schedule.vat,
+          dueDate: schedule.dueDate,
+          status: InvoiceStatus.PENDING,
+          createdById: userId,
+        },
+      });
+    }
+
+    // D26: commission is calculated by the system at issue time (same transaction). It never blocks
+    // issuing: with no rate on file it records an audit entry and FINANCE can recalculate later.
+    await this.commissions?.calculateForPolicy(policy.id, 'ISSUE');
 
     // D-10: In same transaction, transition job: POLICY_PENDING → POLICY_ISSUED → CLOSED
     await this.workflow.transitionInTx(job, 'POLICY_ISSUED', userId);

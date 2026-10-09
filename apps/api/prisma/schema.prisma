@@ -25,6 +25,7 @@ model User {
   isActive     Boolean   @default(true) @map("is_active")
   branchId     String?   @map("branch_id") @db.Uuid
   managerId    String?   @map("manager_id") @db.Uuid
+  agentSharePct Decimal? @map("agent_share_pct") @db.Decimal(5, 2)
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -67,6 +68,17 @@ model User {
   reviewedUnderwritings  Underwriting[]     @relation("underwriting_reviewer")
   createdQuotationVersions QuotationVersion[] @relation("quotation_version_creator")
   recordedProposalAcceptances ProposalAcceptance[] @relation("proposal_acceptance_recorder")
+  createdInvoices        Invoice[]          @relation("invoice_creator")
+  cancelledInvoices      Invoice[]          @relation("invoice_canceller")
+  voidedReceipts         Receipt[]          @relation("receipt_voider")
+  approvedCommissions    Commission[]       @relation("commission_approver")
+  updatedSettings        SystemSetting[]    @relation("system_setting_updater")
+  commissionAdjustmentsOf CommissionAdjustment[] @relation("commission_adjustment_payee")
+  createdCommissionAdjustments CommissionAdjustment[] @relation("commission_adjustment_creator")
+  commissionStatementsOf CommissionStatement[] @relation("commission_statement_payee")
+  createdCommissionStatements CommissionStatement[] @relation("commission_statement_creator")
+  paidCommissionStatements CommissionStatement[] @relation("commission_statement_payer")
+  createdReceipts        Receipt[]          @relation("receipt_creator")
 
   @@index([branchId])
   @@index([managerId])
@@ -239,6 +251,7 @@ model Customer {
   contacts   CustomerContact[]
   jobs       Job[]
   proposals  Proposal[]
+  invoices   Invoice[]
 
   @@index([customerType])
   @@index([status])
@@ -835,6 +848,7 @@ model Document {
   proposalAcceptances ProposalAcceptance[]
   binderDocuments     Binding[]
   policyDocuments     Policy[]            @relation("policy_document")
+  paymentAttachments  Payment[]           @relation("payment_attachment")
 
   @@index([jobId, status])
   @@index([jobId, documentType])
@@ -1260,6 +1274,7 @@ model Policy {
   coverages        PolicyCoverage[]
   payments         Payment[]
   commissions      Commission[]
+  invoices         Invoice[]
   renewals         Renewal[]        @relation("renewal_previous_policy")
 
   @@index([status])
@@ -1312,6 +1327,9 @@ model Payment {
   amount        Decimal       @db.Decimal(15, 2)
   paymentMethod PaymentMethod @map("payment_method")
   referenceNo   String?       @map("reference_no")
+  bank          String?
+  invoiceId     String?       @map("invoice_id") @db.Uuid
+  attachmentId  String?       @map("attachment_id") @db.Uuid
   status        PaymentStatus @default(ACTIVE)
   cancelReason  String?       @map("cancel_reason")
   remark        String?
@@ -1319,10 +1337,14 @@ model Payment {
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  policy    Policy @relation(fields: [policyId], references: [id])
-  createdBy User?  @relation("payment_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  policy     Policy    @relation(fields: [policyId], references: [id])
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  attachment Document? @relation("payment_attachment", fields: [attachmentId], references: [id], onDelete: SetNull)
+  createdBy  User?     @relation("payment_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  receipt    Receipt?
 
   @@index([policyId])
+  @@index([invoiceId])
   @@index([status])
   @@map("payments")
 }
@@ -1343,6 +1365,7 @@ enum CommissionStatus {
   PENDING
   CALCULATED
   APPROVED
+  PAYABLE
   PAID
   CANCELLED
 
@@ -1360,6 +1383,21 @@ model Commission {
   status           CommissionStatus @default(CALCULATED)
   paidDate         DateTime?        @map("paid_date") @db.Date
   remark           String?
+
+  // V2 breakdown (Phase 4 D26). One row per payee of a policy: `commissionAmount` is this payee's share
+  // before WHT; `grossAmount` is the whole policy commission (net premium × rate). NULL on V1 manual rows.
+  grossAmount       Decimal?  @map("gross_amount") @db.Decimal(15, 2)
+  sharePct          Decimal?  @map("share_pct") @db.Decimal(5, 2)
+  brokerShareAmount Decimal?  @map("broker_share_amount") @db.Decimal(15, 2)
+  whtRate           Decimal?  @map("wht_rate") @db.Decimal(5, 2)
+  whtAmount         Decimal?  @map("wht_amount") @db.Decimal(15, 2)
+  netAmount         Decimal?  @map("net_amount") @db.Decimal(15, 2)
+  rateSource        String?   @map("rate_source")
+  approvedAt        DateTime? @map("approved_at") @db.Timestamptz(3)
+  approvedById      String?   @map("approved_by_id") @db.Uuid
+  payableAt         DateTime? @map("payable_at") @db.Timestamptz(3)
+  statementId       String?   @map("statement_id") @db.Uuid
+
   createdById      String?          @map("created_by_id") @db.Uuid
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -1367,11 +1405,113 @@ model Commission {
   policy    Policy @relation(fields: [policyId], references: [id])
   agent     User?  @relation("commission_agent", fields: [agentId], references: [id], onDelete: SetNull)
   createdBy User?  @relation("commission_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedBy User? @relation("commission_approver", fields: [approvedById], references: [id], onDelete: SetNull)
+  statement  CommissionStatement? @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  adjustments CommissionAdjustment[]
 
+  // Partial unique index (migration only): one live calculated row per (policy, type) — see DESIGN §5.3
   @@index([policyId])
   @@index([agentId])
   @@index([status])
+  @@index([statementId])
   @@map("commissions")
+}
+
+// ─── Commission Adjustment & Statement (Phase 4 D27) ─────────────────────────
+
+enum CommissionAdjustmentStatus {
+  PENDING
+  IN_STATEMENT
+  SETTLED
+
+  @@map("commission_adjustment_status")
+}
+
+/// A signed correction against an existing commission row; the original row is never edited (D-13).
+/// `amount` is before WHT, like `Commission.commissionAmount`; WHT uses the original row's rate.
+model CommissionAdjustment {
+  id           String                     @id @default(uuid(7)) @db.Uuid
+  commissionId String                     @map("commission_id") @db.Uuid
+  policyId     String                     @map("policy_id") @db.Uuid
+  agentId      String                     @map("agent_id") @db.Uuid
+  amount       Decimal                    @db.Decimal(15, 2)
+  whtRate      Decimal                    @map("wht_rate") @db.Decimal(5, 2)
+  whtAmount    Decimal                    @map("wht_amount") @db.Decimal(15, 2)
+  netAmount    Decimal                    @map("net_amount") @db.Decimal(15, 2)
+  reason       String
+  refType      String?                    @map("ref_type")
+  refId        String?                    @map("ref_id")
+  status       CommissionAdjustmentStatus @default(PENDING)
+  statementId  String?                    @map("statement_id") @db.Uuid
+  createdById  String?                    @map("created_by_id") @db.Uuid
+  createdAt    DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  commission Commission           @relation(fields: [commissionId], references: [id])
+  agent      User                 @relation("commission_adjustment_payee", fields: [agentId], references: [id])
+  createdBy  User?                @relation("commission_adjustment_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  statement  CommissionStatement? @relation(fields: [statementId], references: [id], onDelete: Restrict)
+
+  @@index([commissionId])
+  @@index([agentId, status])
+  @@index([statementId])
+  @@map("commission_adjustments")
+}
+
+enum CommissionStatementStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+  CANCELLED
+
+  @@map("commission_statement_status")
+}
+
+/// One statement per payee per month (partial unique index in the migration, DESIGN §5.3).
+model CommissionStatement {
+  id            String                    @id @default(uuid(7)) @db.Uuid
+  statementNo   String                    @unique @map("statement_no")
+  agentId       String                    @map("agent_id") @db.Uuid
+  period        String
+  periodEnd     DateTime                  @map("period_end") @db.Date
+  status        CommissionStatementStatus @default(DRAFT)
+  shareTotal    Decimal                   @default(0) @map("share_total") @db.Decimal(15, 2)
+  whtTotal      Decimal                   @default(0) @map("wht_total") @db.Decimal(15, 2)
+  netTotal      Decimal                   @default(0) @map("net_total") @db.Decimal(15, 2)
+  confirmedAt   DateTime?                 @map("confirmed_at") @db.Timestamptz(3)
+  paidAt        DateTime?                 @map("paid_at") @db.Timestamptz(3)
+  paidDate      DateTime?                 @map("paid_date") @db.Date
+  paymentRef    String?                   @map("payment_ref")
+  paidById      String?                   @map("paid_by_id") @db.Uuid
+  cancelledAt   DateTime?                 @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason  String?                   @map("cancel_reason")
+  createdById   String?                   @map("created_by_id") @db.Uuid
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  agent       User                   @relation("commission_statement_payee", fields: [agentId], references: [id])
+  createdBy   User?                  @relation("commission_statement_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  paidBy      User?                  @relation("commission_statement_payer", fields: [paidById], references: [id], onDelete: SetNull)
+  commissions Commission[]
+  adjustments CommissionAdjustment[]
+
+  @@index([agentId, period])
+  @@index([status])
+  @@map("commission_statements")
+}
+
+// ─── System Setting (Phase 4 D26: WHT rate, default agent share, override rate) ───
+
+model SystemSetting {
+  key         String   @id
+  value       String
+  description String?
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  updatedBy User? @relation("system_setting_updater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
 }
 
 // ─── Task / Follow-up (spec §21) ─────────────────────────────────────────────
@@ -1486,6 +1626,7 @@ enum NotificationType {
   CUSTOMER_ACCEPTED
   CUSTOMER_REJECTED
   POLICY_ISSUED
+  PAYMENT_DUE
   PAYMENT_OVERDUE
   TASK_DUE
   RENEWAL_DUE
@@ -1533,4 +1674,92 @@ model NotificationPreference {
   @@unique([userId, type])
   @@index([userId])
   @@map("notification_preferences")
+}
+
+// ─── Invoice (spec §22 / Phase 4 Day 23) ─────────────────────────────────────
+
+enum InvoiceType {
+  INVOICE
+  DEBIT_NOTE
+  CREDIT_NOTE
+
+  @@map("invoice_type")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+
+  @@map("invoice_status")
+}
+
+model Invoice {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  invoiceNo      String        @unique @map("invoice_no")
+  policyId       String        @map("policy_id") @db.Uuid
+  customerId     String        @map("customer_id") @db.Uuid
+  type           InvoiceType   @default(INVOICE) @map("type")
+  installmentNo  Int?          @map("installment_no")
+  amount         Decimal       @db.Decimal(15, 2)
+  netAmount      Decimal       @map("net_amount") @db.Decimal(15, 2)
+  stampDuty      Decimal       @default(0) @map("stamp_duty") @db.Decimal(15, 2)
+  vat            Decimal       @default(0) @db.Decimal(15, 2)
+  dueDate        DateTime      @map("due_date") @db.Date
+  status         InvoiceStatus @default(PENDING)
+  cancelledAt    DateTime?     @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById  String?       @map("cancelled_by_id") @db.Uuid
+  dueReminderSentAt  DateTime? @map("due_reminder_sent_at") @db.Timestamptz(3)
+  overdueNotifiedAt  DateTime? @map("overdue_notified_at") @db.Timestamptz(3)
+  createdById    String?       @map("created_by_id") @db.Uuid
+  updatedById    String?       @map("updated_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  policy        Policy   @relation(fields: [policyId], references: [id])
+  customer      Customer @relation(fields: [customerId], references: [id])
+  cancelledBy   User?    @relation("invoice_canceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  createdBy     User?    @relation("invoice_creator", fields: [createdById], references: [id], onDelete: SetNull)
+  payments      Payment[]
+  receipts      Receipt[]
+
+  @@index([policyId])
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+enum ReceiptStatus {
+  ISSUED
+  VOID
+
+  @@map("receipt_status")
+}
+
+model Receipt {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  receiptNo   String        @unique @map("receipt_no")
+  paymentId   String        @unique @map("payment_id") @db.Uuid
+  invoiceId   String        @map("invoice_id") @db.Uuid
+  amount      Decimal       @db.Decimal(15, 2)
+  status      ReceiptStatus @default(ISSUED)
+  issuedAt    DateTime      @default(now()) @map("issued_at") @db.Timestamptz(3)
+  voidedAt    DateTime?     @map("voided_at") @db.Timestamptz(3)
+  voidReason  String?       @map("void_reason")
+  voidedById  String?       @map("voided_by_id") @db.Uuid
+  createdById String?       @map("created_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  payment   Payment @relation(fields: [paymentId], references: [id])
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  voidedBy  User?   @relation("receipt_voider", fields: [voidedById], references: [id], onDelete: SetNull)
+  createdBy User?   @relation("receipt_creator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([status])
+  @@map("receipts")
 }

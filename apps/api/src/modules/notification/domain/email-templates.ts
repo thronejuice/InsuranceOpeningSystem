@@ -47,6 +47,10 @@ export function renderEmail(
     actionText = 'ดูรายละเอียดการปฏิเสธข้อเสนอ';
   } else if (type === NotificationType.APPROVAL_REJECTED) {
     actionText = 'ดูรายละเอียดผลการพิจารณาอนุมัติ';
+  } else if (type === NotificationType.PAYMENT_DUE) {
+    actionText = 'ดูใบแจ้งหนี้ที่ใกล้ครบกำหนดชำระ';
+  } else if (type === NotificationType.PAYMENT_OVERDUE) {
+    actionText = 'ดูใบแจ้งหนี้ที่เกินกำหนดชำระ';
   }
 
   const detailsHtml = payload.entityType

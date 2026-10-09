@@ -49,7 +49,9 @@ describe('Renewal API', () => {
       await prisma.renewal.deleteMany({ where: { newJob: { id: { in: prevJobIds } } } });
       await prisma.task.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.policyCoverage.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.receipt.deleteMany({ where: { invoice: { policy: { jobId: { in: prevJobIds } } } } });
       await prisma.payment.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.invoice.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.quotationItem.deleteMany({ where: { quotation: { jobId: { in: prevJobIds } } } });

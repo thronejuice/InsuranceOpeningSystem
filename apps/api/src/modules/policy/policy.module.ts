@@ -4,9 +4,10 @@ import { PolicyService } from './policy.service.js';
 import { PolicyRepository } from './policy.repository.js';
 
 import { JobModule } from '../job/job.module.js';
+import { CommissionModule } from '../commission/commission.module.js';
 
 @Module({
-  imports: [JobModule],
+  imports: [JobModule, CommissionModule],
   controllers: [PolicyController],
   providers: [PolicyService, PolicyRepository],
   exports: [PolicyService],

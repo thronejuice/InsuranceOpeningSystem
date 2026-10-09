@@ -37,6 +37,7 @@ describe('Policy API (e2e)', () => {
     const prevJobIds = prevJobs.map((j) => j.id);
     if (prevJobIds.length > 0) {
       await prisma.idempotencyKey.deleteMany({ where: { entityId: { in: prevJobIds } } });
+      await prisma.invoice.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policyCoverage.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.binding.deleteMany({ where: { jobId: { in: prevJobIds } } });
