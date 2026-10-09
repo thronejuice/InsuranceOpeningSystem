@@ -341,8 +341,8 @@ describe('Policy API (e2e)', () => {
       .post('/api/policies/process-daily')
       .set('Authorization', `Bearer ${agentToken}`);
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('activatedCount');
-    expect(res.body).toHaveProperty('expiringCount');
-    expect(res.body).toHaveProperty('expiredCount');
+    expect(res.body.data).toHaveProperty('activatedCount');
+    expect(res.body.data).toHaveProperty('expiringCount');
+    expect(res.body.data).toHaveProperty('expiredCount');
   });
 });

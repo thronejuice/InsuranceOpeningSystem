@@ -194,7 +194,7 @@ describe('Renewal API', () => {
         grossPremium: '5000.00',
         netPremium: '5000.00',
         totalPremium: '5000.00',
-        status: 'ISSUED',
+        status: 'ACTIVE',
         version: 1,
       },
     });
@@ -319,7 +319,7 @@ describe('Renewal API', () => {
         grossPremium: '3000.00',
         netPremium: '3000.00',
         totalPremium: '3000.00',
-        status: 'ISSUED',
+        status: 'ACTIVE',
         version: 1,
       },
     });
@@ -385,7 +385,7 @@ describe('Renewal API', () => {
           grossPremium: '8000.00',
           netPremium: '8000.00',
           totalPremium: '8600.00',
-          status: 'ISSUED',
+          status: 'ACTIVE',
           version: 1,
         },
       });

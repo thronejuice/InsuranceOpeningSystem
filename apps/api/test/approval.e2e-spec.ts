@@ -110,9 +110,10 @@ describe('Approval API (e2e)', () => {
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
       upsertPerm('approval.approve'),
       upsertPerm('approval.approve_own'),
+      upsertPerm('approval.manage'),
     ]);
 
-    // AGENT role — no approval.approve
+    // AGENT role — no approval.approve, but has approval.manage (resubmit their own rejected requests)
     const agentRole = await prisma.role.create({
       data: {
         code: `${PREFIX.toUpperCase()}AGENT`,
@@ -127,6 +128,7 @@ describe('Approval API (e2e)', () => {
             { permission: { connect: { code: 'proposal.send' } } },
             { permission: { connect: { code: 'proposal.accept' } } },
             { permission: { connect: { code: 'proposal.reject' } } },
+            { permission: { connect: { code: 'approval.manage' } } },
           ],
         },
       },
@@ -207,7 +209,12 @@ describe('Approval API (e2e)', () => {
     approvalMgrId = prepMgr.approvalId;
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    // Global ApprovalRule (DISCOUNT > 5% -> SUPERVISOR) is not scoped to any job — must be
+    // cleaned up or it leaks into other e2e files' approval evaluation on later runs.
+    if (prisma) await prisma.approvalRule.deleteMany({ where: { name: { startsWith: PREFIX } } });
+    await app.close();
+  });
 
   // ─── GET /approvals (inbox) ────────────────────────────────────────────────
 
@@ -398,7 +405,7 @@ describe('Approval API (e2e)', () => {
     const approveRes = await http()
       .post(`/api/approvals/${newApprovalId}/approve`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ comment: 'อนุมัติเรียบร้อยหลังแก้ไข' });
+      .send({ reason: 'อนุมัติเรียบร้อยหลังแก้ไข' });
     expect(approveRes.status).toBe(201);
     expect(approveRes.body.data.status).toBe('APPROVED');
 
