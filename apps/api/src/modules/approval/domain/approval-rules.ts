@@ -10,6 +10,19 @@ export interface ApprovalRuleInput {
   thresholdValue: { toString(): string };
   approverRole: string;
   active: boolean;
+  entityType?: string | null;
+  productId?: string | null;
+  insuranceTypeId?: string | null;
+  riskLevel?: string | null;
+}
+
+export interface ApprovalEvaluationContext {
+  netPremium: string;
+  discountPercent: string;
+  entityType?: 'JOB' | 'ENDORSEMENT';
+  productId?: string | null;
+  insuranceTypeId?: string | null;
+  riskLevel?: string | null;
 }
 
 function check(value: Decimal, op: string, threshold: Decimal): boolean {
@@ -24,20 +37,50 @@ function check(value: Decimal, op: string, threshold: Decimal): boolean {
 }
 
 /**
- * Evaluate active approval rules against netPremium and discountPercent (0–100).
+ * Evaluate active approval rules against netPremium, discountPercent and optional context
+ * (entityType, productId, insuranceTypeId, riskLevel).
  * Returns the highest-priority matching approver role, or null if no rule matches.
  */
 export function evaluateApprovalRules(
-  netPremium: string,
-  discountPercent: string,
-  rules: ApprovalRuleInput[],
+  netPremiumOrContext: string | ApprovalEvaluationContext,
+  discountPercentOrRules?: string | ApprovalRuleInput[],
+  maybeRules?: ApprovalRuleInput[],
 ): ApproverRole | null {
-  const net = new Decimal(netPremium);
-  const disc = new Decimal(discountPercent);
+  let context: ApprovalEvaluationContext;
+  let rules: ApprovalRuleInput[];
+
+  if (typeof netPremiumOrContext === 'object') {
+    context = netPremiumOrContext;
+    rules = (discountPercentOrRules as ApprovalRuleInput[]) ?? [];
+  } else {
+    context = {
+      netPremium: netPremiumOrContext,
+      discountPercent: typeof discountPercentOrRules === 'string' ? discountPercentOrRules : '0',
+    };
+    rules = maybeRules ?? [];
+  }
+
+  const net = new Decimal(context.netPremium);
+  const disc = new Decimal(context.discountPercent);
+  const currentEntityType = context.entityType ?? 'JOB';
   let highest: ApproverRole | null = null;
 
   for (const rule of rules) {
     if (!rule.active) continue;
+
+    // Filter by entityType (default JOB)
+    const ruleEntityType = rule.entityType ?? 'JOB';
+    if (ruleEntityType !== currentEntityType) continue;
+
+    // Filter by productId if rule specifies it
+    if (rule.productId && rule.productId !== context.productId) continue;
+
+    // Filter by insuranceTypeId if rule specifies it
+    if (rule.insuranceTypeId && rule.insuranceTypeId !== context.insuranceTypeId) continue;
+
+    // Filter by riskLevel if rule specifies it
+    if (rule.riskLevel && rule.riskLevel !== context.riskLevel) continue;
+
     const threshold = new Decimal(rule.thresholdValue.toString());
     let value: Decimal;
     if (rule.conditionField === 'PREMIUM') {
@@ -47,6 +90,7 @@ export function evaluateApprovalRules(
     } else {
       continue;
     }
+
     if (check(value, rule.conditionOperator, threshold)) {
       const role = rule.approverRole as ApproverRole;
       if (!highest || ROLE_PRIORITY[role] > ROLE_PRIORITY[highest]) {

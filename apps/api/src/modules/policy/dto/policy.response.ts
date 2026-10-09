@@ -12,11 +12,24 @@ export interface BindingResponse {
   id: string;
   jobId: string;
   quotationId: string;
+  status: string;
   bindingDate: string;
   effectiveDate: string;
   expiryDate: string | null;
+  binderNumber: string | null;
+  binderDate: string | null;
+  insurerId: string | null;
+  premium: string | null;
+  paymentCondition: string | null;
+  underwriter: string | null;
+  binderDocumentId: string | null;
+  confirmedById: string | null;
   remark: string | null;
+  rejectionReason: string | null;
+  cancelledAt: string | null;
+  cancelledById: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface PolicyResponse {
@@ -29,6 +42,8 @@ export interface PolicyResponse {
   effectiveDate: string;
   expiryDate: string | null;
   sumInsured: string | null;
+  deductible: string | null;
+  policyDocumentId: string | null;
   grossPremium: string;
   discount: string;
   netPremium: string;
@@ -56,21 +71,47 @@ export function toBindingResponse(b: {
   id: string;
   jobId: string;
   quotationId: string;
+  status?: string;
   bindingDate: Date;
   effectiveDate: Date;
   expiryDate: Date | null;
+  binderNumber?: string | null;
+  binderDate?: Date | null;
+  insurerId?: string | null;
+  premium?: { toString(): string } | null;
+  paymentCondition?: string | null;
+  underwriter?: string | null;
+  binderDocumentId?: string | null;
+  confirmedById?: string | null;
   remark: string | null;
+  rejectionReason?: string | null;
+  cancelledAt?: Date | null;
+  cancelledById?: string | null;
   createdAt: Date;
+  updatedAt?: Date;
 }): BindingResponse {
   return {
     id: b.id,
     jobId: b.jobId,
     quotationId: b.quotationId,
+    status: b.status ?? 'SUBMITTED',
     bindingDate: (b.bindingDate as Date).toISOString().slice(0, 10),
     effectiveDate: (b.effectiveDate as Date).toISOString().slice(0, 10),
     expiryDate: b.expiryDate ? (b.expiryDate as Date).toISOString().slice(0, 10) : null,
+    binderNumber: b.binderNumber ?? null,
+    binderDate: b.binderDate ? (b.binderDate as Date).toISOString().slice(0, 10) : null,
+    insurerId: b.insurerId ?? null,
+    premium: b.premium ? b.premium.toString() : null,
+    paymentCondition: b.paymentCondition ?? null,
+    underwriter: b.underwriter ?? null,
+    binderDocumentId: b.binderDocumentId ?? null,
+    confirmedById: b.confirmedById ?? null,
     remark: b.remark,
+    rejectionReason: b.rejectionReason ?? null,
+    cancelledAt: b.cancelledAt ? (b.cancelledAt as Date).toISOString() : null,
+    cancelledById: b.cancelledById ?? null,
     createdAt: b.createdAt.toISOString(),
+    updatedAt: b.updatedAt ? b.updatedAt.toISOString() : b.createdAt.toISOString(),
   };
 }
 
@@ -84,6 +125,8 @@ export function toPolicyResponse(p: {
   effectiveDate: Date;
   expiryDate: Date | null;
   sumInsured: { toString(): string } | null;
+  deductible?: { toString(): string } | null;
+  policyDocumentId?: string | null;
   grossPremium: { toString(): string };
   discount: { toString(): string };
   netPremium: { toString(): string };
@@ -117,6 +160,8 @@ export function toPolicyResponse(p: {
     effectiveDate: (p.effectiveDate as Date).toISOString().slice(0, 10),
     expiryDate: p.expiryDate ? (p.expiryDate as Date).toISOString().slice(0, 10) : null,
     sumInsured: p.sumInsured ? p.sumInsured.toString() : null,
+    deductible: p.deductible ? p.deductible.toString() : null,
+    policyDocumentId: p.policyDocumentId ?? null,
     grossPremium: p.grossPremium.toString(),
     discount: p.discount.toString(),
     netPremium: p.netPremium.toString(),

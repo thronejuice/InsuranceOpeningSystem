@@ -71,6 +71,9 @@ const ACTION_LABELS: Record<JobAction, string> = {
   requestInfo: 'ขอข้อมูลเพิ่มเติม',
   resume: 'ดำเนินการต่อ',
   cancel: 'ยกเลิกงาน',
+  requestCancel: 'ขอยกเลิกงาน',
+  approveCancel: 'อนุมัติการยกเลิกงาน',
+  rejectCancel: 'ปฏิเสธการยกเลิกงาน',
   close: 'ปิดงาน',
   requestQuotation: 'ขอใบเสนอราคา',
   recordQuotation: 'บันทึกราคา',
@@ -79,8 +82,11 @@ const ACTION_LABELS: Record<JobAction, string> = {
   acceptProposal: 'ยอมรับข้อเสนอ',
   rejectProposal: 'ปฏิเสธข้อเสนอ',
   revise: 'ปรับปรุงข้อเสนอ (Revise)',
+  resubmit: 'ยื่นพิจารณาใหม่ (Resubmit)',
   approve: 'อนุมัติ',
-  bind: 'ออกกรมธรรม์',
+  bind: 'ส่งขอยืนยัน (Bind)',
+  confirmBinding: 'ยืนยันคุ้มครอง (Confirm Binding)',
+  insurerRejectBinding: 'บริษัทประกันปฏิเสธ (Insurer Reject)',
   issuePolicy: 'ยืนยันกรมธรรม์',
 };
 
@@ -89,6 +95,9 @@ const ACTION_ICONS: Record<JobAction, string> = {
   requestInfo: 'pi pi-question-circle',
   resume: 'pi pi-play',
   cancel: 'pi pi-times',
+  requestCancel: 'pi pi-exclamation-circle',
+  approveCancel: 'pi pi-check',
+  rejectCancel: 'pi pi-times',
   close: 'pi pi-check-circle',
   requestQuotation: 'pi pi-plus',
   recordQuotation: 'pi pi-pencil',
@@ -97,12 +106,15 @@ const ACTION_ICONS: Record<JobAction, string> = {
   acceptProposal: 'pi pi-check',
   rejectProposal: 'pi pi-times',
   revise: 'pi pi-refresh',
+  resubmit: 'pi pi-replay',
   approve: 'pi pi-check',
   bind: 'pi pi-file',
+  confirmBinding: 'pi pi-shield',
+  insurerRejectBinding: 'pi pi-ban',
   issuePolicy: 'pi pi-verified',
 };
 
-const ACTIONS_REQUIRING_REASON: JobAction[] = ['cancel'];
+const ACTIONS_REQUIRING_REASON: JobAction[] = ['cancel', 'requestCancel', 'rejectCancel'];
 
 const DOC_TYPE_OPTIONS = [
   { label: 'บัตรประชาชน', value: 'ID_CARD' },
@@ -190,14 +202,50 @@ interface RecordItem {
           }
         </div>
 
+        @if (job()!.cancelRequestedAt) {
+          <div class="cancel-request-banner">
+            <div class="cancel-request-info">
+              <i class="pi pi-exclamation-triangle cancel-warn-icon"></i>
+              <div>
+                <div class="cancel-request-title">คำขอยกเลิกงาน (รอผู้จัดการพิจารณาอนุมัติ)</div>
+                <div class="cancel-request-desc">
+                  เหตุผล: {{ job()!.cancelRequestReason || 'ไม่ระบุ' }} — ยื่นคำขอเมื่อ {{ job()!.cancelRequestedAt! | thDate }}
+                </div>
+              </div>
+            </div>
+            @if (canApproveCancel()) {
+              <div class="cancel-request-actions">
+                <ui-button
+                  label="อนุมัติยกเลิก"
+                  icon="pi pi-check"
+                  severity="danger"
+                  size="small"
+                  [loading]="isProcessingCancelApprove()"
+                  [disabled]="isProcessingCancelApprove() || isProcessingCancelReject()"
+                  (onClick)="doApproveCancelJob()"
+                />
+                <ui-button
+                  label="ปฏิเสธคำขอ"
+                  icon="pi pi-times"
+                  severity="secondary"
+                  size="small"
+                  [outlined]="true"
+                  [disabled]="isProcessingCancelApprove() || isProcessingCancelReject()"
+                  (onClick)="openRejectCancelJobDialog()"
+                />
+              </div>
+            }
+          </div>
+        }
+
         @if (job()!.allowedActions.length > 0) {
           <div class="action-bar">
             @for (act of job()!.allowedActions; track act) {
               <ui-button
                 [label]="actionLabel(act)"
                 [icon]="actionIcon(act)"
-                [severity]="act === 'cancel' ? 'danger' : act === 'close' ? 'secondary' : 'primary'"
-                [outlined]="act === 'cancel' || act === 'close'"
+                [severity]="(act === 'cancel' || act === 'requestCancel') ? 'danger' : act === 'close' ? 'secondary' : 'primary'"
+                [outlined]="act === 'cancel' || act === 'requestCancel' || act === 'close'"
                 size="small"
                 [loading]="executing() === act"
                 [disabled]="!!executing()"
@@ -1227,7 +1275,7 @@ interface RecordItem {
             @if (proposalState() === 'loading') {
               <app-state state="loading" />
             } @else {
-              @let appr = currentApprovals();
+              @let appr = allApprovals();
               @if (appr.length === 0) {
                 <app-state state="empty" emptyMessage="ไม่มีรายการอนุมัติสำหรับงานนี้" />
               } @else {
@@ -1238,8 +1286,9 @@ interface RecordItem {
                       <th>สถานะ</th>
                       <th>วันที่ขอ</th>
                       <th>วันที่อนุมัติ/ปฏิเสธ</th>
-                      <th>เหตุผล</th>
-                      <th style="width:120px"></th>
+                      <th>เหตุผลขออนุมัติ</th>
+                      <th>เหตุผลที่ปฏิเสธ / หมายเหตุ</th>
+                      <th style="width:140px"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1247,17 +1296,44 @@ interface RecordItem {
                       <tr>
                         <td>{{ a.approvalType }}</td>
                         <td><app-status-badge [status]="a.status" /></td>
-                        <td>{{ a.requestedAt | thDate }}</td>
+                        <td>
+                          {{ a.requestedAt | thDate }}
+                          @if (a.resubmittedAt) {
+                            <div class="meta-subtext text-warning"><i class="pi pi-replay"></i> ยื่นใหม่แล้ว: {{ a.resubmittedAt | thDate }}</div>
+                          }
+                        </td>
                         <td>{{ (a.approvedAt ?? a.rejectedAt) ? ((a.approvedAt ?? a.rejectedAt)! | thDate) : '-' }}</td>
                         <td>{{ a.reason ?? '-' }}</td>
+                        <td>
+                          @if (a.rejectReason) {
+                            <div class="reject-reason-box">
+                              <span class="text-danger font-medium"><i class="pi pi-times-circle"></i> {{ a.rejectReason }}</span>
+                              @if (a.comment) {
+                                <div class="meta-subtext">{{ a.comment }}</div>
+                              }
+                            </div>
+                          } @else if (a.comment) {
+                            <span>{{ a.comment }}</span>
+                          } @else {
+                            <span>-</span>
+                          }
+                        </td>
                         <td>
                           @if (a.canDecide && job()!.allowedActions.includes('approve')) {
                             <div class="row-actions">
                               <ui-button label="อนุมัติ" icon="pi pi-check" size="small" severity="success" [loading]="approvingId() === a.id" (onClick)="doApprove(a)" />
                               <ui-button label="ปฏิเสธ" icon="pi pi-times" size="small" severity="danger" [outlined]="true" (onClick)="openRejectApproval(a)" />
                             </div>
+                          } @else if (a.status === 'REJECTED' && !a.resubmittedAt && job()!.status === 'APPROVAL_REJECTED' && (job()!.allowedActions.includes('resubmit') || canManageApproval())) {
+                            <ui-button
+                              label="ยื่นใหม่"
+                              icon="pi pi-replay"
+                              size="small"
+                              severity="warn"
+                              (onClick)="openResubmitApproval(a)"
+                            />
                           } @else if (a.status === 'PENDING') {
-                            <small class="text-secondary">รอผู้อนุมัติท่านอื่น</small>
+                            <small class="text-secondary">รอผู้อนุมัติพิจารณา</small>
                           }
                         </td>
                       </tr>
@@ -1277,7 +1353,7 @@ interface RecordItem {
               <app-state state="loading" />
             } @else {
               <div class="binding-section">
-                <h4 class="section-title">เงื่อนไขก่อนออกกรมธรรม์</h4>
+                <h4 class="section-title">เงื่อนไขก่อนออกกรมธรรม์ (Preconditions)</h4>
                 @if (preconditions().length > 0) {
                   <div class="checklist-grid">
                     @for (c of preconditions(); track c.code) {
@@ -1289,9 +1365,104 @@ interface RecordItem {
                     }
                   </div>
                 }
-                @if (binding()) {
-                  <div class="binding-result">
-                    <ui-message severity="success">Binding สำเร็จ — {{ binding()!.bindingDate | thDate }}</ui-message>
+
+                @if (binding(); as b) {
+                  <div class="binding-card">
+                    <div class="binding-card-header">
+                      <div class="binding-card-title">
+                        <i class="pi pi-file"></i> รายละเอียดการยืนยันคุ้มครอง (Binding)
+                      </div>
+                      <app-status-badge [status]="b.status" />
+                    </div>
+
+                    <div class="info-grid" style="margin-top:0.75rem">
+                      <div class="info-item">
+                        <span class="info-label">วันที่ยืนยัน (Binding Date)</span>
+                        <span class="info-value">{{ b.bindingDate | thDate }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">เลขที่ Binder</span>
+                        <span class="info-value font-medium">{{ b.binderNumber || '-' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">วันที่ Binder</span>
+                        <span class="info-value">{{ b.binderDate ? (b.binderDate | thDate) : '-' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">วันเริ่มคุ้มครอง</span>
+                        <span class="info-value">{{ b.effectiveDate | thDate }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">เบี้ยประกัน</span>
+                        <span class="info-value">{{ b.premium ? (b.premium | money) : '-' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">เงื่อนไขชำระเงิน</span>
+                        <span class="info-value">{{ b.paymentCondition || '-' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">Underwriter บริษัทประกัน</span>
+                        <span class="info-value">{{ b.underwriter || '-' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">เอกสาร Binder</span>
+                        <span class="info-value">
+                          @if (b.binderDocumentId) {
+                            <a [href]="downloadUrl(b.binderDocumentId)" target="_blank" class="doc-link">
+                              <i class="pi pi-download"></i> ดาวน์โหลด Binder
+                            </a>
+                          } @else {
+                            -
+                          }
+                        </span>
+                      </div>
+                    </div>
+
+                    @if (b.remark) {
+                      <div class="binding-remark mt-2">
+                        <span class="info-label">หมายเหตุ:</span> {{ b.remark }}
+                      </div>
+                    }
+
+                    @if (b.rejectionReason) {
+                      <div class="rejection-box mt-2">
+                        <i class="pi pi-exclamation-triangle text-danger"></i>
+                        <div>
+                          <strong class="text-danger">เหตุผลที่บริษัทประกันปฏิเสธ:</strong>
+                          <div>{{ b.rejectionReason }}</div>
+                        </div>
+                      </div>
+                    }
+
+                    <!-- Binding Actions according to job status -->
+                    <div class="binding-action-row mt-3">
+                      @if (job()!.status === 'BINDING' && (b.status === 'SUBMITTED' || b.status === 'PENDING')) {
+                        <div class="flex gap-2 flex-wrap">
+                          <ui-button
+                            label="ยืนยันรับประกัน (Confirm Binding)"
+                            icon="pi pi-check-circle"
+                            severity="success"
+                            (onClick)="openConfirmBindingDialog()"
+                          />
+                          <ui-button
+                            label="บริษัทประกันปฏิเสธ (Insurer Reject)"
+                            icon="pi pi-times-circle"
+                            severity="danger"
+                            [outlined]="true"
+                            (onClick)="openRejectBindingDialog()"
+                          />
+                        </div>
+                      } @else if (job()!.allowedActions.includes('bind') && (b.status === 'REJECTED' || b.status === 'CANCELLED')) {
+                        <ui-button
+                          label="ยื่นออกกรมธรรม์ใหม่ (Re-bind)"
+                          icon="pi pi-replay"
+                          severity="primary"
+                          [loading]="binding_()"
+                          [disabled]="binding_()"
+                          (onClick)="doBind()"
+                        />
+                      }
+                    </div>
                   </div>
                 } @else if (job()!.allowedActions.includes('bind')) {
                   <div class="form-actions" style="margin-top:1rem">
@@ -1303,9 +1474,9 @@ interface RecordItem {
                       <ui-message severity="error" class="my-2 block">{{ bindError() }}</ui-message>
                     }
                     <ui-button
-                      label="ออกกรมธรรม์ (Bind)"
+                      label="ส่งยืนยันคุ้มครอง (Bind)"
                       icon="pi pi-shield"
-                      [loading]="binding_() "
+                      [loading]="binding_()"
                       [disabled]="binding_()"
                       (onClick)="doBind()"
                       styleClass="mt-2"
@@ -1323,43 +1494,81 @@ interface RecordItem {
             } @else if (!policy()) {
               @if (job()!.allowedActions.includes('issuePolicy')) {
                 <div class="form-actions">
-                  <div class="field" style="max-width:320px">
-                    <label for="policy-remark">หมายเหตุ (ไม่บังคับ)</label>
-                    <input uiInput id="policy-remark" [(ngModel)]="issuePolicyRemark" class="w-full" />
+                  <div class="dialog-form" style="max-width: 480px;">
+                    <div class="field">
+                      <label for="issue-sum-insured">ทุนประกันภัย (Sum Insured)</label>
+                      <input uiInput id="issue-sum-insured" [(ngModel)]="issuePolicySumInsured" class="w-full" placeholder="เช่น 500,000" />
+                    </div>
+                    <div class="field">
+                      <label for="issue-deductible">ค่าเสียหายส่วนแรก (Deductible)</label>
+                      <input uiInput id="issue-deductible" [(ngModel)]="issuePolicyDeductible" class="w-full" placeholder="เช่น 0 หรือ 5,000" />
+                    </div>
+                    <div class="field">
+                      <label for="policy-remark">หมายเหตุ (ไม่บังคับ)</label>
+                      <input uiInput id="policy-remark" [(ngModel)]="issuePolicyRemark" class="w-full" />
+                    </div>
+                    @if (policyError()) {
+                      <ui-message severity="error" class="my-2 block">{{ policyError() }}</ui-message>
+                    }
+                    <ui-button
+                      label="ออกกรมธรรม์ (Issue Policy)"
+                      icon="pi pi-check-circle"
+                      severity="success"
+                      [loading]="issuingPolicy()"
+                      [disabled]="issuingPolicy()"
+                      (onClick)="doIssuePolicy()"
+                      styleClass="mt-2"
+                    />
                   </div>
-                  @if (policyError()) {
-                    <ui-message severity="error" class="my-2 block">{{ policyError() }}</ui-message>
-                  }
-                  <ui-button
-                    label="ยืนยันกรมธรรม์"
-                    icon="pi pi-check-circle"
-                    [loading]="issuingPolicy()"
-                    [disabled]="issuingPolicy()"
-                    (onClick)="doIssuePolicy()"
-                    styleClass="mt-2"
-                  />
                 </div>
               } @else {
                 <app-state state="empty" emptyMessage="ยังไม่มีกรมธรรม์" />
               }
             } @else {
+              @let pol = policy()!;
               <div class="policy-card">
                 <div class="policy-header">
-                  <h3 class="policy-no">{{ policy()!.policyNo }}</h3>
-                  <app-status-badge [status]="policy()!.status" />
+                  <div class="flex align-items-center gap-3">
+                    <h3 class="policy-no">{{ pol.policyNo }}</h3>
+                    <app-status-badge [status]="pol.status" />
+                  </div>
+                  @if (canUpdatePolicy()) {
+                    <ui-button
+                      label="แนบเอกสารกรมธรรม์"
+                      icon="pi pi-upload"
+                      size="small"
+                      severity="secondary"
+                      [outlined]="true"
+                      (onClick)="openAttachPolicyDocDialog()"
+                    />
+                  }
                 </div>
                 <div class="info-grid" style="margin-top:1rem">
-                  <div class="info-item"><span class="info-label">วันเริ่มคุ้มครอง</span><span class="info-value">{{ policy()!.effectiveDate | thDate }}</span></div>
-                  @if (policy()!.expiryDate) {
-                    <div class="info-item"><span class="info-label">วันสิ้นสุด</span><span class="info-value">{{ policy()!.expiryDate | thDate }}</span></div>
+                  <div class="info-item"><span class="info-label">วันเริ่มคุ้มครอง</span><span class="info-value">{{ pol.effectiveDate | thDate }}</span></div>
+                  @if (pol.expiryDate) {
+                    <div class="info-item"><span class="info-label">วันสิ้นสุด</span><span class="info-value">{{ pol.expiryDate | thDate }}</span></div>
                   }
-                  <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ policy()!.netPremium | money }}</span></div>
-                  <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ policy()!.totalPremium | money }}</span></div>
-                  @if (policy()!.issuedAt) {
-                    <div class="info-item"><span class="info-label">ออกเมื่อ</span><span class="info-value">{{ policy()!.issuedAt | thDate }}</span></div>
+                  <div class="info-item"><span class="info-label">ทุนประกัน (Sum Insured)</span><span class="info-value">{{ pol.sumInsured ? (pol.sumInsured | money) : '-' }}</span></div>
+                  <div class="info-item"><span class="info-label">ค่าเสียหายส่วนแรก</span><span class="info-value">{{ pol.deductible ? (pol.deductible | money) : '-' }}</span></div>
+                  <div class="info-item"><span class="info-label">เบี้ยสุทธิ</span><span class="info-value">{{ pol.netPremium | money }}</span></div>
+                  <div class="info-item"><span class="info-label">รวมทั้งสิ้น</span><span class="info-value">{{ pol.totalPremium | money }}</span></div>
+                  @if (pol.issuedAt) {
+                    <div class="info-item"><span class="info-label">ออกเมื่อ</span><span class="info-value">{{ pol.issuedAt | thDate }}</span></div>
                   }
+                  <div class="info-item">
+                    <span class="info-label">เอกสารกรมธรรม์ (จากบริษัทประกัน)</span>
+                    <span class="info-value">
+                      @if (pol.policyDocumentId) {
+                        <a [href]="downloadUrl(pol.policyDocumentId)" target="_blank" class="doc-link">
+                          <i class="pi pi-file-pdf"></i> ดาวน์โหลดกรมธรรม์
+                        </a>
+                      } @else {
+                        <span class="text-secondary">ยังไม่มีเอกสารแนบ</span>
+                      }
+                    </span>
+                  </div>
                 </div>
-                @if (policy()!.coverages.length > 0) {
+                @if (pol.coverages.length > 0) {
                   <h4 class="section-title" style="margin-top:1.5rem">ความคุ้มครอง</h4>
                   <table class="data-table">
                     <thead>
@@ -1371,7 +1580,7 @@ interface RecordItem {
                       </tr>
                     </thead>
                     <tbody>
-                      @for (c of policy()!.coverages; track c.id) {
+                      @for (c of pol.coverages; track c.id) {
                         <tr>
                           <td>{{ c.coverageName }}</td>
                           <td style="text-align:right">{{ c.sumInsured | money }}</td>
@@ -2514,6 +2723,169 @@ interface RecordItem {
         <ui-button label="ปิด" icon="pi pi-times" severity="secondary" (onClick)="showVersionHistoryDialog = false" />
       </ng-template>
     </ui-dialog>
+
+    <!-- Resubmit Approval UiDialog -->
+    <ui-dialog
+      [(visible)]="showResubmitApprovalDialog"
+      header="ยื่นขออนุมัติใหม่ (Resubmit Approval)"
+      icon="pi pi-replay"
+      [modal]="true"
+      [style]="{ width: '480px' }"
+    >
+      <div class="dialog-form">
+        @if (resubmittingApprovalTarget; as target) {
+          <div class="info-box warn">
+            <i class="pi pi-info-circle"></i>
+            <div>
+              ยื่นพิจารณาใหม่สำหรับคำขอประเภท <b>{{ target.approvalType }}</b> ที่เคยถูกปฏิเสธ
+              @if (target.rejectReason) {
+                <div class="text-danger mt-1">เหตุผลที่ปฏิเสธ: {{ target.rejectReason }}</div>
+              }
+            </div>
+          </div>
+        }
+        <div class="field">
+          <label for="resubmit-appr-reason">คำชี้แจง / เหตุผลในการยื่นใหม่ <span class="required">*</span></label>
+          <textarea uiInput id="resubmit-appr-reason" [(ngModel)]="resubmitApprovalReason" rows="3" class="w-full" placeholder="ระบุเหตุผลในการยื่นพิจารณาใหม่..."></textarea>
+        </div>
+        @if (resubmitApprovalError()) {
+          <ui-message severity="error">{{ resubmitApprovalError() }}</ui-message>
+        }
+      </div>
+      <ng-template #footer>
+        <ui-button label="ยกเลิก" [outlined]="true" severity="secondary" (onClick)="closeResubmitApproval()" [disabled]="resubmittingApproval()" />
+        <ui-button label="ยื่นพิจารณาใหม่" icon="pi pi-replay" severity="warn" (onClick)="confirmResubmitApproval()" [loading]="resubmittingApproval()" [disabled]="resubmittingApproval()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Confirm Binding UiDialog -->
+    <ui-dialog
+      [(visible)]="showConfirmBindingDialog"
+      header="ยืนยันรับประกัน (Confirm Binding)"
+      icon="pi pi-shield"
+      [modal]="true"
+      [style]="{ width: '560px' }"
+    >
+      <div class="dialog-form">
+        <div class="field-row">
+          <div class="field">
+            <label for="cb-binder-no">เลขที่ Binder</label>
+            <input uiInput id="cb-binder-no" [(ngModel)]="confirmBinderNumber" class="w-full" placeholder="เช่น BND-2026-001" />
+          </div>
+          <div class="field">
+            <label for="cb-binder-date">วันที่ Binder</label>
+            <input uiInput id="cb-binder-date" type="date" [(ngModel)]="confirmBinderDate" class="w-full" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="cb-premium">เบี้ยประกันภัย (Premium)</label>
+            <input uiInput id="cb-premium" [(ngModel)]="confirmBinderPremium" class="w-full" placeholder="เช่น 25000" />
+          </div>
+          <div class="field">
+            <label for="cb-payment-cond">เงื่อนไขการชำระเงิน</label>
+            <input uiInput id="cb-payment-cond" [(ngModel)]="confirmBinderPaymentCondition" class="w-full" placeholder="เช่น เครดิต 30 วัน หรือ โอนชำระ" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="cb-underwriter">ผู้พิจารณารับประกัน (Underwriter บริษัทประกัน)</label>
+          <input uiInput id="cb-underwriter" [(ngModel)]="confirmBinderUnderwriter" class="w-full" placeholder="ชื่อ-นามสกุล หรือ รหัส Underwriter" />
+        </div>
+
+        <div class="field">
+          <label for="cb-binder-file">อัปโหลดเอกสาร Binder (ไม่บังคับ)</label>
+          <input type="file" id="cb-binder-file" (change)="onConfirmBinderFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg" />
+          @if (confirmBinderFile) {
+            <small class="text-secondary mt-1">ไฟล์ที่เลือก: {{ confirmBinderFile.name }} ({{ formatSize(confirmBinderFile.size) }})</small>
+          }
+        </div>
+
+        <div class="field">
+          <label for="cb-remark">หมายเหตุ</label>
+          <input uiInput id="cb-remark" [(ngModel)]="confirmBinderRemark" class="w-full" />
+        </div>
+
+        @if (confirmBindingError()) {
+          <ui-message severity="error">{{ confirmBindingError() }}</ui-message>
+        }
+      </div>
+      <ng-template #footer>
+        <ui-button label="ยกเลิก" [outlined]="true" severity="secondary" (onClick)="closeConfirmBindingDialog()" [disabled]="confirmingBinding()" />
+        <ui-button label="ยืนยันรับประกัน" icon="pi pi-check" severity="success" (onClick)="confirmBindingAction()" [loading]="confirmingBinding()" [disabled]="confirmingBinding()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Reject Binding UiDialog -->
+    <ui-dialog
+      [(visible)]="showRejectBindingDialog"
+      header="บริษัทประกันปฏิเสธการรับประกัน (Insurer Reject)"
+      icon="pi pi-times-circle"
+      [modal]="true"
+      [style]="{ width: '450px' }"
+    >
+      <div class="dialog-form">
+        <div class="field">
+          <label for="rb-reason">เหตุผลที่บริษัทประกันปฏิเสธ <span class="required">*</span></label>
+          <textarea uiInput id="rb-reason" [(ngModel)]="rejectBindingReason" rows="3" class="w-full" placeholder="ระบุเหตุผลที่บริษัทประกันปฏิเสธ..."></textarea>
+        </div>
+        @if (rejectBindingError()) {
+          <ui-message severity="error">{{ rejectBindingError() }}</ui-message>
+        }
+      </div>
+      <ng-template #footer>
+        <ui-button label="ยกเลิก" [outlined]="true" severity="secondary" (onClick)="closeRejectBindingDialog()" [disabled]="rejectingBinding()" />
+        <ui-button label="ยืนยันการปฏิเสธ" icon="pi pi-times" severity="danger" (onClick)="confirmRejectBindingAction()" [loading]="rejectingBinding()" [disabled]="rejectingBinding()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Reject Cancel Job Request UiDialog -->
+    <ui-dialog
+      [(visible)]="showRejectCancelJobDialog"
+      header="ปฏิเสธคำขอยกเลิกงาน"
+      icon="pi pi-times-circle"
+      [modal]="true"
+      [style]="{ width: '420px' }"
+    >
+      <div class="reason-form">
+        <label for="reject-cancel-reason">เหตุผลในการปฏิเสธคำขอยกเลิก <span class="required">*</span></label>
+        <textarea uiInput id="reject-cancel-reason" [(ngModel)]="rejectCancelJobReason" rows="3" class="w-full" placeholder="กรอกเหตุผล..."></textarea>
+        @if (rejectCancelJobError()) {
+          <small class="error-text">{{ rejectCancelJobError() }}</small>
+        }
+      </div>
+      <ng-template #footer>
+        <ui-button label="ยกเลิก" icon="pi pi-times" severity="secondary" [outlined]="true" (onClick)="closeRejectCancelJobDialog()" [disabled]="isProcessingCancelReject()" />
+        <ui-button label="ปฏิเสธคำขอ" icon="pi pi-times" severity="danger" (onClick)="confirmRejectCancelJob()" [loading]="isProcessingCancelReject()" [disabled]="isProcessingCancelReject()" />
+      </ng-template>
+    </ui-dialog>
+
+    <!-- Attach Policy Document UiDialog -->
+    <ui-dialog
+      [(visible)]="showAttachPolicyDocDialog"
+      header="แนบเอกสารกรมธรรม์ (จากบริษัทประกัน)"
+      icon="pi pi-upload"
+      [modal]="true"
+      [style]="{ width: '480px' }"
+    >
+      <div class="dialog-form">
+        <div class="field">
+          <label for="policy-doc-file">เลือกไฟล์กรมธรรม์ (PDF หรือ รูปภาพ) <span class="required">*</span></label>
+          <input type="file" id="policy-doc-file" (change)="onPolicyDocFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg" />
+          @if (policyDocFile) {
+            <small class="text-secondary mt-1">ไฟล์ที่เลือก: {{ policyDocFile.name }} ({{ formatSize(policyDocFile.size) }})</small>
+          }
+        </div>
+        @if (attachPolicyDocError()) {
+          <ui-message severity="error">{{ attachPolicyDocError() }}</ui-message>
+        }
+      </div>
+      <ng-template #footer>
+        <ui-button label="ยกเลิก" [outlined]="true" severity="secondary" (onClick)="closeAttachPolicyDocDialog()" [disabled]="attachingPolicyDoc()" />
+        <ui-button label="อัปโหลดและแนบ" icon="pi pi-upload" severity="primary" (onClick)="confirmAttachPolicyDoc()" [loading]="attachingPolicyDoc()" [disabled]="attachingPolicyDoc() || !policyDocFile" />
+      </ng-template>
+    </ui-dialog>
   `,
   styles: [`
     .job-header-card {
@@ -2729,11 +3101,101 @@ interface RecordItem {
     .text-danger { color: var(--red-600); }
     .binding-section { padding: 0.5rem 0; }
     .binding-result { margin-top: 1rem; }
+    .binding-card {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    .binding-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .binding-card-title {
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .binding-remark { font-size: 0.85rem; color: var(--text-color-secondary); }
+    .rejection-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      font-size: 0.875rem;
+    }
+    .reject-reason-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .meta-subtext {
+      font-size: 0.75rem;
+      color: var(--text-color-secondary);
+    }
+    .text-warning { color: #d97706; }
+    .doc-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--primary-color);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .doc-link:hover { text-decoration: underline; }
+    .cancel-request-banner {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 0.85rem 1.25rem;
+      margin-top: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .cancel-request-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .cancel-warn-icon {
+      font-size: 1.5rem;
+      color: #d97706;
+    }
+    .cancel-request-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #92400e;
+    }
+    .cancel-request-desc {
+      font-size: 0.825rem;
+      color: #78350f;
+      margin-top: 0.15rem;
+    }
+    .cancel-request-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
     .policy-card { padding: 0.5rem 0; }
-    .policy-header { display: flex; align-items: center; gap: 0.75rem; }
+    .policy-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
     .policy-no { font-size: 1.1rem; font-weight: 600; margin: 0; }
     .my-2 { margin: 0.5rem 0; }
     .mt-2 { margin-top: 0.5rem; }
+    .mt-3 { margin-top: 0.75rem; }
     .overdue-row td { color: var(--red-700); }
     .badge-overdue { display: inline-block; background: var(--red-100); color: var(--red-700); font-size: 0.7rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
     /* Document Table & Preview */
@@ -3014,10 +3476,23 @@ export class JobDetailPage implements OnInit, OnDestroy {
   ];
 
   // ─── Approval tab ─────────────────────────────────────────────────────────
+  readonly allApprovals = computed<ApprovalInProposal[]>(() => {
+    // Show all approvals across all proposal versions (Day 21)
+    const list: ApprovalInProposal[] = [];
+    for (const p of this.proposals()) {
+      for (const a of p.approvals ?? []) {
+        if (!list.some((item) => item.id === a.id)) {
+          list.push(a);
+        }
+      }
+    }
+    return list;
+  });
   readonly currentApprovals = computed<ApprovalInProposal[]>(() => {
     const latestProposal = this.proposals().find((p) => p.approvals.length > 0) ?? this.proposals()[0];
     return latestProposal?.approvals ?? [];
   });
+  readonly canManageApproval = computed(() => this.authStore.hasPermission('approval.manage'));
   readonly approvingId = signal<string | null>(null);
   showRejectApprovalDialog = false;
   rejectingApprovalTarget: ApprovalInProposal | null = null;
@@ -3025,6 +3500,13 @@ export class JobDetailPage implements OnInit, OnDestroy {
   readonly rejectApprovalError = signal<string | null>(null);
   readonly rejectingApproval = signal(false);
   readonly approvalError = signal<string | null>(null);
+
+  // Resubmit Approval Dialog
+  showResubmitApprovalDialog = false;
+  resubmittingApprovalTarget: ApprovalInProposal | null = null;
+  resubmitApprovalReason = '';
+  readonly resubmitApprovalError = signal<string | null>(null);
+  readonly resubmittingApproval = signal(false);
 
   // ─── Binding tab ──────────────────────────────────────────────────────────
   readonly preconditionState = signal<'loading' | 'none'>('none');
@@ -3034,12 +3516,47 @@ export class JobDetailPage implements OnInit, OnDestroy {
   bindRemark = '';
   readonly bindError = signal<string | null>(null);
 
+  // Confirm Binding Dialog
+  showConfirmBindingDialog = false;
+  confirmBinderNumber = '';
+  confirmBinderDate = '';
+  confirmBinderPremium = '';
+  confirmBinderPaymentCondition = '';
+  confirmBinderUnderwriter = '';
+  confirmBinderFile: File | null = null;
+  confirmBinderRemark = '';
+  readonly confirmingBinding = signal(false);
+  readonly confirmBindingError = signal<string | null>(null);
+
+  // Reject Binding Dialog
+  showRejectBindingDialog = false;
+  rejectBindingReason = '';
+  readonly rejectingBinding = signal(false);
+  readonly rejectBindingError = signal<string | null>(null);
+
   // ─── Policy tab ───────────────────────────────────────────────────────────
   readonly policyState = signal<'loading' | 'none'>('none');
   readonly policy = signal<PolicyResponse | null>(null);
   readonly issuingPolicy = signal(false);
   issuePolicyRemark = '';
+  issuePolicySumInsured = '';
+  issuePolicyDeductible = '';
   readonly policyError = signal<string | null>(null);
+  readonly canUpdatePolicy = computed(() => this.authStore.hasPermission('policy.update') || this.authStore.hasPermission('policy.create'));
+
+  // Attach Policy Document Dialog
+  showAttachPolicyDocDialog = false;
+  policyDocFile: File | null = null;
+  readonly attachingPolicyDoc = signal(false);
+  readonly attachPolicyDocError = signal<string | null>(null);
+
+  // ─── Job Cancellation Request V2 ──────────────────────────────────────────
+  readonly canApproveCancel = computed(() => this.authStore.hasPermission('job.cancel'));
+  readonly isProcessingCancelApprove = signal(false);
+  readonly isProcessingCancelReject = signal(false);
+  showRejectCancelJobDialog = false;
+  rejectCancelJobReason = '';
+  readonly rejectCancelJobError = signal<string | null>(null);
 
   // ─── Payment tab ──────────────────────────────────────────────────────────
   readonly paymentState = signal<'loading' | 'error' | 'none'>('none');
@@ -4605,6 +5122,51 @@ export class JobDetailPage implements OnInit, OnDestroy {
     });
   }
 
+  openResubmitApproval(a: ApprovalInProposal): void {
+    this.resubmittingApprovalTarget = a;
+    this.resubmitApprovalReason = '';
+    this.resubmitApprovalError.set(null);
+    this.showResubmitApprovalDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeResubmitApproval(): void {
+    this.showResubmitApprovalDialog = false;
+    this.resubmitApprovalReason = '';
+    this.resubmitApprovalError.set(null);
+    this.resubmittingApprovalTarget = null;
+    this.cdr.markForCheck();
+  }
+
+  confirmResubmitApproval(): void {
+    if (!this.resubmitApprovalReason.trim()) {
+      this.resubmitApprovalError.set('กรุณาระบุเหตุผลในการยื่นใหม่');
+      return;
+    }
+    const target = this.resubmittingApprovalTarget;
+    if (!target) return;
+
+    this.resubmittingApproval.set(true);
+    this.resubmitApprovalError.set(null);
+
+    this.api.resubmitApproval(target.id, { reason: this.resubmitApprovalReason.trim() }).subscribe({
+      next: () => {
+        this.resubmittingApproval.set(false);
+        this.showResubmitApprovalDialog = false;
+        this.toast.add({ severity: 'success', summary: 'ยื่นพิจารณาใหม่แล้ว', detail: 'คำขอถูกส่งไปยังผู้อนุมัติเรียบร้อย' });
+        this.loadProposals();
+        this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
+        this.loadActivities();
+        this.cdr.markForCheck();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.resubmittingApproval.set(false);
+        const body = e.error as { message?: string } | null;
+        this.resubmitApprovalError.set(body?.message ?? 'เกิดข้อผิดพลาดในการยื่นพิจารณาใหม่');
+      },
+    });
+  }
+
   // ─── Binding ──────────────────────────────────────────────────────────────
 
   private loadPreconditions(): void {
@@ -4612,6 +5174,10 @@ export class JobDetailPage implements OnInit, OnDestroy {
     this.api.getBindPreconditions(this.id()).subscribe({
       next: (list) => { this.preconditions.set(list); this.preconditionState.set('none'); },
       error: () => this.preconditionState.set('none'),
+    });
+    this.api.getBinding(this.id()).subscribe({
+      next: (b) => this.binding.set(b),
+      error: () => this.binding.set(null),
     });
   }
 
@@ -4622,14 +5188,128 @@ export class JobDetailPage implements OnInit, OnDestroy {
       next: (b) => {
         this.binding.set(b);
         this.binding_.set(false);
-        this.toast.add({ severity: 'success', summary: 'Binding สำเร็จ' });
+        this.toast.add({ severity: 'success', summary: 'ส่งขอยืนยันคุ้มครอง (Bind) สำเร็จ' });
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.loadActivities();
       },
       error: (e: HttpErrorResponse) => {
         this.binding_.set(false);
         const body = e.error as { message?: string } | null;
-        this.bindError.set(body?.message ?? 'เกิดข้อผิดพลาด');
+        this.bindError.set(body?.message ?? 'เกิดข้อผิดพลาดในการ Bind');
+      },
+    });
+  }
+
+  openConfirmBindingDialog(): void {
+    const b = this.binding();
+    this.confirmBinderNumber = b?.binderNumber ?? '';
+    this.confirmBinderDate = b?.binderDate ? b.binderDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    this.confirmBinderPremium = b?.premium ?? '';
+    this.confirmBinderPaymentCondition = b?.paymentCondition ?? '';
+    this.confirmBinderUnderwriter = b?.underwriter ?? '';
+    this.confirmBinderFile = null;
+    this.confirmBinderRemark = b?.remark ?? '';
+    this.confirmBindingError.set(null);
+    this.showConfirmBindingDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeConfirmBindingDialog(): void {
+    this.showConfirmBindingDialog = false;
+    this.confirmBindingError.set(null);
+    this.confirmBinderFile = null;
+    this.cdr.markForCheck();
+  }
+
+  onConfirmBinderFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.confirmBinderFile = input.files[0];
+    }
+  }
+
+  confirmBindingAction(): void {
+    this.confirmingBinding.set(true);
+    this.confirmBindingError.set(null);
+
+    // If a binder document is chosen, upload it first as DocumentType.QUOTATION or OTHER/POLICY
+    const proceedWithConfirm = (binderDocId?: string) => {
+      this.api.confirmBinding(this.id(), {
+        binderNumber: this.confirmBinderNumber.trim() || undefined,
+        binderDate: this.confirmBinderDate || undefined,
+        premium: this.confirmBinderPremium.trim() || undefined,
+        paymentCondition: this.confirmBinderPaymentCondition.trim() || undefined,
+        underwriter: this.confirmBinderUnderwriter.trim() || undefined,
+        binderDocumentId: binderDocId,
+        remark: this.confirmBinderRemark.trim() || undefined,
+      }).subscribe({
+        next: (updatedBinding) => {
+          this.binding.set(updatedBinding);
+          this.confirmingBinding.set(false);
+          this.showConfirmBindingDialog = false;
+          this.toast.add({ severity: 'success', summary: 'ยืนยันคุ้มครองแล้ว', detail: 'งานอยู่ในสถานะรอยืนยันกรมธรรม์ (POLICY_PENDING)' });
+          this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
+          this.loadActivities();
+          this.cdr.markForCheck();
+        },
+        error: (e: HttpErrorResponse) => {
+          this.confirmingBinding.set(false);
+          const body = e.error as { message?: string } | null;
+          this.confirmBindingError.set(body?.message ?? 'เกิดข้อผิดพลาดในการยืนยันคุ้มครอง');
+        },
+      });
+    };
+
+    if (this.confirmBinderFile) {
+      this.api.uploadDocument(this.id(), 'OTHER', this.confirmBinderFile).subscribe({
+        next: (doc) => proceedWithConfirm(doc.id),
+        error: () => {
+          this.confirmingBinding.set(false);
+          this.confirmBindingError.set('ไม่สามารถอัปโหลดเอกสาร Binder ได้');
+        },
+      });
+    } else {
+      proceedWithConfirm(this.binding()?.binderDocumentId || undefined);
+    }
+  }
+
+  openRejectBindingDialog(): void {
+    this.rejectBindingReason = '';
+    this.rejectBindingError.set(null);
+    this.showRejectBindingDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRejectBindingDialog(): void {
+    this.showRejectBindingDialog = false;
+    this.rejectBindingReason = '';
+    this.rejectBindingError.set(null);
+    this.cdr.markForCheck();
+  }
+
+  confirmRejectBindingAction(): void {
+    if (!this.rejectBindingReason.trim()) {
+      this.rejectBindingError.set('กรุณาระบุเหตุผลที่บริษัทประกันปฏิเสธ');
+      return;
+    }
+
+    this.rejectingBinding.set(true);
+    this.rejectBindingError.set(null);
+
+    this.api.rejectBinding(this.id(), { reason: this.rejectBindingReason.trim() }).subscribe({
+      next: (updatedBinding) => {
+        this.binding.set(updatedBinding);
+        this.rejectingBinding.set(false);
+        this.showRejectBindingDialog = false;
+        this.toast.add({ severity: 'warn', summary: 'บันทึกการปฏิเสธแล้ว', detail: 'สถานะงานกลับไปก่อนหน้า และสามารถแก้ไขเพื่อยื่นใหม่ได้' });
+        this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
+        this.loadActivities();
+        this.cdr.markForCheck();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.rejectingBinding.set(false);
+        const body = e.error as { message?: string } | null;
+        this.rejectBindingError.set(body?.message ?? 'เกิดข้อผิดพลาดในการปฏิเสธ Binding');
       },
     });
   }
@@ -4654,18 +5334,146 @@ export class JobDetailPage implements OnInit, OnDestroy {
   doIssuePolicy(): void {
     this.issuingPolicy.set(true);
     this.policyError.set(null);
-    this.api.issuePolicy(this.id(), { remark: this.issuePolicyRemark || undefined }).subscribe({
+    this.api.issuePolicy(this.id(), {
+      remark: this.issuePolicyRemark || undefined,
+      sumInsured: this.issuePolicySumInsured || undefined,
+      deductible: this.issuePolicyDeductible || undefined,
+    }).subscribe({
       next: (pol) => {
         this.policy.set(pol);
         this.issuingPolicy.set(false);
-        this.toast.add({ severity: 'success', summary: 'ออกกรมธรรม์แล้ว', detail: pol.policyNo });
+        this.toast.add({ severity: 'success', summary: 'ออกกรมธรรม์แล้ว', detail: `${pol.policyNo} — สถานะงาน CLOSED เรียบร้อย` });
         this.api.get(this.id()).subscribe({ next: (job) => this.job.set(job) });
         this.loadActivities();
       },
       error: (e: HttpErrorResponse) => {
         this.issuingPolicy.set(false);
         const body = e.error as { message?: string } | null;
-        this.policyError.set(body?.message ?? 'เกิดข้อผิดพลาด');
+        this.policyError.set(body?.message ?? 'เกิดข้อผิดพลาดในการออกกรมธรรม์');
+      },
+    });
+  }
+
+  openAttachPolicyDocDialog(): void {
+    this.policyDocFile = null;
+    this.attachPolicyDocError.set(null);
+    this.showAttachPolicyDocDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeAttachPolicyDocDialog(): void {
+    this.showAttachPolicyDocDialog = false;
+    this.policyDocFile = null;
+    this.attachPolicyDocError.set(null);
+    this.cdr.markForCheck();
+  }
+
+  onPolicyDocFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.policyDocFile = input.files[0];
+    }
+  }
+
+  confirmAttachPolicyDoc(): void {
+    if (!this.policyDocFile) {
+      this.attachPolicyDocError.set('กรุณาเลือกไฟล์เอกสารกรมธรรม์');
+      return;
+    }
+    const pol = this.policy();
+    if (!pol) return;
+
+    this.attachingPolicyDoc.set(true);
+    this.attachPolicyDocError.set(null);
+
+    // 1. Upload document as POLICY type
+    this.api.uploadDocument(this.id(), 'POLICY', this.policyDocFile).subscribe({
+      next: (uploadedDoc) => {
+        // 2. Update policy with policyDocumentId
+        this.api.updatePolicy(pol.id, { policyDocumentId: uploadedDoc.id }).subscribe({
+          next: (updatedPolicy) => {
+            this.policy.set(updatedPolicy);
+            this.attachingPolicyDoc.set(false);
+            this.showAttachPolicyDocDialog = false;
+            this.toast.add({ severity: 'success', summary: 'แนบเอกสารกรมธรรม์เรียบร้อย' });
+            this.loadDocuments();
+            this.loadActivities();
+            this.cdr.markForCheck();
+          },
+          error: (e: HttpErrorResponse) => {
+            this.attachingPolicyDoc.set(false);
+            const body = e.error as { message?: string } | null;
+            this.attachPolicyDocError.set(body?.message ?? 'ไม่สามารถอัปเดตกักเอกสารกรมธรรม์ได้');
+          },
+        });
+      },
+      error: () => {
+        this.attachingPolicyDoc.set(false);
+        this.attachPolicyDocError.set('ไม่สามารถอัปโหลดไฟล์เอกสารกรมธรรม์ได้');
+      },
+    });
+  }
+
+  // ─── Job Cancellation Actions V2 ──────────────────────────────────────────
+
+  doApproveCancelJob(): void {
+    this.isProcessingCancelApprove.set(true);
+    this.api.approveCancelJob(this.id()).subscribe({
+      next: (updatedJob) => {
+        this.job.set(updatedJob);
+        this.isProcessingCancelApprove.set(false);
+        this.toast.add({ severity: 'success', summary: 'อนุมัติการยกเลิกงานแล้ว', detail: 'งานถูกยกเลิกเรียบร้อย' });
+        this.loadActivities();
+        this.loadPolicy();
+        if (this.binding()) {
+          this.api.getBinding(this.id()).subscribe({ next: (b) => this.binding.set(b) });
+        }
+        this.cdr.markForCheck();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.isProcessingCancelApprove.set(false);
+        const body = e.error as { message?: string } | null;
+        this.toast.add({ severity: 'error', summary: 'เกิดข้อผิดพลาด', detail: body?.message ?? 'ไม่สามารถอนุมัติการยกเลิกได้' });
+      },
+    });
+  }
+
+  openRejectCancelJobDialog(): void {
+    this.rejectCancelJobReason = '';
+    this.rejectCancelJobError.set(null);
+    this.showRejectCancelJobDialog = true;
+    this.cdr.markForCheck();
+  }
+
+  closeRejectCancelJobDialog(): void {
+    this.showRejectCancelJobDialog = false;
+    this.rejectCancelJobReason = '';
+    this.rejectCancelJobError.set(null);
+    this.cdr.markForCheck();
+  }
+
+  confirmRejectCancelJob(): void {
+    if (!this.rejectCancelJobReason.trim()) {
+      this.rejectCancelJobError.set('กรุณากรอกเหตุผลในการปฏิเสธ');
+      return;
+    }
+
+    this.isProcessingCancelReject.set(true);
+    this.rejectCancelJobError.set(null);
+
+    this.api.rejectCancelJob(this.id(), { reason: this.rejectCancelJobReason.trim() }).subscribe({
+      next: (updatedJob) => {
+        this.job.set(updatedJob);
+        this.isProcessingCancelReject.set(false);
+        this.showRejectCancelJobDialog = false;
+        this.toast.add({ severity: 'info', summary: 'ปฏิเสธคำขอยกเลิกงานแล้ว' });
+        this.loadActivities();
+        this.cdr.markForCheck();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.isProcessingCancelReject.set(false);
+        const body = e.error as { message?: string } | null;
+        this.rejectCancelJobError.set(body?.message ?? 'ไม่สามารถปฏิเสธคำขอยกเลิกได้');
       },
     });
   }

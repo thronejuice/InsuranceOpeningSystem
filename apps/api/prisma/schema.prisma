@@ -51,6 +51,7 @@ model User {
   createdProposals       Proposal[]         @relation("proposal_creator")
   requestedApprovals     Approval[]         @relation("approval_requester")
   approvedApprovals      Approval[]         @relation("approval_approver")
+  resubmittedApprovals   Approval[]         @relation("approval_resubmitter")
   confirmedBindings      Binding[]          @relation("binding_confirmer")
   createdPolicies        Policy[]           @relation("policy_creator")
   createdPayments        Payment[]          @relation("payment_creator")
@@ -311,8 +312,9 @@ model InsuranceType {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  products InsuranceProduct[]
-  jobs     Job[]
+  products      InsuranceProduct[]
+  jobs          Job[]
+  approvalRules ApprovalRule[]
 
   @@map("insurance_types")
 }
@@ -336,6 +338,7 @@ model InsuranceProduct {
   documentChecklist DocumentChecklist[]
   commissionRates   CommissionRate[]
   jobs              Job[]
+  approvalRules     ApprovalRule[]
 
   @@index([insuranceTypeId])
   @@map("insurance_products")
@@ -365,6 +368,7 @@ model InsuranceCompany {
   quotations      Quotation[]
   policies        Policy[]
   commissionRates CommissionRate[]
+  bindings        Binding[]
 
   @@index([status])
   @@map("insurance_companies")
@@ -525,9 +529,20 @@ enum ApprovalRoleTarget {
   @@map("approval_role_target")
 }
 
+enum ApprovalEntityType {
+  JOB
+  ENDORSEMENT
+
+  @@map("approval_entity_type")
+}
+
 model ApprovalRule {
   id                String                    @id @default(uuid(7)) @db.Uuid
   name              String
+  entityType        ApprovalEntityType        @default(JOB) @map("entity_type")
+  productId         String?                   @map("product_id") @db.Uuid
+  insuranceTypeId   String?                   @map("insurance_type_id") @db.Uuid
+  riskLevel         String?                   @map("risk_level")
   conditionField    ApprovalConditionField    @map("condition_field")
   conditionOperator ApprovalConditionOperator @map("condition_operator")
   thresholdValue    Decimal                   @map("threshold_value") @db.Decimal(15, 2)
@@ -537,6 +552,12 @@ model ApprovalRule {
   createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  product           InsuranceProduct?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  insuranceType     InsuranceType?            @relation(fields: [insuranceTypeId], references: [id], onDelete: SetNull)
+
+  @@index([entityType])
+  @@index([productId])
+  @@index([insuranceTypeId])
   @@map("approval_rules")
 }
 
@@ -640,6 +661,14 @@ model Job {
   deletedAt           DateTime?   @map("deleted_at") @db.Timestamptz(3)
   createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // Cancel request (D-26)
+  cancelRequestedAt   DateTime?   @map("cancel_requested_at") @db.Timestamptz(3)
+  cancelRequestedById String?     @map("cancel_requested_by_id") @db.Uuid
+  cancelRequestReason String?     @map("cancel_request_reason")
+  cancellationReason  String?     @map("cancellation_reason")
+  cancelledAt         DateTime?   @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById       String?     @map("cancelled_by_id") @db.Uuid
 
   customer            Customer               @relation(fields: [customerId], references: [id])
   insuranceType       InsuranceType          @relation(fields: [insuranceTypeId], references: [id])
@@ -804,6 +833,8 @@ model Document {
   uploadedBy User? @relation("document_uploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   verifiedBy User? @relation("document_verifier", fields: [verifiedById], references: [id], onDelete: SetNull)
   proposalAcceptances ProposalAcceptance[]
+  binderDocuments     Binding[]
+  policyDocuments     Policy[]            @relation("policy_document")
 
   @@index([jobId, status])
   @@index([jobId, documentType])
@@ -1098,15 +1129,20 @@ model Approval {
   requestedAt   DateTime           @default(now()) @map("requested_at") @db.Timestamptz(3)
   approvedAt    DateTime?          @map("approved_at") @db.Timestamptz(3)
   rejectedAt    DateTime?          @map("rejected_at") @db.Timestamptz(3)
-  reason        String?
-  remark        String?
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  reason          String?
+  rejectReason    String?            @map("reject_reason")
+  comment         String?
+  remark          String?
+  resubmittedAt   DateTime?          @map("resubmitted_at") @db.Timestamptz(3)
+  resubmittedById String?            @map("resubmitted_by_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  job         Job      @relation(fields: [jobId], references: [id])
-  proposal    Proposal @relation(fields: [proposalId], references: [id])
-  requestedBy User?    @relation("approval_requester", fields: [requestedById], references: [id], onDelete: SetNull)
-  approver    User?    @relation("approval_approver", fields: [approverId], references: [id], onDelete: SetNull)
+  job           Job      @relation(fields: [jobId], references: [id])
+  proposal      Proposal @relation(fields: [proposalId], references: [id])
+  requestedBy   User?    @relation("approval_requester", fields: [requestedById], references: [id], onDelete: SetNull)
+  approver      User?    @relation("approval_approver", fields: [approverId], references: [id], onDelete: SetNull)
+  resubmittedBy User?    @relation("approval_resubmitter", fields: [resubmittedById], references: [id], onDelete: SetNull)
 
   @@index([jobId])
   @@index([status])
@@ -1127,35 +1163,62 @@ model IdempotencyKey {
 
 // ─── Binding (spec §17) ──────────────────────────────────────────────────────
 
-model Binding {
-  id             String    @id @default(uuid(7)) @db.Uuid
-  jobId          String    @unique @map("job_id") @db.Uuid
-  quotationId    String    @map("quotation_id") @db.Uuid
-  bindingDate    DateTime  @map("binding_date") @db.Date
-  effectiveDate  DateTime  @map("effective_date") @db.Date
-  expiryDate     DateTime? @map("expiry_date") @db.Date
-  confirmedById  String?   @map("confirmed_by_id") @db.Uuid
-  remark         String?
-  idempotencyKey String?   @unique @map("idempotency_key")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+enum BindingStatus {
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+  CANCELLED
 
-  job         Job       @relation(fields: [jobId], references: [id])
-  quotation   Quotation @relation(fields: [quotationId], references: [id])
-  confirmedBy User?     @relation("binding_confirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
+  @@map("binding_status")
+}
+
+model Binding {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  jobId            String        @unique @map("job_id") @db.Uuid
+  quotationId      String        @map("quotation_id") @db.Uuid
+  status           BindingStatus @default(SUBMITTED)
+  bindingDate      DateTime      @map("binding_date") @db.Date
+  effectiveDate    DateTime      @map("effective_date") @db.Date
+  expiryDate       DateTime?     @map("expiry_date") @db.Date
+  binderNumber     String?       @map("binder_number")
+  binderDate       DateTime?     @map("binder_date") @db.Date
+  insurerId        String?       @map("insurer_id") @db.Uuid
+  premium          Decimal?      @map("premium") @db.Decimal(15, 2)
+  paymentCondition String?       @map("payment_condition")
+  underwriter      String?
+  binderDocumentId String?       @map("binder_document_id") @db.Uuid
+  confirmedById    String?       @map("confirmed_by_id") @db.Uuid
+  remark           String?
+  rejectionReason  String?       @map("rejection_reason")
+  cancelledAt      DateTime?     @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById    String?       @map("cancelled_by_id") @db.Uuid
+  idempotencyKey   String?       @unique @map("idempotency_key")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  job            Job               @relation(fields: [jobId], references: [id])
+  quotation      Quotation         @relation(fields: [quotationId], references: [id])
+  insurer        InsuranceCompany? @relation(fields: [insurerId], references: [id], onDelete: SetNull)
+  binderDocument Document?         @relation(fields: [binderDocumentId], references: [id], onDelete: SetNull)
+  confirmedBy    User?             @relation("binding_confirmer", fields: [confirmedById], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
+  @@index([insurerId])
+  @@index([status])
   @@map("bindings")
 }
 
 // ─── Policy (spec §18) ───────────────────────────────────────────────────────
 
 enum PolicyStatus {
+  DRAFT
   PENDING
-  ISSUED
   ACTIVE
-  CANCELLED
+  EXPIRING
   EXPIRED
+  CANCEL_REQUESTED
+  CANCELLED
   RENEWED
 
   @@map("policy_status")
@@ -1171,6 +1234,8 @@ model Policy {
   effectiveDate      DateTime     @map("effective_date") @db.Date
   expiryDate         DateTime?    @map("expiry_date") @db.Date
   sumInsured         Decimal?     @map("sum_insured") @db.Decimal(15, 2)
+  deductible         Decimal?     @map("deductible") @db.Decimal(15, 2)
+  policyDocumentId   String?      @map("policy_document_id") @db.Uuid
   grossPremium       Decimal      @default(0) @map("gross_premium") @db.Decimal(15, 2)
   discount           Decimal      @default(0) @db.Decimal(15, 2)
   netPremium         Decimal      @default(0) @map("net_premium") @db.Decimal(15, 2)
@@ -1190,6 +1255,7 @@ model Policy {
   job              Job              @relation(fields: [jobId], references: [id])
   quotation        Quotation        @relation(fields: [quotationId], references: [id])
   insuranceCompany InsuranceCompany @relation(fields: [insuranceCompanyId], references: [id])
+  policyDocument   Document?        @relation("policy_document", fields: [policyDocumentId], references: [id], onDelete: SetNull)
   createdBy        User?            @relation("policy_creator", fields: [createdById], references: [id], onDelete: SetNull)
   coverages        PolicyCoverage[]
   payments         Payment[]
@@ -1197,6 +1263,7 @@ model Policy {
   renewals         Renewal[]        @relation("renewal_previous_policy")
 
   @@index([status])
+  @@index([policyDocumentId])
   @@map("policies")
 }
 
@@ -1427,6 +1494,8 @@ enum NotificationType {
   UNDERWRITING_INFO_REQUIRED
   UNDERWRITING_REJECTED
   QUOTATION_EXPIRING
+  APPROVAL_REJECTED
+  POLICY_EXPIRING
 
   @@map("notification_type")
 }

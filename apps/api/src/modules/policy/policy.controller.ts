@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { PolicyService } from './policy.service.js';
 import { BindDto } from './dto/bind.dto.js';
+import { ConfirmBindingDto } from './dto/confirm-binding.dto.js';
+import { RejectBindingDto } from './dto/reject-binding.dto.js';
 import { CreatePolicyDto } from './dto/create-policy.dto.js';
 import { UpdatePolicyDto } from './dto/update-policy.dto.js';
 import { ListPolicyDto } from './dto/list-policy.dto.js';
@@ -19,6 +21,12 @@ export class PolicyController {
     return this.service.getPreconditions(jobId);
   }
 
+  @Get('jobs/:jobId/bind')
+  @RequirePermissions('job.view')
+  getBinding(@Param('jobId', ParseUUIDPipe) jobId: string) {
+    return this.service.getBindingByJobId(jobId);
+  }
+
   @Post('jobs/:jobId/bind')
   @RequirePermissions('policy.create')
   bind(
@@ -27,6 +35,24 @@ export class PolicyController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.service.bind(jobId, dto, idempotencyKey);
+  }
+
+  @Post('jobs/:jobId/bind/confirm')
+  @RequirePermissions('policy.create')
+  confirmBinding(
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Body() dto: ConfirmBindingDto,
+  ) {
+    return this.service.confirmBinding(jobId, dto);
+  }
+
+  @Post('jobs/:jobId/bind/reject')
+  @RequirePermissions('policy.create')
+  insurerRejectBinding(
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Body() dto: RejectBindingDto,
+  ) {
+    return this.service.insurerRejectBinding(jobId, dto);
   }
 
   @Get('policies')
@@ -57,5 +83,11 @@ export class PolicyController {
     @Body() dto: UpdatePolicyDto,
   ) {
     return this.service.updatePolicy(id, dto);
+  }
+
+  @Post('policies/process-daily')
+  @RequirePermissions('policy.update')
+  processDaily() {
+    return this.service.maintainPolicyStatuses();
   }
 }

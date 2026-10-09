@@ -1,17 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsNumberString, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
-export class BindDto {
-  @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  bindingDate?: string;
-
-  @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  expiryDate?: string;
-
+export class ConfirmBindingDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
@@ -53,3 +43,4 @@ export class BindDto {
   @MaxLength(500)
   remark?: string;
 }
+

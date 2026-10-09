@@ -46,6 +46,18 @@ export class PolicyRepository {
     return this.db.policy.update({ where: { id }, data, include: PolicyRepository.POLICY_INCLUDE });
   }
 
+  findPoliciesForDailyStatusCheck() {
+    return this.db.policy.findMany({
+      where: {
+        status: { in: ['PENDING', 'ACTIVE', 'EXPIRING'] },
+      },
+      include: {
+        ...PolicyRepository.POLICY_INCLUDE,
+        job: { select: { id: true, jobNo: true, agentId: true, brokerStaffId: true } },
+      },
+    });
+  }
+
   findBindingByJobId(jobId: string) {
     return this.db.binding.findUnique({ where: { jobId } });
   }
@@ -54,8 +66,16 @@ export class PolicyRepository {
     return this.db.binding.findUnique({ where: { idempotencyKey: key } });
   }
 
+  findBindingById(id: string) {
+    return this.db.binding.findUnique({ where: { id } });
+  }
+
   createBinding(data: Prisma.BindingCreateInput) {
     return this.db.binding.create({ data });
+  }
+
+  updateBinding(id: string, data: Prisma.BindingUpdateInput) {
+    return this.db.binding.update({ where: { id }, data });
   }
 
   saveIdempotencyKey(key: string, entityType: string, entityId: string) {

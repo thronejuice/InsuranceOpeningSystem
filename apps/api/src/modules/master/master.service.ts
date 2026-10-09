@@ -272,6 +272,10 @@ export class MasterService {
   createApprovalRule(dto: CreateApprovalRuleDto) {
     return this.repo.createApprovalRule({
       name: dto.name,
+      entityType: dto.entityType ?? 'JOB',
+      product: dto.productId ? { connect: { id: dto.productId } } : undefined,
+      insuranceType: dto.insuranceTypeId ? { connect: { id: dto.insuranceTypeId } } : undefined,
+      riskLevel: dto.riskLevel ?? null,
       conditionField: dto.conditionField,
       conditionOperator: dto.conditionOperator,
       thresholdValue: dto.thresholdValue,

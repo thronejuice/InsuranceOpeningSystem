@@ -12,6 +12,10 @@ export interface ApprovalResponse {
   approverId: string | null;
   status: string;
   reason: string | null;
+  rejectReason?: string | null;
+  comment?: string | null;
+  resubmittedAt?: string | null;
+  resubmittedById?: string | null;
   requestedAt: string;
   approvedAt: string | null;
   rejectedAt: string | null;
@@ -31,6 +35,10 @@ export function toApprovalResponse(
     approverId?: string | null;
     status: string;
     reason: string | null;
+    rejectReason?: string | null;
+    comment?: string | null;
+    resubmittedAt?: Date | null;
+    resubmittedById?: string | null;
     requestedAt?: Date | null;
     approvedAt?: Date | null;
     rejectedAt?: Date | null;
@@ -78,6 +86,10 @@ export function toApprovalResponse(
     approverId: a.approverId ?? null,
     status: a.status,
     reason: a.reason,
+    rejectReason: a.rejectReason ?? null,
+    comment: a.comment ?? null,
+    resubmittedAt: a.resubmittedAt ? (a.resubmittedAt as Date).toISOString() : null,
+    resubmittedById: a.resubmittedById ?? null,
     requestedAt: a.requestedAt ? (a.requestedAt as Date).toISOString() : (a.createdAt ? (a.createdAt as Date).toISOString() : now),
     approvedAt: a.approvedAt ? (a.approvedAt as Date).toISOString() : null,
     rejectedAt: a.rejectedAt ? (a.rejectedAt as Date).toISOString() : null,

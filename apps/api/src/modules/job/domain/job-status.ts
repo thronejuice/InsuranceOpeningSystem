@@ -33,9 +33,9 @@ export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
   WAITING_APPROVAL:    ['APPROVED', 'APPROVAL_REJECTED'],
   APPROVAL_REJECTED:   ['WAITING_APPROVAL', 'QUOTATION_RECEIVED', 'CANCELLED'],
   APPROVED:            ['BINDING'],
-  BINDING:             ['POLICY_PENDING'],
+  BINDING:             ['POLICY_PENDING', 'APPROVED', 'CUSTOMER_ACCEPTED'],
   POLICY_PENDING:      ['POLICY_ISSUED'],
-  POLICY_ISSUED:       ['RENEWAL', 'CLOSED'],
+  POLICY_ISSUED:       ['CLOSED'],
   CUSTOMER_REJECTED:   ['CLOSED'],
   CANCELLED:           [],
   CLOSED:              [],
@@ -45,6 +45,11 @@ export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
 
 export const NON_CANCELLABLE: JobStatus[] = [
   'POLICY_ISSUED', 'CANCELLED', 'CLOSED', 'EXPIRED', 'RENEWAL',
+];
+
+/** Statuses that require manager approval before cancelling (D-26) */
+export const CANCEL_REQUIRES_APPROVAL_STATUSES: JobStatus[] = [
+  'BINDING', 'POLICY_PENDING',
 ];
 
 export function canTransition(from: JobStatus, to: JobStatus): boolean {
@@ -57,6 +62,9 @@ export type JobAction =
   | 'requestInfo'
   | 'resume'
   | 'cancel'
+  | 'requestCancel'
+  | 'approveCancel'
+  | 'rejectCancel'
   | 'close'
   | 'requestQuotation'
   | 'recordQuotation'
@@ -65,8 +73,11 @@ export type JobAction =
   | 'acceptProposal'
   | 'rejectProposal'
   | 'revise'
+  | 'resubmit'
   | 'approve'
   | 'bind'
+  | 'confirmBinding'
+  | 'insurerRejectBinding'
   | 'issuePolicy';
 
 const STATUS_ACTIONS: Partial<Record<JobStatus, JobAction[]>> = {
@@ -80,9 +91,9 @@ const STATUS_ACTIONS: Partial<Record<JobStatus, JobAction[]>> = {
   WAITING_CUSTOMER:    ['acceptProposal', 'rejectProposal', 'revise'],
   CUSTOMER_ACCEPTED:   ['bind'],
   WAITING_APPROVAL:    ['approve'],
-  APPROVAL_REJECTED:   ['revise'],
+  APPROVAL_REJECTED:   ['resubmit', 'revise'],
   APPROVED:            ['bind'],
-  BINDING:             [],
+  BINDING:             ['confirmBinding', 'insurerRejectBinding'],
   POLICY_PENDING:      ['issuePolicy'],
   POLICY_ISSUED:       ['close'],
   CUSTOMER_REJECTED:   ['close'],
@@ -95,10 +106,17 @@ const ACTION_PERMISSION: Partial<Record<JobAction, string>> = {
   recordQuotation: 'quotation.update',
   selectQuotation: 'quotation.select',
   approve: 'approval.approve',
+  resubmit: 'approval.manage',
+  bind: 'policy.create',
+  confirmBinding: 'policy.create',
+  insurerRejectBinding: 'policy.create',
+  requestCancel: 'job.cancel',
+  approveCancel: 'job.cancel',
+  rejectCancel: 'job.cancel',
 };
 
 /** Actions decided by a checker who does not own the job, so they skip the write-access check. */
-const CHECKER_ACTIONS: JobAction[] = ['approve'];
+const CHECKER_ACTIONS: JobAction[] = ['approve', 'approveCancel', 'rejectCancel'];
 
 export function getAllowedActions(status: JobStatus, permissions: string[], canWrite: boolean): JobAction[] {
   const result = [...(STATUS_ACTIONS[status] ?? [])].filter((action) => {
@@ -106,7 +124,13 @@ export function getAllowedActions(status: JobStatus, permissions: string[], canW
     const required = ACTION_PERMISSION[action];
     return !required || permissions.includes(required);
   });
-  if (canWrite && !NON_CANCELLABLE.includes(status) && permissions.includes('job.cancel')) result.push('cancel');
+  if (canWrite && !NON_CANCELLABLE.includes(status)) {
+    if (CANCEL_REQUIRES_APPROVAL_STATUSES.includes(status)) {
+      if (permissions.includes('job.cancel')) result.push('requestCancel');
+    } else {
+      if (permissions.includes('job.cancel')) result.push('cancel');
+    }
+  }
   return result;
 }
 

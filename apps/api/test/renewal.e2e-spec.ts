@@ -164,7 +164,7 @@ describe('Renewal API', () => {
         agentId: renewer.id,
         effectiveDate: new Date('2026-01-01'),
         expiryDate: new Date('2027-01-01'),
-        status: 'POLICY_ISSUED',
+        status: 'CLOSED',
         version: 1,
       },
     });
@@ -243,9 +243,9 @@ describe('Renewal API', () => {
     expect(res.body.data.newJobId).toBeTruthy();
     expect(res.body.data.status).toBe('IN_PROGRESS');
 
-    // Verify original job transitioned to RENEWAL
+    // Verify original job remains CLOSED (D-19: renewals start from Policy, leaving old Job untouched)
     const oldJob = await prisma.job.findFirst({ where: { id: jobId } });
-    expect(oldJob?.status).toBe('RENEWAL');
+    expect(oldJob?.status).toBe('CLOSED');
 
     // Verify new job links back to previous policy (BR-013)
     const newJob = await prisma.job.findFirst({ where: { id: res.body.data.newJobId } });

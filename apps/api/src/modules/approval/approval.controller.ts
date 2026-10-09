@@ -4,6 +4,7 @@ import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { ApprovalService } from './approval.service.js';
 import { ApproveApprovalDto } from './dto/approve-approval.dto.js';
 import { RejectApprovalDto } from './dto/reject-approval.dto.js';
+import { ResubmitApprovalDto } from './dto/resubmit-approval.dto.js';
 import { ListApprovalDto } from './dto/list-approval.dto.js';
 
 @ApiTags('approvals')
@@ -34,5 +35,14 @@ export class ApprovalController {
     @Body() dto: RejectApprovalDto,
   ) {
     return this.service.reject(id, dto);
+  }
+
+  @Post(':id/resubmit')
+  @RequirePermissions('approval.manage')
+  resubmit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResubmitApprovalDto,
+  ) {
+    return this.service.resubmit(id, dto);
   }
 }

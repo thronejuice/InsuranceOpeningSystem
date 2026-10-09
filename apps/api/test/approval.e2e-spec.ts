@@ -27,7 +27,7 @@ describe('Approval API (e2e)', () => {
 
   const http = () => request(app.getHttpServer());
 
-  async function prepareApproval(grossPremium: string): Promise<{ approvalId: string; jobId: string }> {
+  async function prepareApproval(grossPremium: string, discount = '0'): Promise<{ approvalId: string; jobId: string }> {
     const jobRes = await http()
       .post('/api/jobs')
       .set('Authorization', `Bearer ${agentToken}`)
@@ -37,13 +37,13 @@ describe('Approval API (e2e)', () => {
     const quoRes = await http()
       .post(`/api/jobs/${jId}/quotations`)
       .set('Authorization', `Bearer ${agentToken}`)
-      .send({ insuranceCompanyId: companyId, grossPremium, validUntil: '2027-12-31' });
+      .send({ insuranceCompanyId: companyId, grossPremium, discount, validUntil: '2027-12-31' });
     const quoId = quoRes.body.data.id;
 
     const recRes = await http()
       .put(`/api/quotations/${quoId}`)
       .set('Authorization', `Bearer ${agentToken}`)
-      .send({ grossPremium });
+      .send({ grossPremium, discount });
 
     await http()
       .post(`/api/quotations/${quoId}/select`)
@@ -93,6 +93,7 @@ describe('Approval API (e2e)', () => {
       await prisma.document.deleteMany({ where: { jobId: { in: prevJobIds } } });
       await prisma.job.deleteMany({ where: { id: { in: prevJobIds } } });
     }
+    await prisma.approvalRule.deleteMany({ where: { name: { startsWith: PREFIX } } });
     await prisma.insuranceCompany.deleteMany({ where: { code: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.customer.deleteMany({ where: { customerCode: { startsWith: PREFIX.toUpperCase() } } });
     await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
@@ -188,9 +189,21 @@ describe('Approval API (e2e)', () => {
     });
     customerId = customer.id;
 
-    const prepSup = await prepareApproval('50000.00');   // SUPERVISOR-type
+    // Create a SUPERVISOR approval rule for testing SUPERVISOR-type approval
+    await prisma.approvalRule.create({
+      data: {
+        name: `${PREFIX}supervisor_rule`,
+        conditionField: 'DISCOUNT',
+        conditionOperator: 'GT',
+        thresholdValue: '5.00',
+        approverRole: 'SUPERVISOR',
+        sortOrder: 1,
+      },
+    });
+
+    const prepSup = await prepareApproval('50000.00', '3500.00'); // 7% discount -> SUPERVISOR
     approvalSupId = prepSup.approvalId;
-    const prepMgr = await prepareApproval('150000.00');  // MANAGER-type
+    const prepMgr = await prepareApproval('150000.00');           // >= 100k -> MANAGER
     approvalMgrId = prepMgr.approvalId;
   });
 
@@ -334,7 +347,7 @@ describe('Approval API (e2e)', () => {
     expect(res.status).toBe(422);
   });
 
-  it('POST /approvals/:id/reject — MANAGER rejects with reason → 201, job stays WAITING_APPROVAL', async () => {
+  it('POST /approvals/:id/reject — MANAGER rejects with reason → 201, job transitions to APPROVAL_REJECTED', async () => {
     // First verify job is WAITING_APPROVAL
     const approvalRec = await http()
       .get('/api/approvals?status=PENDING')
@@ -351,9 +364,9 @@ describe('Approval API (e2e)', () => {
     expect(res.body.data.status).toBe('REJECTED');
     expect(res.body.data.reason).toBe('เงื่อนไขยังไม่ครบ');
 
-    // Q4: job stays at WAITING_APPROVAL after approval rejection
+    // Day 18 V2: Job transitions to APPROVAL_REJECTED
     const jobRes = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('WAITING_APPROVAL');
+    expect(jobRes.body.data.status).toBe('APPROVAL_REJECTED');
   });
 
   it('POST /approvals/:id/reject — already rejected → 409', async () => {
@@ -362,5 +375,35 @@ describe('Approval API (e2e)', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .send({ reason: 'ซ้ำ' });
     expect(res.status).toBe(409);
+  });
+
+  // ─── POST /approvals/:id/resubmit ─────────────────────────────────────────
+
+  it('POST /approvals/:id/resubmit — agent resubmits rejected approval → 201, new PENDING approval, job WAITING_APPROVAL', async () => {
+    const res = await http()
+      .post(`/api/approvals/${approvalMgrId}/resubmit`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ comment: 'แก้ไขเอกสารเพิ่มเติมแล้วครับ' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('PENDING');
+    expect(res.body.data.id).not.toBe(approvalMgrId);
+
+    // Job returns to WAITING_APPROVAL
+    const newApprovalId = res.body.data.id;
+    const jobId = res.body.data.jobId;
+    const jobRes = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
+    expect(jobRes.body.data.status).toBe('WAITING_APPROVAL');
+
+    // Approve the new approval
+    const approveRes = await http()
+      .post(`/api/approvals/${newApprovalId}/approve`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ comment: 'อนุมัติเรียบร้อยหลังแก้ไข' });
+    expect(approveRes.status).toBe(201);
+    expect(approveRes.body.data.status).toBe('APPROVED');
+
+    // Job should now be APPROVED
+    const jobRes2 = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
+    expect(jobRes2.body.data.status).toBe('APPROVED');
   });
 });

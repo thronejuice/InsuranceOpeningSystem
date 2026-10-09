@@ -46,9 +46,11 @@ const STATUS_MAP: Record<string, { label: string; severity: Severity }> = {
   VERIFIED: { label: 'ตรวจสอบแล้ว', severity: 'success' },
   REJECTED: { label: 'ปฏิเสธ', severity: 'danger' },
 
-  // Underwriting status (V2, spec Day 8)
-  PENDING: { label: 'รอตรวจพิจารณา', severity: 'warn' },
-  INFO_REQUIRED: { label: 'รอข้อมูลเพิ่มเติม', severity: 'warn' },
+  // Policy & Binding status (V2, spec Day 19-20)
+  EXPIRING: { label: 'ใกล้หมดอายุ', severity: 'warn' },
+  CANCEL_REQUESTED: { label: 'ขอยกเลิก', severity: 'warn' },
+  SUBMITTED: { label: 'ยื่นเรื่องแล้ว', severity: 'info' },
+  CONFIRMED: { label: 'ยืนยันแล้ว', severity: 'success' },
 };
 
 @Component({

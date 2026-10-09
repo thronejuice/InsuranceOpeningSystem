@@ -249,6 +249,9 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       await http().post(`/api/jobs/${jobId}/bind`).set('Authorization', `Bearer ${agentToken}`)
         .send({ remark: 'dup policy bind' });
 
+      await http().post(`/api/jobs/${jobId}/bind/confirm`).set('Authorization', `Bearer ${agentToken}`)
+        .send({ binderNumber: 'BIND-DR-01' });
+
       const polRes = await http().post(`/api/jobs/${jobId}/policy`).set('Authorization', `Bearer ${agentToken}`)
         .send({ remark: 'dup policy issue' });
       expect(polRes.status).toBe(201);

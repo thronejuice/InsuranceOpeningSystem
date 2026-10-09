@@ -7,7 +7,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { BusinessException } from '../../common/errors/business.exception.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import { JobRepository } from './job.repository.js';
-import { canTransition, type JobStatus } from './domain/job-status.js';
+import { canTransition, CANCEL_REQUIRES_APPROVAL_STATUSES, type JobStatus } from './domain/job-status.js';
 import { toJobResponse, type JobResponse } from './dto/job.response.js';
 import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { JobRiskService } from './job-risk.service.js';
@@ -39,6 +39,16 @@ export class JobWorkflowService {
     const from = job.status as JobStatus;
     if (!canTransition(from, to)) {
       throw new BusinessException('JOB_INVALID_TRANSITION', `Cannot transition from ${from} to ${to}`, 409);
+    }
+
+    if (to === 'CANCELLED') {
+      if (CANCEL_REQUIRES_APPROVAL_STATUSES.includes(from)) {
+        throw new BusinessException(
+          'JOB_CANCEL_REQUIRES_APPROVAL',
+          `Cannot cancel directly while in ${from}. Submit a cancellation request for manager approval.`,
+          409,
+        );
+      }
     }
 
     // submit (DRAFT→OPEN): check risk fields + optional document check
@@ -74,6 +84,126 @@ export class JobWorkflowService {
 
     const updated = await this.repo.findById(jobId);
     const permissions = this.cls.get('permissions') ?? [];
+    return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
+  }
+
+  @Transactional()
+  async requestCancel(jobId: string, opts: { reason: string }): Promise<JobResponse> {
+    const job = await this.repo.findById(jobId);
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+
+    if (!this.scope.canUpdateJob(job.agentId)) {
+      throw new BusinessException('FORBIDDEN', 'Access denied', 403);
+    }
+
+    const status = job.status as JobStatus;
+    if (!CANCEL_REQUIRES_APPROVAL_STATUSES.includes(status)) {
+      throw new BusinessException(
+        'INVALID_CANCEL_REQUEST',
+        `Job in status ${status} does not require manager approval to cancel. Use direct cancel.`,
+        409,
+      );
+    }
+
+    const userId = this.cls.get('userId')!;
+    await this.txHost.tx.job.update({
+      where: { id: jobId },
+      data: {
+        cancelRequestedAt: new Date(),
+        cancelRequestedById: userId,
+        cancelRequestReason: opts.reason,
+      },
+    });
+
+    await this.audit.log({
+      action: 'REQUEST_CANCEL',
+      entityType: 'JOB',
+      entityId: jobId,
+      jobId,
+      description: opts.reason,
+    });
+
+    const updated = await this.repo.findById(jobId);
+    const permissions = this.cls.get('permissions') ?? [];
+    return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
+  }
+
+  @Transactional()
+  async approveCancel(jobId: string, opts: { reason?: string } = {}): Promise<JobResponse> {
+    const job = await this.repo.findById(jobId);
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+
+    const permissions = this.cls.get('permissions') ?? [];
+    if (!permissions.includes('job.cancel')) {
+      throw new BusinessException('FORBIDDEN', 'Access denied: job.cancel required to approve cancellation', 403);
+    }
+
+    const status = job.status as JobStatus;
+    if (!CANCEL_REQUIRES_APPROVAL_STATUSES.includes(status)) {
+      throw new BusinessException(
+        'INVALID_CANCEL_APPROVAL',
+        `Job in status ${status} is not pending cancel approval`,
+        409,
+      );
+    }
+
+    if (!job.cancelRequestedAt) {
+      throw new BusinessException(
+        'NO_PENDING_CANCEL_REQUEST',
+        'No pending cancel request found for this job',
+        409,
+      );
+    }
+
+    const userId = this.cls.get('userId')!;
+    if (job.cancelRequestedById === userId) {
+      throw new BusinessException('CANCEL_SELF_APPROVE', 'Cannot approve your own cancel request', 422);
+    }
+
+    const cancellationReason = opts.reason || job.cancelRequestReason || 'Approved cancellation';
+
+    await this.transitionInTx(job, 'CANCELLED', userId, { reason: cancellationReason });
+
+    const updated = await this.repo.findById(jobId);
+    return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
+  }
+
+  @Transactional()
+  async rejectCancel(jobId: string, opts: { reason: string }): Promise<JobResponse> {
+    const job = await this.repo.findById(jobId);
+    if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
+
+    const permissions = this.cls.get('permissions') ?? [];
+    if (!permissions.includes('job.cancel')) {
+      throw new BusinessException('FORBIDDEN', 'Access denied: job.cancel required to reject cancellation request', 403);
+    }
+
+    if (!job.cancelRequestedAt) {
+      throw new BusinessException(
+        'NO_PENDING_CANCEL_REQUEST',
+        'No pending cancel request found for this job',
+        409,
+      );
+    }
+
+    await this.txHost.tx.job.update({
+      where: { id: jobId },
+      data: {
+        cancelRequestedAt: null,
+        cancelRequestedById: null,
+        cancelRequestReason: null,
+      },
+    });
+
+    await this.audit.log({
+      action: 'REJECT_CANCEL',
+      entityType: 'JOB',
+      entityId: jobId,
+      jobId,
+      description: opts.reason,
+    });
+
+    const updated = await this.repo.findById(jobId);
     return toJobResponse(updated!, permissions, this.scope.canUpdateJob(updated!.agentId));
   }
 
@@ -130,6 +260,7 @@ export class JobWorkflowService {
       }
     }
 
+    const isCancelling = to === 'CANCELLED';
     const { count } = await this.txHost.tx.job.updateMany({
       where: { id: job.id, version: job.version, status: job.status as JobStatus },
       data: {
@@ -137,11 +268,33 @@ export class JobWorkflowService {
         version: { increment: 1 },
         updatedById: userId,
         ...(to === 'QUOTATION_RECEIVED' ? { selectedQuotationId: null } : {}),
+        ...(isCancelling
+          ? {
+              cancelledAt: new Date(),
+              cancelledById: userId,
+              cancellationReason: opts.reason,
+            }
+          : {}),
       },
     });
 
     if (count === 0) {
       throw new BusinessException('CONCURRENT_MODIFICATION', 'Job was modified by another user', 409);
+    }
+
+    // If job is cancelled, mark active binding as CANCELLED (Day 19 / D-26)
+    if (isCancelling && this.txHost.tx.binding?.updateMany) {
+      await this.txHost.tx.binding.updateMany({
+        where: {
+          jobId: job.id,
+          status: { in: ['PENDING', 'SUBMITTED', 'CONFIRMED'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelledById: userId,
+        },
+      });
     }
 
     await this.txHost.tx.jobStatusHistory.create({

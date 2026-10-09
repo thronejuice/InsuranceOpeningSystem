@@ -275,49 +275,49 @@
 ## Phase 3 — Approval, Binding, Policy
 
 ### Day 18 — Approval V2
-- [ ] ApprovalRule: เงื่อนไขใหม่ productId, insuranceTypeId, riskLevel; `entityType` (JOB / ENDORSEMENT)
-- [ ] Seed ใหม่ (D-8): < 100,000 ไม่ต้องอนุมัติ; SUPERVISOR ได้ `approval.approve`
-- [ ] `reject` → Job `APPROVAL_REJECTED` (เก็บ rejectReason, comment, rejectedBy/At) — แทน Q4 ของ V1
-- [ ] `resubmit` (reason + เอกสารแนบ) → Approval ใหม่ PENDING, Job WAITING_APPROVAL (เก็บ resubmittedBy/At)
-- [ ] Notification APPROVAL_REQUESTED (email), APPROVAL_REJECTED
+- [x] ApprovalRule: เงื่อนไขใหม่ productId, insuranceTypeId, riskLevel; `entityType` (JOB / ENDORSEMENT)
+- [x] Seed ใหม่ (D-8): < 100,000 ไม่ต้องอนุมัติ; SUPERVISOR ได้ `approval.approve`
+- [x] `reject` → Job `APPROVAL_REJECTED` (เก็บ rejectReason, comment, rejectedBy/At) — แทน Q4 ของ V1
+- [x] `resubmit` (reason + เอกสารแนบ) → Approval ใหม่ PENDING, Job WAITING_APPROVAL (เก็บ resubmittedBy/At)
+- [x] Notification APPROVAL_REQUESTED (email), APPROVAL_REJECTED
 
 **Done เมื่อ:**
-- [ ] unit test rule eval ใหม่; e2e: reject → APPROVAL_REJECTED → resubmit → approve; reject → revise; เบี้ย 50,000 ไม่ต้องอนุมัติ
+- [x] unit test rule eval ใหม่; e2e: reject → APPROVAL_REJECTED → resubmit → approve; reject → revise; เบี้ย 50,000 ไม่ต้องอนุมัติ
 
 ### Day 19 — Binding lifecycle
-- [ ] Binding status PENDING/SUBMITTED/CONFIRMED/REJECTED/CANCELLED + fields binderNumber, binderDate, insurer, effectiveDate, premium, paymentCondition, underwriter, binderDocument, remark
-- [ ] `bind` → SUBMITTED, Job คง BINDING (ตัด auto hop ไป POLICY_PENDING); ต้องเอกสาร VERIFIED (D-22)
-- [ ] `confirmBinding` → CONFIRMED, Job POLICY_PENDING; `insurerRejectBinding` (reason) → REJECTED, Job กลับสถานะก่อน bind
-- [ ] Job cancel V2 (D-26): ก่อน BINDING ทันที; BINDING/POLICY_PENDING → `requestCancel` + `approveCancel`/`rejectCancel` (MANAGER) เก็บ reason, requestedBy, approvedBy, cancelledAt; binding → CANCELLED
+- [x] Binding status PENDING/SUBMITTED/CONFIRMED/REJECTED/CANCELLED + fields binderNumber, binderDate, insurer, effectiveDate, premium, paymentCondition, underwriter, binderDocument, remark
+- [x] `bind` → SUBMITTED, Job คง BINDING (ตัด auto hop ไป POLICY_PENDING); ต้องเอกสาร VERIFIED (D-22)
+- [x] `confirmBinding` → CONFIRMED, Job POLICY_PENDING; `insurerRejectBinding` (reason) → REJECTED, Job กลับสถานะก่อน bind
+- [x] Job cancel V2 (D-26): ก่อน BINDING ทันที; BINDING/POLICY_PENDING → `requestCancel` + `approveCancel`/`rejectCancel` (MANAGER) เก็บ reason, requestedBy, approvedBy, cancelledAt; binding → CANCELLED
 
 **Done เมื่อ:**
-- [ ] e2e: bind → confirm → POLICY_PENDING; insurer reject → bind ใหม่ได้; cancel ที่ BINDING ต้องรออนุมัติ
+- [x] e2e: bind → confirm → POLICY_PENDING; insurer reject → bind ใหม่ได้; cancel ที่ BINDING ต้องรออนุมัติ
 
 ### Day 20 — Policy lifecycle
-- [ ] Policy status V2: DRAFT/PENDING/ACTIVE/EXPIRING/EXPIRED/CANCEL_REQUESTED/CANCELLED/RENEWED (เลิกใช้ ISSUED)
-- [ ] issue → ACTIVE หรือ PENDING (วันเริ่มในอนาคต); Job → POLICY_ISSUED → CLOSED ใน transaction เดียว (D-10)
-- [ ] Fields: sumInsured, deductible, policyDocument (upload เลขจากบริษัท); policy number ยังให้ระบบออก
-- [ ] งานรายวัน (`domain/policy-status.ts` pure fn): PENDING→ACTIVE, ACTIVE→EXPIRING (≤ 90 วัน), →EXPIRED; notification POLICY_ISSUED, POLICY_EXPIRING (email)
-- [ ] ตัด transition Job POLICY_ISSUED → RENEWAL (D-19) และปรับ renewal service ให้ใช้ Policy
+- [x] Policy status V2: DRAFT/PENDING/ACTIVE/EXPIRING/EXPIRED/CANCEL_REQUESTED/CANCELLED/RENEWED (เลิกใช้ ISSUED)
+- [x] issue → ACTIVE หรือ PENDING (วันเริ่มในอนาคต); Job → POLICY_ISSUED → CLOSED ใน transaction เดียว (D-10)
+- [x] Fields: sumInsured, deductible, policyDocument (upload เลขจากบริษัท); policy number ยังให้ระบบออก
+- [x] งานรายวัน (`domain/policy-status.ts` pure fn): PENDING→ACTIVE, ACTIVE→EXPIRING (≤ 90 วัน), →EXPIRED; notification POLICY_ISSUED, POLICY_EXPIRING (email)
+- [x] ตัด transition Job POLICY_ISSUED → RENEWAL (D-19) และปรับ renewal service ให้ใช้ Policy
 
 **Done เมื่อ:**
-- [ ] unit test policy-status ทุกช่วงวันที่; e2e issue → ACTIVE + Job CLOSED; ต่ออายุยังทำงาน (regression)
+- [x] unit test policy-status ทุกช่วงวันที่; e2e issue → ACTIVE + Job CLOSED; ต่ออายุยังทำงาน (regression)
 
 ### Day 21 — Approval / Binding / Policy UI
-- [ ] Tab Approval: reject reason/comment, resubmit dialog, ประวัติทุกรอบ
-- [ ] Tab Binding: สถานะ, confirm form (binder no./date/document), insurer reject
-- [ ] Policy: badge สถานะใหม่, upload policy document, cancel request ของ Job (BINDING/POLICY_PENDING)
+- [x] Tab Approval: reject reason/comment, resubmit dialog, ประวัติทุกรอบ
+- [x] Tab Binding: สถานะ, confirm form (binder no./date/document), insurer reject
+- [x] Policy: badge สถานะใหม่, upload policy document, cancel request ของ Job (BINDING/POLICY_PENDING)
 
 **Done เมื่อ:**
-- [ ] flow D18–D20 ทำได้บนหน้าจอ
+- [x] flow D18–D20 ทำได้บนหน้าจอ
 
 ### Day 22 — Phase 3 Buffer + Review
-- [ ] Playwright: accept → approval reject → resubmit → approve → bind → insurer reject → bind → confirm → issue → Job CLOSED
-- [ ] `/dod-check` approval, binding, policy
-- [ ] อัปเดต DESIGN.md state machine (ตาราง Job state machine V2 ด้านบน)
+- [x] Playwright: accept → approval reject → resubmit → approve → bind → insurer reject → bind → confirm → issue → Job CLOSED (`apps/web/e2e/phase3-approval-binding-policy.spec.ts`)
+- [x] `/dod-check` approval, binding, policy
+- [x] อัปเดต DESIGN.md state machine (ตาราง Job state machine V2 ด้านบน และ Section 7.5)
 
 **Done เมื่อ:**
-- [ ] unit + e2e + Playwright ผ่านทั้งหมด
+- [x] unit + e2e + Playwright ผ่านทั้งหมด
 
 ---
 
@@ -582,10 +582,154 @@
   - ตรวจสอบคุณภาพโค้ด:
     - `npm run test -w apps/api`: 456/456 passed (39 test files)
     - `npm run test -w apps/web`: 14/14 passed (5 test files)
-    - `npm run lint`: 0 errors, 0 warnings (oxlint + ng lint)
-    - `npm run build`: compile ผ่าน 100% ทั้ง API และ Web
+### 2026-10-09 — Day 22 เสร็จสิ้น (Phase 3 Buffer + Review)
+- **เสร็จ:**
+  - สร้างชุดทดสอบ Playwright E2E สำหรับ Phase 3 ทั้งหมด (`apps/web/e2e/phase3-approval-binding-policy.spec.ts`, 12 steps ครอบคลุม end-to-end lifecycle):
+    - Step 1: สร้าง Job ใหม่บนผลิตภัณฑ์ปกติ และส่งงาน (DRAFT → OPEN)
+    - Step 2: ขอใบเสนอราคาและบันทึกราคาด้วยเบี้ยรวม >= 100,000 บาท เพื่อให้เข้าเกณฑ์ต้องขออนุมัติตาม D-8 (OPEN → QUOTATION_REQUESTED → QUOTATION_RECEIVED)
+    - Step 3: เปรียบเทียบและเลือกใบเสนอราคา พร้อมสร้างและส่ง Proposal ไปยังลูกค้า (QUOTATION_SELECTED → WAITING_CUSTOMER)
+    - Step 4: ลูกค้ายอมรับข้อเสนอ (CUSTOMER_ACCEPTED) พร้อมประเมิน Approval Rule ส่งงานเข้าสู่ `WAITING_APPROVAL`
+    - Step 5: ผู้จัดการปฏิเสธคำขออนุมัติพร้อมระบุเหตุผลบน Tab 8 Approval → Job เปลี่ยนเป็น `APPROVAL_REJECTED` พร้อมแสดงกล่องเหตุผลการปฏิเสธ
+    - Step 6: เจ้าหน้าที่ยื่นขออนุมัติใหม่ (Resubmit) พร้อมคำชี้แจง → สร้างคำขอ Approval ใหม่สถานะ PENDING และส่ง Job กลับสู่ `WAITING_APPROVAL`
+    - Step 7: ผู้จัดการอนุมัติคำขอ → Job เปลี่ยนเป็น `APPROVED`
+    - Step 8: เจ้าหน้าที่กดส่งยืนยันคุ้มครอง (Bind) บน Tab 9 Binding → Binding เป็น `SUBMITTED`, Job คงสถานะ `BINDING` (Single-hop ตาม D-9 และ D-22)
+    - Step 9: บริษัทประกันปฏิเสธการรับประกัน (Insurer Reject) พร้อมระบุเหตุผล → Binding เป็น `REJECTED`, Job ถอยกลับสู่สถานะก่อน bind (`APPROVED`) เพื่อให้สามารถแก้ไขและยื่นใหม่ได้
+    - Step 10: เจ้าหน้าที่กดยื่นออกกรมธรรม์ใหม่ (Re-bind) → Binding กลับเป็น `SUBMITTED`, Job เป็น `BINDING`
+    - Step 11: เจ้าหน้าที่กดยืนยันรับประกัน (Confirm Binding) พร้อมกรอกเลขที่ Binder, วันที่ Binder, เบี้ยประกันภัย, เงื่อนไขชำระเงิน, Underwriter → Binding เป็น `CONFIRMED`, Job เปลี่ยนเป็น `POLICY_PENDING`
+    - Step 12: เจ้าหน้าที่ออกกรมธรรม์ (Issue Policy) บน Tab 10 Policy พร้อมระบุทุนประกันภัยและค่าเสียหายส่วนแรก → Policy มีสถานะ `ACTIVE` และ Job เปลี่ยนสถานะเป็น `CLOSED` โดยอัตโนมัติใน transaction เดียวกัน (D-10)
+  - ดำเนินการ DoD Check (`/dod-check`) สำหรับโมดูล `approval`, `binding`, และ `policy`:
+    - API & Endpoints: ครบถ้วนตามข้อกำหนด V2 (D-7, D-8, D-9, D-10, D-19, D-22, D-26), unit tests ผ่าน 496/496 (API) และ 14/14 (Web)
+    - Authorization & Maker-Checker: มีการตรวจสอบสิทธิ์ครบถ้วนทุก endpoint, maker-checker บน approval และ document verification
+    - Database Constraints: ฟิลด์การเงินใช้ `Decimal(15,2)`, Foreign Keys และ Enum ครบถ้วน
+    - State Machine & Transaction: สอดคล้องกับ `job-status.ts` และ transaction atomicity สมบูรณ์
+  - อัปเดตเอกสารระบบ `docs/DESIGN.md`:
+    - ปรับปรุงตาราง `JOB_TRANSITIONS` และ Action Transition Table §7.1 ให้ตรงกับสถานะจริงใน V2
+    - เพิ่มหัวข้อ §7.5 สรุปสถาปัตยกรรม Approval V2, Binding Lifecycle, Job Cancellation V2 (D-26), และ Policy Lifecycle V2 (D-10, D-19, D-22)
+  - ตรวจสอบคุณภาพโค้ด:
+    - `npm run test -w apps/api`: 42 test files, 496 passed 100%
+    - `npm run test -w apps/web`: 5 test files, 14 passed 100%
+    - `npm run lint -w apps/api` และ `npm run lint -w apps/web`: 0 errors, 0 warnings
+    - `npm run build -w apps/api` และ `npm run build -w apps/web`: compile ผ่าน 100%
 - **ยกไป:** -
-- **ถัดไป:** Phase 3 — Approval, Binding, Policy: Day 18 — Approval V2
+- **ถัดไป:** Phase 4 — Billing / AR / Commission: Day 23 — Invoice
+
+### 2026-10-09 — Day 21 เสร็จสิ้น (Approval / Binding / Policy UI)
+- **เสร็จ:**
+  - Tab 8 (Approval):
+    - แสดงเหตุผลที่ปฏิเสธ (`rejectReason`) และความคิดเห็น (`comment`) อย่างชัดเจนเมื่อสถานะเป็น `REJECTED`
+    - แสดงประวัติการอนุมัติ/ปฏิเสธทุกรอบ (`allApprovals`) ครอบคลุมทุกเวอร์ชันของข้อเสนอ
+    - แสดง badge วันที่ยื่นใหม่ (`resubmittedAt`) พร้อมปุ่มและ Dialog "ยื่นพิจารณาใหม่ (Resubmit)" สำหรับคำขอที่ถูกปฏิเสธเมื่อ Job อยู่ในสถานะ `APPROVAL_REJECTED` (`POST /api/approvals/:id/resubmit`)
+  - Tab 9 (Binding):
+    - อัปเดตการแสดงผลเงื่อนไขก่อนออกกรมธรรม์ (Preconditions checklist)
+    - แสดงการ์ดรายละเอียดการยืนยันคุ้มครอง (Binding Card): สถานะ Binding (`SUBMITTED`, `CONFIRMED`, `REJECTED`, `CANCELLED`), เลขที่ Binder, วันที่ Binder, วันเริ่มคุ้มครอง, เบี้ยประกัน, เงื่อนไขการชำระเงิน, Underwriter, หมายเหตุ, และลิงก์ดาวน์โหลดเอกสาร Binder
+    - ฟอร์มและ Dialog "ยืนยันรับประกัน (Confirm Binding)" (`POST /api/jobs/:id/bind/confirm`): รองรับการกรอกเลขที่ Binder, วันที่ Binder, เบี้ยประกันภัย, เงื่อนไขชำระเงิน, Underwriter, อัปโหลดไฟล์เอกสาร Binder, และหมายเหตุ
+    - Dialog "บริษัทประกันปฏิเสธ (Insurer Reject)" (`POST /api/jobs/:id/bind/reject`): บันทึกเหตุผลการปฏิเสธ และส่งงานกลับสถานะก่อน bind เพื่อให้สามารถแก้ไขและยื่นใหม่ได้ (Re-bind)
+  - Tab 10 (Policy):
+    - Badge สถานะ Policy V2: `DRAFT`, `PENDING`, `ACTIVE`, `EXPIRING`, `EXPIRED`, `CANCEL_REQUESTED`, `CANCELLED`, `RENEWED`
+    - แสดงทุนประกันภัย (`sumInsured`), ค่าเสียหายส่วนแรก (`deductible`), และลิงก์ดาวน์โหลดเอกสารกรมธรรม์ (`policyDocumentId`)
+    - ฟอร์มและ Dialog "แนบเอกสารกรมธรรม์": อัปโหลดไฟล์เอกสารกรมธรรม์ตัวจริงจากบริษัทประกัน และอัปเดตผูกกับ Policy ผ่าน `PUT /api/policies/:id`
+    - ปรับปรุงฟอร์มออกกรมธรรม์ (`doIssuePolicy`): รองรับการระบุทุนประกันภัย (`sumInsured`) และค่าเสียหายส่วนแรก (`deductible`)
+  - Job Cancellation Workflow V2 (D-26):
+    - แถบแจ้งเตือน "คำขอยกเลิกงาน" (Cancel Request Banner) บนส่วนหัวของหน้ารายละเอียดงาน เมื่อ Job มีการยื่นขอยกเลิก (`cancelRequestedAt`)
+    - ปุ่มอนุมัติยกเลิก (`doApproveCancelJob` เรียก `POST /api/jobs/:id/cancel-approve`) และปุ่มพร้อม Dialog ปฏิเสธคำขอยกเลิก (`confirmRejectCancelJob` เรียก `POST /api/jobs/:id/cancel-reject`) สำหรับผู้มีสิทธิ์ (`job.cancel`)
+    - รองรับการกดขอยกเลิกงาน (`requestCancel`) ในสถานะ `BINDING` และ `POLICY_PENDING` ผ่าน reason dialog
+  - ทดสอบและควบคุมคุณภาพ:
+    - `npm run test -w apps/api`: 42 test files, 496 tests ผ่านทั้งหมด 100%
+    - `npm run test -w apps/web`: 5 test files, 14 tests ผ่านทั้งหมด 100%
+    - `npm run lint -w apps/api` และ `npm run lint -w apps/web`: 0 errors, 0 warnings
+    - `npm run build -w apps/api` และ `npm run build -w apps/web`: compile สำเร็จ 100%
+- **ยกไป:** -
+- **ถัดไป:** Phase 3 — Approval, Binding, Policy: Day 22 — Phase 3 Buffer + Review
+
+### 2026-10-09 — Day 20 เสร็จสิ้น (Policy lifecycle V2)
+- **เสร็จ:**
+  - ขยาย Prisma Schema สำหรับ Policy Lifecycle V2:
+    - ปรับปรุง `enum PolicyStatus`: `DRAFT`, `PENDING`, `ACTIVE`, `EXPIRING`, `EXPIRED`, `CANCEL_REQUESTED`, `CANCELLED`, `RENEWED` (เลิกใช้ `ISSUED`)
+    - เพิ่มฟิลด์ใน `model Policy`: `deductible` (`Decimal(15,2)`), `policyDocumentId` (`UUID` เชื่อมกับ `Document`), และ back-relation `policyDocuments` บน `Document`
+    - เพิ่ม `NotificationType.POLICY_EXPIRING`
+    - สร้าง migration SQL `20261009100000_policy_lifecycle_v2` รองรับ idempotent DDL พร้อมรัน `prisma generate`
+  - ปรับปรุง Flow การออกกรมธรรม์ (Issue Policy Flow ตาม D-10):
+    - ประเมินสถานะเริ่มต้นตาม `job.effectiveDate`: ถ้าวันเริ่มความคุ้มครองอยู่ในอนาคต (พรุ่งนี้เป็นต้นไป) จะเป็น `PENDING`, หากถึงวันเริ่มแล้ว (วันนี้หรือในอดีต) จะเป็น `ACTIVE`
+    - ใน transaction เดียวกัน: ปรับ Job จาก `POLICY_PENDING` → `POLICY_ISSUED` → `CLOSED` อัตโนมัติ (D-10 Job Auto-Close)
+    - บันทึก `sumInsured`, `deductible`, `policyDocumentId` ผ่าน `CreatePolicyDto` / `UpdatePolicyDto`
+  - พัฒนางานประจำวันและฟังก์ชัน Domain สำหรับ Policy Status (`policy-status.ts` pure function):
+    - `evaluateInitialPolicyStatus()` ประเมินสถานะเริ่มต้นตอนออกกรมธรรม์
+    - `evaluatePolicyDailyStatus()` ประเมินการเปลี่ยนสถานะประจำวัน: `PENDING` → `ACTIVE`, `ACTIVE` → `EXPIRING` (เมื่อเหลือน้อยกว่าหรือเท่ากับ 90 วัน), และ `EXPIRING`/`ACTIVE` → `EXPIRED` (เมื่อเลย `expiryDate`)
+    - พัฒนา `PolicyService.maintainPolicyStatuses()` / `POST /api/policies/process-daily` เพื่ออัปเดตสถานะและส่ง Notification `POLICY_EXPIRING` (in-app + email)
+  - ปรับปรุงการต่ออายุ (Renewal) ตาม D-19:
+    - ตัด transition `POLICY_ISSUED -> RENEWAL` ออกจาก `JOB_TRANSITIONS` (เหลือเพียง `POLICY_ISSUED -> CLOSED`)
+    - ปรับปรุง `RenewalService`: การต่ออายุเริ่มจาก Policy โดยไม่เปลี่ยนสถานะ Job เดิม (คงอยู่ที่ `CLOSED`), ปรับปรุงการตรวจสอบสถานะกรมธรรม์ที่ต่ออายุได้เป็น `['ACTIVE', 'EXPIRING', 'EXPIRED', 'ISSUED']`
+  - การทดสอบและควบคุมคุณภาพ:
+    - สร้างชุดทดสอบ Unit test `policy-status.spec.ts` (16 tests passed) ครอบคลุมทุกช่วงวันที่และการเปลี่ยนสถานะ
+    - ปรับปรุง E2E specs (`policy.e2e-spec.ts`, `acceptance.e2e-spec.ts`, `renewal.e2e-spec.ts`) ให้สอดคล้องกับ D-10 และ D-19
+    - Unit tests ทั้งระบบ: 42 test files, 496 tests ผ่านทั้งหมด 100%
+    - Web unit tests: 5 test files, 14 tests ผ่านทั้งหมด 100%
+    - Linter: 0 warnings, 0 errors ทั้ง API (`oxlint`)
+    - Build: compile ผ่าน 100% ทั้ง API (`nest build`) และ Web (`ng build`)
+- **ยกไป:** -
+- **ถัดไป:** Day 21 — Approval / Binding / Policy UI
+
+### 2026-10-09 — Day 19 เสร็จสิ้น (Binding lifecycle & Cancel V2)
+- **เสร็จ:**
+  - ขยาย Prisma Schema สำหรับ Binding Lifecycle & Job Cancel V2:
+    - เพิ่ม `enum BindingStatus { PENDING, SUBMITTED, CONFIRMED, REJECTED, CANCELLED }`
+    - เพิ่มฟิลด์ใน `model Binding`: `status` (default `SUBMITTED`), `binderNumber`, `binderDate`, `insurerId` (เชื่อมกับ `InsuranceCompany`), `premium` (`Decimal(15,2)`), `paymentCondition`, `underwriter`, `binderDocumentId` (เชื่อมกับ `Document`), `rejectionReason`, `cancelledAt`, `cancelledById`
+    - เพิ่มฟิลด์ใน `model Job`: `cancelRequestedAt`, `cancelRequestedById`, `cancelRequestReason`, `cancelledAt`, `cancelledById`, `cancellationReason`
+    - สร้าง migration SQL `20261009090000_binding_lifecycle` พร้อมรัน `prisma generate`
+  - ปรับปรุง State Machine (`job-status.ts`):
+    - เพิ่มย้อนกลับจาก `BINDING` กลับไป `APPROVED` หรือ `CUSTOMER_ACCEPTED` เมื่อบริษัทประกันปฏิเสธ (`insurerRejectBinding`)
+    - เพิ่ม `JobAction`: `confirmBinding`, `insurerRejectBinding`, `requestCancel`, `approveCancel`, `rejectCancel`
+    - กำหนด `CANCEL_REQUIRES_APPROVAL_STATUSES = ['BINDING', 'POLICY_PENDING']`
+    - ให้ `getAllowedActions` คืน `requestCancel` แทน `cancel` ตรงๆ เมื่ออยู่ในสถานะ `BINDING` หรือ `POLICY_PENDING`
+  - ปรับปรุง Bind Flow V2 (`PolicyService` & `PolicyController`):
+    - `POST /api/jobs/:id/bind`: ปรับเป็น single-hop โดย Job คงอยู่ที่สถานะ `BINDING` (ตัด auto-hop ไปยัง `POLICY_PENDING`), บันทึก Binding สถานะ `SUBMITTED`, และตรวจเอกสารบังคับผ่าน `isComplete(checklist, docs, 'VERIFIED')` หากมีเอกสารที่ยังไม่ `VERIFIED` จะ throw 422 `BINDING_DOCUMENTS_NOT_VERIFIED` ตาม D-22
+    - `POST /api/jobs/:id/bind/confirm`: ยืนยันการคุ้มครอง เปลี่ยน Binding เป็น `CONFIRMED`, บันทึกเลข binder (`binderNumber`, `binderDate`, `underwriter`, `paymentCondition`, `binderDocumentId`), และเปลี่ยน Job จาก `BINDING` → `POLICY_PENDING`
+    - `POST /api/jobs/:id/bind/reject`: ปฏิเสธจากบริษัทประกัน บันทึก Binding เป็น `REJECTED` พร้อมเหตุผล, และส่ง Job กลับไปยังสถานะก่อน bind (`APPROVED` ถ้าเคยผ่านการอนุมัติ หรือ `CUSTOMER_ACCEPTED` ถ้าไม่ต้องอนุมัติ) เพื่อให้สามารถ bind ใหม่ได้
+  - ปรับปรุง Job Cancellation Flow V2 ตาม D-26 (`JobWorkflowService` & `JobController`):
+    - หาก Job อยู่ก่อน `BINDING` อนุญาตให้ยกเลิกทันที (`POST /api/jobs/:id/cancel`)
+    - หาก Job อยู่ในสถานะ `BINDING` หรือ `POLICY_PENDING` ไม่อนุญาตให้ยกเลิกตรงๆ (throw 409 `JOB_CANCEL_REQUIRES_APPROVAL`) ต้องส่งคำขอผ่าน `POST /api/jobs/:id/cancel-request`
+    - ผู้จัดการอนุมัติคำขอยกเลิกผ่าน `POST /api/jobs/:id/cancel-approve`: ปรับ Job เป็น `CANCELLED`, บันทึกเหตุผลและเวลา, และปรับ Binding ที่ยัง active เป็น `CANCELLED` อัตโนมัติ
+    - ปฏิเสธคำขอยกเลิกผ่าน `POST /api/jobs/:id/cancel-reject`
+  - อัปเดตชุดการทดสอบ:
+    - สร้าง `binding-lifecycle.spec.ts` (10 tests passed) ครอบคลุม bind single-hop, document VERIFIED check, confirmBinding, insurerRejectBinding ทั้ง 2 กรณี (มี approval / ไม่มี approval), direct cancel protection, requestCancel, approveCancel
+    - อัปเดต `job-status.spec.ts` (77 tests passed)
+    - ปรับปรุง e2e suites (`policy.e2e-spec.ts`, `acceptance.e2e-spec.ts`, `document-risk.e2e-spec.ts`, `commission.e2e-spec.ts`) ให้เรียก confirm step เพื่อเข้าสู่ `POLICY_PENDING`
+  - ตรวจสอบคุณภาพ:
+    - API unit tests: 41 test files, 481 tests ผ่านทั้งหมด 100%
+    - Web unit tests: 5 test files, 14 tests ผ่านทั้งหมด 100%
+    - Linter: 0 warnings, 0 errors ทั้ง API และ Web
+    - Build: compile ผ่าน 100% ทั้ง API (`nest build`) และ Web (`ng build`)
+- **ยกไป:** -
+- **ถัดไป:** Day 20 — Policy lifecycle
+
+### 2026-10-09 — Day 18 เสร็จสิ้น (Approval V2)
+- **เสร็จ:**
+  - ขยาย Schema `ApprovalRule`:
+    - เพิ่ม `ApprovalEntityType` enum (`JOB`, `ENDORSEMENT`) พร้อมฟิลด์ `entityType`
+    - เพิ่มเงื่อนไขการประเมินตามบริบท: `productId` (FK `InsuranceProduct`), `insuranceTypeId` (FK `InsuranceType`), และ `riskLevel`
+    - สร้าง migration `20261009080000_approval_v2` รองรับ idempotent DDL
+  - ปรับปรุง Approval Rule Domain (`approval-rules.ts`):
+    - เพิ่ม `ApprovalEvaluationContext` สำหรับการกรองกฎตาม `entityType`, `productId`, `insuranceTypeId`, `riskLevel`
+    - เพิ่ม D-8 Seed Rules: เบี้ยประกัน < 100,000 บาท (ส่วนลด ≤ 10%) ไม่ต้องขออนุมัติ; ให้สิทธิ์ `approval.approve` แก่บทบาท `SUPERVISOR`
+  - ปรับปรุงการทำงานของการปฏิเสธและการยื่นใหม่ (Approval Actions V2):
+    - `POST /api/approvals/:id/reject`: บันทึก `rejectReason`, `comment`, `rejectedBy`, `rejectedAt` และเปลี่ยนสถานะ Job จาก `WAITING_APPROVAL` เป็น `APPROVAL_REJECTED` (แทนพฤติกรรมเดิมใน V1 Q4)
+    - `POST /api/approvals/:id/resubmit`: อนุญาตให้ยื่นขออนุมัติใหม่สำหรับคำขอที่ถูกปฏิเสธและ Job อยู่ในสถานะ `APPROVAL_REJECTED`, บันทึก `resubmittedBy`, `resubmittedAt`, สร้าง Approval ใหม่สถานะ `PENDING`, และปรับสถานะ Job กลับเป็น `WAITING_APPROVAL`
+    - อัปเดต State Machine (`job-status.ts`): รองรับ action `resubmit` ในสถานะ `APPROVAL_REJECTED` และอนุญาตให้ `revise` กลับไปยัง `QUOTATION_RECEIVED`
+  - ระบบแจ้งเตือน (Notifications):
+    - เพิ่ม `NotificationType.APPROVAL_REJECTED` และส่งการแจ้งเตือนไปยังผู้สร้างงาน/ตัวแทน/เจ้าหน้าที่
+    - ส่งการแจ้งเตือน `APPROVAL_REQUESTED` ถึงผู้อนุมัติตามระดับสิทธิ์เมื่อมีการ resubmit
+  - ทดสอบและตรวจสอบคุณภาพ:
+    - เพิ่ม Approval Rule Domain Specs ครอบคลุม 27 กรณีทดสอบ (D-8 rules และ context filtering)
+    - เพิ่ม Workflow Unit Specs (`approval-workflow-v2.spec.ts`) 8 รายการ ทดสอบ reject & resubmit lifecycle
+    - ปรับปรุง E2E specs (`approval.e2e-spec.ts` และ `proposal.e2e-spec.ts`)
+    - รัน `npm run test -w apps/api` ผ่าน 40/40 test files (467 tests passed 100%)
+    - รัน `npm run test -w apps/web` ผ่าน 5/5 test files (14 tests passed 100%)
+    - รัน `npm run lint`: 0 errors, 0 warnings ทั้ง api และ web
+    - รัน `npm run build`: compile ผ่าน 100% ทั้ง API และ Web
+- **ยกไป:** -
+- **ถัดไป:** Phase 3 — Approval, Binding, Policy: Day 19 — Binding lifecycle
+
+### 2026-10-09 — Day 17 เสร็จสิ้น (Phase 2 Buffer + Review)
 
 ### 2026-10-08 — Day 16 เสร็จสิ้น (Proposal / Acceptance UI V2)
 - **เสร็จ:**

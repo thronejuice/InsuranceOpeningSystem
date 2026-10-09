@@ -216,6 +216,9 @@ describe('Commission API (spec §47 Step 23)', () => {
     await http().post(`/api/jobs/${jId}/bind`).set('Authorization', `Bearer ${agentToken}`)
       .send({ remark: 'commission e2e bind' });
 
+    await http().post(`/api/jobs/${jId}/bind/confirm`).set('Authorization', `Bearer ${agentToken}`)
+      .send({ binderNumber: 'BIND-COM-01' });
+
     const polRes = await http().post(`/api/jobs/${jId}/policy`).set('Authorization', `Bearer ${agentToken}`)
       .send({ remark: 'commission e2e policy' });
 

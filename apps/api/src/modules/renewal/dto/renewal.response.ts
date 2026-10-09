@@ -94,7 +94,7 @@ export function toRenewalResponse(r: RenewalWithRelations): RenewalResponse {
     remark: r.remark,
     suggestedEffectiveDate: isoDate(suggested.effectiveDate),
     suggestedExpiryDate: isoDate(suggested.expiryDate),
-    canRenew: canRenew(r) && p.status === 'ISSUED',
+    canRenew: canRenew(r) && ['ACTIVE', 'EXPIRING', 'EXPIRED', 'ISSUED'].includes(p.status),
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };

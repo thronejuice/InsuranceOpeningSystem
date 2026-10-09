@@ -102,6 +102,23 @@ describe('getAllowedActions', () => {
     expect(actions).toHaveLength(0);
   });
 
+  it('BINDING with write → contains confirmBinding, insurerRejectBinding, requestCancel (not direct cancel)', () => {
+    const perms = ['policy.create', 'job.cancel', 'job.update'];
+    const actions = getAllowedActions('BINDING', perms, true);
+    expect(actions).toContain('confirmBinding');
+    expect(actions).toContain('insurerRejectBinding');
+    expect(actions).toContain('requestCancel');
+    expect(actions).not.toContain('cancel');
+  });
+
+  it('POLICY_PENDING with write → contains issuePolicy, requestCancel', () => {
+    const perms = ['policy.create', 'job.cancel', 'job.update'];
+    const actions = getAllowedActions('POLICY_PENDING', perms, true);
+    expect(actions).toContain('issuePolicy');
+    expect(actions).toContain('requestCancel');
+    expect(actions).not.toContain('cancel');
+  });
+
   it('quotation actions require their quotation.* permission', () => {
     const noQuotePerms = ['job.cancel', 'job.update'];
     expect(getAllowedActions('OPEN', noQuotePerms, true)).not.toContain('requestQuotation');

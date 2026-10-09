@@ -108,7 +108,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     'underwriting.review',
     'quotation.select',
     'proposal.revise',
-    'approval.manage',
+    'approval.manage', 'approval.approve',
     'task.create', 'task.update',
   ],
   MANAGER: [
@@ -810,20 +810,12 @@ export const SAMPLE_COMPANIES = [
 /** spec §16.2 example rules */
 export const APPROVAL_RULES = [
   {
-    name: 'เบี้ยประกันต่ำกว่า 100,000 บาท — ขออนุมัติ Supervisor',
-    conditionField: 'PREMIUM',
-    conditionOperator: 'LT',
-    thresholdValue: '100000.00',
-    approverRole: 'SUPERVISOR',
-    sortOrder: 1,
-  },
-  {
     name: 'เบี้ยประกัน 100,000 บาทขึ้นไป — ขออนุมัติ Manager',
     conditionField: 'PREMIUM',
     conditionOperator: 'GTE',
     thresholdValue: '100000.00',
     approverRole: 'MANAGER',
-    sortOrder: 2,
+    sortOrder: 1,
   },
   {
     name: 'ส่วนลดเกิน 10% — ขออนุมัติ Manager',
@@ -831,7 +823,7 @@ export const APPROVAL_RULES = [
     conditionOperator: 'GT',
     thresholdValue: '10.00',
     approverRole: 'MANAGER',
-    sortOrder: 3,
+    sortOrder: 2,
   },
 ] as const;
 

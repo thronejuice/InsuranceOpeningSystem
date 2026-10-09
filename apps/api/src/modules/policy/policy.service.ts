@@ -9,6 +9,9 @@ import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import { SequenceService } from '../../common/sequence/sequence.service.js';
 import { PolicyRepository } from './policy.repository.js';
 import type { BindDto } from './dto/bind.dto.js';
+import { ConfirmBindingDto } from './dto/confirm-binding.dto.js';
+import { RejectBindingDto } from './dto/reject-binding.dto.js';
+import { isComplete } from '../document/domain/document-checklist.js';
 import type { CreatePolicyDto } from './dto/create-policy.dto.js';
 import type { UpdatePolicyDto } from './dto/update-policy.dto.js';
 import type { ListPolicyDto } from './dto/list-policy.dto.js';
@@ -22,7 +25,11 @@ import { JobWorkflowService } from '../job/job-workflow.service.js';
 import { todayInBangkok } from '../../common/utils/bangkok-date.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { NotificationService } from '../notification/notification.service.js';
-import { NotificationType } from '../../generated/prisma/enums.js';
+import { NotificationType, PolicyStatus } from '../../generated/prisma/enums.js';
+import {
+  evaluateInitialPolicyStatus,
+  evaluatePolicyDailyStatus,
+} from './domain/policy-status.js';
 
 @Injectable()
 export class PolicyService {
@@ -74,22 +81,30 @@ export class PolicyService {
       details: pendingApprovals.length > 0 ? `มี ${pendingApprovals.length} รายการรออนุมัติ` : undefined,
     });
 
-    // BR-008: required documents (only if product.requireDocsOnBind)
+    // BR-008 & D-22: required documents must be VERIFIED (only if product.requireDocsOnBind)
     if (job.product?.requireDocsOnBind) {
       const checklist = await this.txHost.tx.documentChecklist.findMany({
         where: { productId: job.productId, isRequired: true, active: true },
       });
-      const uploadedTypes = new Set(job.documents.map((d) => d.documentType));
-      const missing = checklist.filter((c) => !uploadedTypes.has(c.documentType));
+      const docs = await this.txHost.tx.document.findMany({
+        where: { jobId, deletedAt: null },
+      });
+      const checkResult = isComplete(checklist, docs, 'VERIFIED');
       checks.push({
         code: 'DOCUMENTS_COMPLETE',
-        label: 'เอกสารครบตามที่กำหนด',
-        met: missing.length === 0,
-        details: missing.length > 0 ? `ขาดเอกสาร: ${missing.map((m) => m.documentType).join(', ')}` : undefined,
+        label: 'เอกสารครบตามที่กำหนด (VERIFIED)',
+        met: checkResult.isComplete,
+        details: checkResult.missing.length > 0 ? `ขาดเอกสาร (หรือยังไม่ VERIFIED): ${checkResult.missing.join(', ')}` : undefined,
       });
     }
 
     return checks;
+  }
+
+  async getBindingByJobId(jobId: string): Promise<BindingResponse | null> {
+    await this.assertJobAccess(jobId);
+    const binding = await this.repo.findBindingByJobId(jobId);
+    return binding ? toBindingResponse(binding) : null;
   }
 
   // ─── Bind ────────────────────────────────────────────────────────────────────
@@ -132,7 +147,7 @@ export class PolicyService {
       throw new BusinessException('BINDING_PENDING_APPROVAL', 'There is a pending approval for this job', 422);
     }
 
-    // BR-008: required documents
+    // BR-008 & D-22: required documents must be VERIFIED
     const product = await this.txHost.tx.insuranceProduct.findFirst({ where: { id: job.productId } });
     if (product?.requireDocsOnBind) {
       const checklist = await this.txHost.tx.documentChecklist.findMany({
@@ -140,50 +155,190 @@ export class PolicyService {
       });
       if (checklist.length > 0) {
         const docs = await this.txHost.tx.document.findMany({
-          where: { jobId, deletedAt: null, status: { notIn: ['REJECTED', 'EXPIRED'] } },
+          where: { jobId, deletedAt: null },
         });
-        const uploadedTypes = new Set(docs.map((d) => d.documentType));
-        const missing = checklist.filter((c) => !uploadedTypes.has(c.documentType));
-        if (missing.length > 0) {
+        const checkResult = isComplete(checklist, docs, 'VERIFIED');
+        if (!checkResult.isComplete) {
           throw new BusinessException(
-            'BINDING_MISSING_DOCUMENTS',
-            `Missing required documents: ${missing.map((m) => m.documentType).join(', ')}`,
+            'BINDING_DOCUMENTS_NOT_VERIFIED',
+            `Required documents not verified: ${checkResult.missing.join(', ')}`,
             422,
-            Object.fromEntries(missing.map((m) => [m.documentType, ['Document required']])),
+            Object.fromEntries(checkResult.missing.map((m) => [m, ['Document must be VERIFIED']])),
           );
         }
       }
     }
 
+    // Resolve quotation for default insurerId / premium if not provided
+    const selectedQuotation = await this.txHost.tx.quotation.findFirst({
+      where: { id: job.selectedQuotationId },
+    });
+
     const today = todayInBangkok();
 
-    const binding = await this.repo.createBinding({
-      job: { connect: { id: jobId } },
-      quotation: { connect: { id: job.selectedQuotationId } },
-      bindingDate: new Date(dto.bindingDate ?? today),
-      effectiveDate: new Date((job.effectiveDate as Date | null)?.toISOString().slice(0, 10) ?? today),
-      expiryDate: dto.expiryDate
-        ? new Date(dto.expiryDate)
-        : job.expiryDate
-          ? new Date(job.expiryDate)
-          : null,
-      confirmedBy: userId ? { connect: { id: userId } } : undefined,
-      remark: dto.remark,
-      ...(idempotencyKey && { idempotencyKey }),
-    });
+    // Check if there's an existing binding for this job (e.g. from previous rejected bind)
+    let binding = await this.repo.findBindingByJobId(jobId);
+    if (binding) {
+      // Re-use or update existing binding to SUBMITTED
+      binding = await this.repo.updateBinding(binding.id, {
+        status: 'SUBMITTED',
+        quotation: { connect: { id: job.selectedQuotationId } },
+        bindingDate: new Date(dto.bindingDate ?? today),
+        effectiveDate: new Date((job.effectiveDate as Date | null)?.toISOString().slice(0, 10) ?? today),
+        expiryDate: dto.expiryDate
+          ? new Date(dto.expiryDate)
+          : job.expiryDate
+            ? new Date(job.expiryDate)
+            : null,
+        binderNumber: dto.binderNumber ?? null,
+        binderDate: dto.binderDate ? new Date(dto.binderDate) : null,
+        insurer: dto.insurerId
+          ? { connect: { id: dto.insurerId } }
+          : selectedQuotation?.insuranceCompanyId
+            ? { connect: { id: selectedQuotation.insuranceCompanyId } }
+            : undefined,
+        premium: dto.premium ?? (selectedQuotation?.totalAmount ? selectedQuotation.totalAmount.toString() : null),
+        paymentCondition: dto.paymentCondition ?? null,
+        underwriter: dto.underwriter ?? null,
+        binderDocument: dto.binderDocumentId ? { connect: { id: dto.binderDocumentId } } : undefined,
+        rejectionReason: null,
+        cancelledAt: null,
+        cancelledById: null,
+        remark: dto.remark,
+      });
+    } else {
+      binding = await this.repo.createBinding({
+        job: { connect: { id: jobId } },
+        quotation: { connect: { id: job.selectedQuotationId } },
+        status: 'SUBMITTED',
+        bindingDate: new Date(dto.bindingDate ?? today),
+        effectiveDate: new Date((job.effectiveDate as Date | null)?.toISOString().slice(0, 10) ?? today),
+        expiryDate: dto.expiryDate
+          ? new Date(dto.expiryDate)
+          : job.expiryDate
+            ? new Date(job.expiryDate)
+            : null,
+        binderNumber: dto.binderNumber,
+        binderDate: dto.binderDate ? new Date(dto.binderDate) : null,
+        insurer: dto.insurerId
+          ? { connect: { id: dto.insurerId } }
+          : selectedQuotation?.insuranceCompanyId
+            ? { connect: { id: selectedQuotation.insuranceCompanyId } }
+            : undefined,
+        premium: dto.premium ?? (selectedQuotation?.totalAmount ? selectedQuotation.totalAmount.toString() : null),
+        paymentCondition: dto.paymentCondition,
+        underwriter: dto.underwriter,
+        binderDocument: dto.binderDocumentId ? { connect: { id: dto.binderDocumentId } } : undefined,
+        confirmedBy: userId ? { connect: { id: userId } } : undefined,
+        remark: dto.remark,
+        ...(idempotencyKey && { idempotencyKey }),
+      });
+    }
 
     if (idempotencyKey) {
       await this.repo.saveIdempotencyKey(idempotencyKey, 'BINDING', binding.id);
     }
 
-    // Two-hop transition: CUSTOMER_ACCEPTED/APPROVED → BINDING → POLICY_PENDING
+    // Day 19: Transition job to BINDING (Job stays at BINDING, does NOT auto-hop to POLICY_PENDING)
     await this.workflow.transitionInTx(job, 'BINDING', userId);
-    const refreshed = await this.txHost.tx.job.findFirst({ where: { id: jobId } });
-    await this.workflow.transitionInTx(refreshed!, 'POLICY_PENDING', userId);
 
     await this.audit.log({ action: 'BIND', entityType: 'BINDING', entityId: binding.id, jobId });
 
     return toBindingResponse(binding);
+  }
+
+  // ─── Confirm Binding ──────────────────────────────────────────────────────────
+
+  @Transactional()
+  async confirmBinding(jobId: string, dto: ConfirmBindingDto): Promise<BindingResponse> {
+    const userId = this.cls.get('userId')!;
+    const job = await this.getJobOrThrow(jobId);
+    await this.assertJobAccess(jobId);
+
+    if (job.status !== 'BINDING') {
+      throw new BusinessException('JOB_INVALID_STATUS', `Cannot confirm binding for job in status ${job.status}`, 409);
+    }
+
+    const binding = await this.repo.findBindingByJobId(jobId);
+    if (!binding) {
+      throw new BusinessException('BINDING_NOT_FOUND', 'No binding record found for this job', 404);
+    }
+
+    if (binding.status !== 'SUBMITTED' && binding.status !== 'PENDING') {
+      throw new BusinessException('BINDING_INVALID_STATUS', `Cannot confirm binding in status ${binding.status}`, 409);
+    }
+
+    const updatedBinding = await this.repo.updateBinding(binding.id, {
+      status: 'CONFIRMED',
+      binderNumber: dto.binderNumber ?? binding.binderNumber,
+      binderDate: dto.binderDate ? new Date(dto.binderDate) : binding.binderDate,
+      insurer: dto.insurerId ? { connect: { id: dto.insurerId } } : undefined,
+      premium: dto.premium ?? (binding.premium ? binding.premium.toString() : undefined),
+      paymentCondition: dto.paymentCondition ?? binding.paymentCondition,
+      underwriter: dto.underwriter ?? binding.underwriter,
+      binderDocument: dto.binderDocumentId ? { connect: { id: dto.binderDocumentId } } : undefined,
+      confirmedBy: userId ? { connect: { id: userId } } : undefined,
+      remark: dto.remark ?? binding.remark,
+    });
+
+    // Transition job BINDING → POLICY_PENDING
+    await this.workflow.transitionInTx(job, 'POLICY_PENDING', userId);
+
+    await this.audit.log({
+      action: 'CONFIRM_BINDING',
+      entityType: 'BINDING',
+      entityId: binding.id,
+      jobId,
+      after: updatedBinding,
+    });
+
+    return toBindingResponse(updatedBinding);
+  }
+
+  // ─── Insurer Reject Binding ───────────────────────────────────────────────────
+
+  @Transactional()
+  async insurerRejectBinding(jobId: string, dto: RejectBindingDto): Promise<BindingResponse> {
+    const userId = this.cls.get('userId')!;
+    const job = await this.getJobOrThrow(jobId);
+    await this.assertJobAccess(jobId);
+
+    if (job.status !== 'BINDING') {
+      throw new BusinessException('JOB_INVALID_STATUS', `Cannot reject binding for job in status ${job.status}`, 409);
+    }
+
+    const binding = await this.repo.findBindingByJobId(jobId);
+    if (!binding) {
+      throw new BusinessException('BINDING_NOT_FOUND', 'No binding record found for this job', 404);
+    }
+
+    if (binding.status !== 'SUBMITTED' && binding.status !== 'PENDING') {
+      throw new BusinessException('BINDING_INVALID_STATUS', `Cannot reject binding in status ${binding.status}`, 409);
+    }
+
+    const updatedBinding = await this.repo.updateBinding(binding.id, {
+      status: 'REJECTED',
+      rejectionReason: dto.reason,
+    });
+
+    // Determine target pre-bind status:
+    // If job went through approval and was approved -> APPROVED, else CUSTOMER_ACCEPTED
+    const approvedApproval = await this.txHost.tx.approval.findFirst({
+      where: { jobId, status: 'APPROVED' },
+    });
+    const targetStatus = approvedApproval ? 'APPROVED' : 'CUSTOMER_ACCEPTED';
+
+    await this.workflow.transitionInTx(job, targetStatus, userId, { reason: dto.reason });
+
+    await this.audit.log({
+      action: 'REJECT_BINDING',
+      entityType: 'BINDING',
+      entityId: binding.id,
+      jobId,
+      description: dto.reason,
+    });
+
+    return toBindingResponse(updatedBinding);
   }
 
   // ─── Policy CRUD ─────────────────────────────────────────────────────────────
@@ -235,6 +390,7 @@ export class PolicyService {
     if (!quotation) throw new BusinessException('QUOTATION_NOT_FOUND', 'Selected quotation not found', 404);
 
     const policyNo = await this.sequence.next('POLICY');
+    const initialStatus = evaluateInitialPolicyStatus(job.effectiveDate);
 
     const policy = await this.repo.createPolicy({
       policyNo,
@@ -243,13 +399,19 @@ export class PolicyService {
       insuranceCompany: { connect: { id: quotation.insuranceCompanyId } },
       effectiveDate: job.effectiveDate,
       expiryDate: job.expiryDate ?? null,
+      sumInsured: dto.sumInsured ?? quotation.items.reduce<Prisma.Decimal | null>((acc, it) => {
+        if (!it.sumInsured) return acc;
+        return acc ? acc.add(it.sumInsured) : it.sumInsured;
+      }, null),
+      deductible: dto.deductible,
+      policyDocument: dto.policyDocumentId ? { connect: { id: dto.policyDocumentId } } : undefined,
       grossPremium: quotation.grossPremium,
       discount: quotation.discount,
       netPremium: quotation.netPremium,
       tax: quotation.tax,
       stampDuty: quotation.stampDuty,
       totalPremium: quotation.totalAmount,
-      status: 'ISSUED',
+      status: initialStatus,
       issuedAt: new Date(),
       paymentDueDate: dto.paymentDueDate ? new Date(dto.paymentDueDate) : null,
       remark: dto.remark,
@@ -266,8 +428,14 @@ export class PolicyService {
       },
     });
 
-    // Transition job POLICY_PENDING → POLICY_ISSUED
+    // D-10: In same transaction, transition job: POLICY_PENDING → POLICY_ISSUED → CLOSED
     await this.workflow.transitionInTx(job, 'POLICY_ISSUED', userId);
+    const refreshedJob = await this.txHost.tx.job.findFirst({ where: { id: jobId } });
+    if (refreshedJob) {
+      await this.workflow.transitionInTx(refreshedJob, 'CLOSED', userId, {
+        reason: 'Auto-closed upon policy issuance',
+      });
+    }
 
     await this.audit.log({
       action: 'ISSUE_POLICY',
@@ -309,6 +477,17 @@ export class PolicyService {
       ...(dto.paymentDueDate !== undefined && {
         paymentDueDate: dto.paymentDueDate ? new Date(dto.paymentDueDate) : null,
       }),
+      ...(dto.sumInsured !== undefined && {
+        sumInsured: dto.sumInsured ? dto.sumInsured : null,
+      }),
+      ...(dto.deductible !== undefined && {
+        deductible: dto.deductible ? dto.deductible : null,
+      }),
+      ...(dto.policyDocumentId !== undefined && {
+        policyDocument: dto.policyDocumentId
+          ? { connect: { id: dto.policyDocumentId } }
+          : { disconnect: true },
+      }),
       ...(dto.remark !== undefined && { remark: dto.remark }),
       updatedById: userId,
       version: { increment: 1 },
@@ -325,6 +504,71 @@ export class PolicyService {
     });
 
     return toPolicyResponse(updated);
+  }
+
+  @Transactional()
+  async maintainPolicyStatuses(now = new Date()): Promise<{
+    activatedCount: number;
+    expiringCount: number;
+    expiredCount: number;
+  }> {
+    const policies = await this.repo.findPoliciesForDailyStatusCheck();
+    let activatedCount = 0;
+    let expiringCount = 0;
+    let expiredCount = 0;
+
+    for (const p of policies) {
+      const nextStatus = evaluatePolicyDailyStatus(
+        {
+          status: p.status as PolicyStatus,
+          effectiveDate: p.effectiveDate,
+          expiryDate: p.expiryDate,
+        },
+        now,
+      );
+
+      if (!nextStatus || nextStatus === p.status) continue;
+
+      await this.repo.updatePolicy(p.id, {
+        status: nextStatus,
+      });
+
+      if (nextStatus === PolicyStatus.ACTIVE) activatedCount++;
+      if (nextStatus === PolicyStatus.EXPIRING) expiringCount++;
+      if (nextStatus === PolicyStatus.EXPIRED) expiredCount++;
+
+      await this.audit.log({
+        action: 'POLICY_STATUS_CHANGED',
+        entityType: 'POLICY',
+        entityId: p.id,
+        jobId: p.jobId,
+        before: { status: p.status },
+        after: { status: nextStatus },
+        remark: `Daily status transition to ${nextStatus}`,
+      });
+
+      // Notification
+      if (this.notifications && nextStatus === PolicyStatus.EXPIRING) {
+        const recipientIds = [p.job?.agentId, p.job?.brokerStaffId].filter(
+          (id): id is string => Boolean(id),
+        );
+        if (recipientIds.length > 0) {
+          await this.notifications.emit(
+            NotificationType.POLICY_EXPIRING,
+            recipientIds,
+            {
+              title: `กรมธรรม์ใกล้หมดอายุ (${p.policyNo})`,
+              message: `กรมธรรม์เลขที่ ${p.policyNo} กำลังจะหมดอายุในอีกไม่เกิน 90 วัน`,
+              entityType: 'POLICY',
+              entityId: p.id,
+              jobId: p.jobId,
+            },
+          );
+        }
+      }
+    }
+
+    return { activatedCount, expiringCount, expiredCount };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────

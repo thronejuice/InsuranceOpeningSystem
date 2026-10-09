@@ -1,15 +1,15 @@
+import { describe, expect, it } from 'vitest';
 import { canApproveType, canDecideApproval, evaluateApprovalRules, isSelfDecisionBlocked, type ApprovalRuleInput } from './approval-rules.js';
 
-// Mirrors seed-data.ts APPROVAL_RULES (3 canonical rules)
-const RULES: ApprovalRuleInput[] = [
-  { conditionField: 'PREMIUM',  conditionOperator: 'LT',  thresholdValue: { toString: () => '100000.00' }, approverRole: 'SUPERVISOR', active: true },
+// Canonical V2 rules per D-8: Premium >= 100k -> MANAGER, Discount > 10% -> MANAGER
+const RULES_V2: ApprovalRuleInput[] = [
   { conditionField: 'PREMIUM',  conditionOperator: 'GTE', thresholdValue: { toString: () => '100000.00' }, approverRole: 'MANAGER',    active: true },
   { conditionField: 'DISCOUNT', conditionOperator: 'GT',  thresholdValue: { toString: () => '10.00' },     approverRole: 'MANAGER',    active: true },
 ];
 
 describe('evaluateApprovalRules', () => {
   it('returns null when no rules are active', () => {
-    const inactive = RULES.map(r => ({ ...r, active: false }));
+    const inactive = RULES_V2.map(r => ({ ...r, active: false }));
     expect(evaluateApprovalRules('50000.00', '0', inactive)).toBeNull();
   });
 
@@ -17,46 +17,146 @@ describe('evaluateApprovalRules', () => {
     expect(evaluateApprovalRules('50000.00', '0', [])).toBeNull();
   });
 
-  // ─── Spec rules ───────────────────────────────────────────────────────────
+  // ─── D-8 Seed rules (premium < 100,000 does NOT require approval) ─────────
 
-  it('PREMIUM < 100,000 → SUPERVISOR', () => {
-    expect(evaluateApprovalRules('50000.00', '0', RULES)).toBe('SUPERVISOR');
+  it('PREMIUM < 100,000 with 0% discount → null (no approval required per D-8)', () => {
+    expect(evaluateApprovalRules('50000.00', '0', RULES_V2)).toBeNull();
+  });
+
+  it('PREMIUM 50,000 with 5% discount → null (no approval required)', () => {
+    expect(evaluateApprovalRules('50000.00', '5.00', RULES_V2)).toBeNull();
   });
 
   it('PREMIUM >= 100,000 → MANAGER', () => {
-    expect(evaluateApprovalRules('150000.00', '0', RULES)).toBe('MANAGER');
+    expect(evaluateApprovalRules('100000.00', '0', RULES_V2)).toBe('MANAGER');
+    expect(evaluateApprovalRules('150000.00', '0', RULES_V2)).toBe('MANAGER');
   });
 
-  it('DISCOUNT > 10% with low premium → MANAGER (higher priority wins)', () => {
-    expect(evaluateApprovalRules('50000.00', '15.00', RULES)).toBe('MANAGER');
+  it('DISCOUNT > 10% with low premium (< 100,000) → MANAGER', () => {
+    expect(evaluateApprovalRules('50000.00', '15.00', RULES_V2)).toBe('MANAGER');
   });
 
   // ─── Boundaries ───────────────────────────────────────────────────────────
 
-  it('99,999.99 → SUPERVISOR (just below threshold)', () => {
-    expect(evaluateApprovalRules('99999.99', '0', RULES)).toBe('SUPERVISOR');
+  it('99,999.99 with discount 10.00% → null (both rules just below/not meeting threshold)', () => {
+    expect(evaluateApprovalRules('99999.99', '10.00', RULES_V2)).toBeNull();
   });
 
-  it('100,000.00 → MANAGER (at threshold, GTE matches)', () => {
-    expect(evaluateApprovalRules('100000.00', '0', RULES)).toBe('MANAGER');
-  });
-
-  it('discount exactly 10.00% → SUPERVISOR only (GT is strict, 10 is not > 10)', () => {
-    // Rule 3 uses GT, so exactly 10% does NOT trigger MANAGER from discount rule
-    // Rule 1 still matches (PREMIUM LT 100000), so result is SUPERVISOR
-    expect(evaluateApprovalRules('50000.00', '10.00', RULES)).toBe('SUPERVISOR');
-  });
-
-  it('discount 10.01% → MANAGER (just above GT threshold)', () => {
-    expect(evaluateApprovalRules('50000.00', '10.01', RULES)).toBe('MANAGER');
+  it('discount 10.01% with 50,000 premium → MANAGER (just above GT threshold)', () => {
+    expect(evaluateApprovalRules('50000.00', '10.01', RULES_V2)).toBe('MANAGER');
   });
 
   // ─── Inactive rule ignored ────────────────────────────────────────────────
 
   it('inactive rules are skipped', () => {
-    const noDiscount = RULES.map((r, i) => i === 2 ? { ...r, active: false } : r);
-    // premium 50k, discount 15% but discount rule inactive → only SUPERVISOR
-    expect(evaluateApprovalRules('50000.00', '15.00', noDiscount)).toBe('SUPERVISOR');
+    const inactiveDiscount = RULES_V2.map((r) => r.conditionField === 'DISCOUNT' ? { ...r, active: false } : r);
+    expect(evaluateApprovalRules('50000.00', '15.00', inactiveDiscount)).toBeNull();
+  });
+
+  // ─── Contextual filtering (productId, insuranceTypeId, riskLevel, entityType) ──
+
+  it('filters rules by productId', () => {
+    const productRule: ApprovalRuleInput = {
+      conditionField: 'PREMIUM',
+      conditionOperator: 'GTE',
+      thresholdValue: { toString: () => '30000.00' },
+      approverRole: 'SUPERVISOR',
+      productId: 'prod-motor',
+      active: true,
+    };
+
+    // When product matches
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '35000.00', discountPercent: '0', productId: 'prod-motor' },
+        [productRule],
+      ),
+    ).toBe('SUPERVISOR');
+
+    // When product does not match
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '35000.00', discountPercent: '0', productId: 'prod-other' },
+        [productRule],
+      ),
+    ).toBeNull();
+  });
+
+  it('filters rules by insuranceTypeId', () => {
+    const typeRule: ApprovalRuleInput = {
+      conditionField: 'PREMIUM',
+      conditionOperator: 'GTE',
+      thresholdValue: { toString: () => '40000.00' },
+      approverRole: 'SUPERVISOR',
+      insuranceTypeId: 'type-fire',
+      active: true,
+    };
+
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '50000.00', discountPercent: '0', insuranceTypeId: 'type-fire' },
+        [typeRule],
+      ),
+    ).toBe('SUPERVISOR');
+
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '50000.00', discountPercent: '0', insuranceTypeId: 'type-marine' },
+        [typeRule],
+      ),
+    ).toBeNull();
+  });
+
+  it('filters rules by riskLevel', () => {
+    const highRiskRule: ApprovalRuleInput = {
+      conditionField: 'PREMIUM',
+      conditionOperator: 'GTE',
+      thresholdValue: { toString: () => '10000.00' },
+      approverRole: 'MANAGER',
+      riskLevel: 'HIGH',
+      active: true,
+    };
+
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '20000.00', discountPercent: '0', riskLevel: 'HIGH' },
+        [highRiskRule],
+      ),
+    ).toBe('MANAGER');
+
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '20000.00', discountPercent: '0', riskLevel: 'LOW' },
+        [highRiskRule],
+      ),
+    ).toBeNull();
+  });
+
+  it('filters rules by entityType (JOB vs ENDORSEMENT)', () => {
+    const endorsementRule: ApprovalRuleInput = {
+      conditionField: 'PREMIUM',
+      conditionOperator: 'GTE',
+      thresholdValue: { toString: () => '10000.00' },
+      approverRole: 'SUPERVISOR',
+      entityType: 'ENDORSEMENT',
+      active: true,
+    };
+
+    // Evaluated for JOB context -> does not match
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '20000.00', discountPercent: '0', entityType: 'JOB' },
+        [endorsementRule],
+      ),
+    ).toBeNull();
+
+    // Evaluated for ENDORSEMENT context -> matches
+    expect(
+      evaluateApprovalRules(
+        { netPremium: '20000.00', discountPercent: '0', entityType: 'ENDORSEMENT' },
+        [endorsementRule],
+      ),
+    ).toBe('SUPERVISOR');
   });
 
   // ─── Unknown conditionField ───────────────────────────────────────────────

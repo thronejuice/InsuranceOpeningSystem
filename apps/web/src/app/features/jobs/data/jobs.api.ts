@@ -29,6 +29,9 @@ export type JobAction =
   | 'requestInfo'
   | 'resume'
   | 'cancel'
+  | 'requestCancel'
+  | 'approveCancel'
+  | 'rejectCancel'
   | 'close'
   | 'requestQuotation'
   | 'recordQuotation'
@@ -37,8 +40,11 @@ export type JobAction =
   | 'acceptProposal'
   | 'rejectProposal'
   | 'revise'
+  | 'resubmit'
   | 'approve'
   | 'bind'
+  | 'confirmBinding'
+  | 'insurerRejectBinding'
   | 'issuePolicy';
 
 export interface JobCapabilities {
@@ -73,6 +79,12 @@ export interface Job {
   branchCode?: string | null;
   branchName?: string | null;
   selectedQuotationId: string | null;
+  cancelRequestedAt?: string | null;
+  cancelRequestedById?: string | null;
+  cancelRequestReason?: string | null;
+  cancelledAt?: string | null;
+  cancelledById?: string | null;
+  cancellationReason?: string | null;
   createdAt: string;
   updatedAt: string;
   allowedActions: JobAction[];
@@ -424,6 +436,10 @@ export interface ApprovalResponse {
   approverId: string | null;
   status: ApprovalStatus;
   reason: string | null;
+  rejectReason?: string | null;
+  comment?: string | null;
+  resubmittedAt?: string | null;
+  resubmittedById?: string | null;
   remark?: string | null;
   requestedAt: string;
   approvedAt: string | null;
@@ -484,11 +500,39 @@ export interface BindingResponse {
   id: string;
   jobId: string;
   quotationId: string;
+  status: string;
   bindingDate: string;
   effectiveDate: string;
   expiryDate: string | null;
+  binderNumber: string | null;
+  binderDate: string | null;
+  insurerId: string | null;
+  premium: string | null;
+  paymentCondition: string | null;
+  underwriter: string | null;
+  binderDocumentId: string | null;
+  confirmedById: string | null;
   remark: string | null;
+  rejectionReason: string | null;
+  cancelledAt: string | null;
+  cancelledById: string | null;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ConfirmBindingDto {
+  binderNumber?: string;
+  binderDate?: string;
+  insurerId?: string;
+  premium?: string;
+  paymentCondition?: string;
+  underwriter?: string;
+  binderDocumentId?: string;
+  remark?: string;
+}
+
+export interface RejectBindingDto {
+  reason: string;
 }
 
 export interface PolicyCoverage {
@@ -511,6 +555,8 @@ export interface PolicyResponse {
   effectiveDate: string;
   expiryDate: string | null;
   sumInsured: string | null;
+  deductible: string | null;
+  policyDocumentId: string | null;
   grossPremium: string;
   discount: string;
   netPremium: string;
@@ -525,6 +571,22 @@ export interface PolicyResponse {
   coverages: PolicyCoverage[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreatePolicyDto {
+  paymentDueDate?: string;
+  sumInsured?: string;
+  deductible?: string;
+  policyDocumentId?: string;
+  remark?: string;
+}
+
+export interface UpdatePolicyDto {
+  paymentDueDate?: string;
+  sumInsured?: string;
+  deductible?: string;
+  policyDocumentId?: string;
+  remark?: string;
 }
 
 // ─── Payment ───────────────────────────────────────────────────────────────
@@ -718,6 +780,9 @@ const ACTION_PATH: Partial<Record<JobAction, string>> = {
   requestInfo: 'request-info',
   resume: 'resume',
   cancel: 'cancel',
+  requestCancel: 'cancel-request',
+  approveCancel: 'cancel-approve',
+  rejectCancel: 'cancel-reject',
   close: 'close',
   revise: 'revise',
 };
@@ -946,8 +1011,26 @@ export class JobsApi {
     return this.http.post<ItemResponse<ApprovalResponse>>(`/api/approvals/${id}/approve`, body).pipe(map((r) => r.data));
   }
 
-  rejectApproval(id: string, body: { reason: string }): Observable<ApprovalResponse> {
+  rejectApproval(id: string, body: { reason: string; comment?: string }): Observable<ApprovalResponse> {
     return this.http.post<ItemResponse<ApprovalResponse>>(`/api/approvals/${id}/reject`, body).pipe(map((r) => r.data));
+  }
+
+  resubmitApproval(id: string, body: { reason: string }): Observable<ApprovalResponse> {
+    return this.http.post<ItemResponse<ApprovalResponse>>(`/api/approvals/${id}/resubmit`, body).pipe(map((r) => r.data));
+  }
+
+  // ─── Job Cancellation V2 ──────────────────────────────────────────────────
+
+  requestCancelJob(jobId: string, body: { reason: string }): Observable<Job> {
+    return this.http.post<ItemResponse<Job>>(`/api/jobs/${jobId}/cancel-request`, body).pipe(map((r) => r.data));
+  }
+
+  approveCancelJob(jobId: string, body: { reason?: string } = {}): Observable<Job> {
+    return this.http.post<ItemResponse<Job>>(`/api/jobs/${jobId}/cancel-approve`, body).pipe(map((r) => r.data));
+  }
+
+  rejectCancelJob(jobId: string, body: { reason: string }): Observable<Job> {
+    return this.http.post<ItemResponse<Job>>(`/api/jobs/${jobId}/cancel-reject`, body).pipe(map((r) => r.data));
   }
 
   // ─── Binding / Policy ────────────────────────────────────────────────────
@@ -956,11 +1039,23 @@ export class JobsApi {
     return this.http.get<ItemResponse<PreconditionCheck[]>>(`/api/jobs/${jobId}/bind/preconditions`).pipe(map((r) => r.data));
   }
 
+  getBinding(jobId: string): Observable<BindingResponse | null> {
+    return this.http.get<ItemResponse<BindingResponse | null>>(`/api/jobs/${jobId}/bind`).pipe(map((r) => r.data));
+  }
+
   bind(jobId: string, body: { remark?: string } = {}): Observable<BindingResponse> {
     return this.http.post<ItemResponse<BindingResponse>>(`/api/jobs/${jobId}/bind`, body).pipe(map((r) => r.data));
   }
 
-  issuePolicy(jobId: string, body: { remark?: string } = {}): Observable<PolicyResponse> {
+  confirmBinding(jobId: string, body: ConfirmBindingDto): Observable<BindingResponse> {
+    return this.http.post<ItemResponse<BindingResponse>>(`/api/jobs/${jobId}/bind/confirm`, body).pipe(map((r) => r.data));
+  }
+
+  rejectBinding(jobId: string, body: RejectBindingDto): Observable<BindingResponse> {
+    return this.http.post<ItemResponse<BindingResponse>>(`/api/jobs/${jobId}/bind/reject`, body).pipe(map((r) => r.data));
+  }
+
+  issuePolicy(jobId: string, body: CreatePolicyDto = {}): Observable<PolicyResponse> {
     return this.http.post<ItemResponse<PolicyResponse>>(`/api/jobs/${jobId}/policy`, body).pipe(map((r) => r.data));
   }
 
@@ -976,7 +1071,7 @@ export class JobsApi {
     return this.http.get<ItemResponse<PolicyResponse>>(`/api/policies/${id}`).pipe(map((r) => r.data));
   }
 
-  updatePolicy(id: string, body: { paymentDueDate?: string; remark?: string }): Observable<PolicyResponse> {
+  updatePolicy(id: string, body: UpdatePolicyDto): Observable<PolicyResponse> {
     return this.http.put<ItemResponse<PolicyResponse>>(`/api/policies/${id}`, body).pipe(map((r) => r.data));
   }
 

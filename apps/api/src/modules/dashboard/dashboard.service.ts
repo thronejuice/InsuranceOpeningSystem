@@ -109,7 +109,7 @@ export class DashboardService {
         where: { status: { notIn: ['CANCELLED'] }, policy: policyJobScope },
         _sum: { commissionAmount: true },
       }),
-      tx.policy.count({ where: { status: 'ISSUED', ...policyJobScope } }),
+      tx.policy.count({ where: { status: 'ACTIVE', ...policyJobScope } }),
       tx.task.count({
         where: {
           status: { notIn: ['DONE', 'CANCELLED'] },

@@ -32,6 +32,16 @@ export class RenewalRepository {
     });
   }
 
+  findPoliciesExpiring(startOfDay: Date, endOfDay: Date) {
+    return this.db.policy.findMany({
+      where: {
+        status: { in: ['ACTIVE', 'EXPIRING'] },
+        expiryDate: { gte: startOfDay, lte: endOfDay },
+      },
+      include: { job: { select: { assignedTo: true, agentId: true } } },
+    });
+  }
+
   create(data: Prisma.RenewalCreateInput) {
     return this.db.renewal.create({ data, include: RENEWAL_INCLUDE });
   }

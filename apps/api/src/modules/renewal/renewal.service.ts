@@ -111,8 +111,9 @@ export class RenewalService {
       },
     });
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
-    if (policy.status !== 'ISSUED') {
-      throw new BusinessException('POLICY_NOT_ISSUED', 'Can only renew an issued policy', 422);
+    const renewableStatuses = ['ACTIVE', 'EXPIRING', 'EXPIRED', 'ISSUED'];
+    if (!renewableStatuses.includes(policy.status)) {
+      throw new BusinessException('POLICY_NOT_ISSUED', 'Can only renew an active or expiring/expired policy', 422);
     }
 
     const originalJob = policy.job;
@@ -191,9 +192,7 @@ export class RenewalService {
       },
     });
 
-    // Transition old job → RENEWAL
-    await this.workflow.transitionInTx(originalJob, 'RENEWAL', userId);
-
+    // D-19: Renewal starts from Policy. The original Job remains CLOSED (not transitioned to RENEWAL).
     // The renewal has now been acted on: close its open RENEWAL tasks (other task types untouched)
     const closed = await db.task.updateMany({
       where: { jobId: originalJob.id, taskType: 'RENEWAL', status: { in: ['TODO', 'IN_PROGRESS'] } },
@@ -252,13 +251,7 @@ export class RenewalService {
       const endOfDay = new Date(targetDate);
       endOfDay.setHours(23, 59, 59, 999);
 
-      const policies = await db.policy.findMany({
-        where: {
-          status: 'ISSUED',
-          expiryDate: { gte: startOfDay, lte: endOfDay },
-        },
-        include: { job: { select: { assignedTo: true, agentId: true } } },
-      });
+      const policies = await this.repo.findPoliciesExpiring(startOfDay, endOfDay);
 
       for (const policy of policies) {
         const existing = await this.repo.findActiveByPolicyId(policy.id);

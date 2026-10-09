@@ -216,7 +216,7 @@ describe('Policy API (e2e)', () => {
 
   // ─── Bind ─────────────────────────────────────────────────────────────────────
 
-  it('POST /jobs/:jobId/bind — binds job → POLICY_PENDING', async () => {
+  it('POST /jobs/:jobId/bind — binds job → BINDING, then confirm → POLICY_PENDING', async () => {
     const res = await http()
       .post(`/api/jobs/${approvedJobId}/bind`)
       .set('Authorization', `Bearer ${agentToken}`)
@@ -224,9 +224,22 @@ describe('Policy API (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toBe(approvedJobId);
+    expect(res.body.data.status).toBe('SUBMITTED');
 
     const jobRes = await http().get(`/api/jobs/${approvedJobId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('POLICY_PENDING');
+    expect(jobRes.body.data.status).toBe('BINDING');
+
+    // Confirm binding transitions Job to POLICY_PENDING
+    const confirmRes = await http()
+      .post(`/api/jobs/${approvedJobId}/bind/confirm`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ binderNumber: 'BIND-12345', remark: 'ยืนยันความคุ้มครอง' });
+
+    expect(confirmRes.status).toBe(201);
+    expect(confirmRes.body.data.status).toBe('CONFIRMED');
+
+    const confirmedJobRes = await http().get(`/api/jobs/${approvedJobId}`).set('Authorization', `Bearer ${agentToken}`);
+    expect(confirmedJobRes.body.data.status).toBe('POLICY_PENDING');
   });
 
   it('POST /jobs/:jobId/bind — idempotency: same key returns existing binding', async () => {
@@ -264,7 +277,7 @@ describe('Policy API (e2e)', () => {
 
   // ─── Policy ───────────────────────────────────────────────────────────────────
 
-  it('POST /jobs/:jobId/policy — issues policy, job → POLICY_ISSUED', async () => {
+  it('POST /jobs/:jobId/policy — issues policy (PENDING because effectiveDate is in 2027), job auto-closes (D-10)', async () => {
     const res = await http()
       .post(`/api/jobs/${approvedJobId}/policy`)
       .set('Authorization', `Bearer ${agentToken}`)
@@ -272,14 +285,16 @@ describe('Policy API (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toBe(approvedJobId);
-    expect(res.body.data.status).toBe('ISSUED');
+    // Since effectiveDate is 2027-01-01 (future), initial status is PENDING per D-10
+    expect(res.body.data.status).toBe('PENDING');
     expect(res.body.data.policyNo).toMatch(/^PL-\d{4}-\d+$/);
 
     const jobRes = await http().get(`/api/jobs/${approvedJobId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('POLICY_ISSUED');
+    // Job auto-closed upon policy issuance (POLICY_PENDING -> POLICY_ISSUED -> CLOSED)
+    expect(jobRes.body.data.status).toBe('CLOSED');
   });
 
-  it('POST /jobs/:jobId/policy — duplicate policy → 409 (job already POLICY_ISSUED)', async () => {
+  it('POST /jobs/:jobId/policy — duplicate policy → 409 (job already CLOSED)', async () => {
     const res = await http()
       .post(`/api/jobs/${approvedJobId}/policy`)
       .set('Authorization', `Bearer ${agentToken}`)
@@ -319,5 +334,15 @@ describe('Policy API (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.paymentDueDate).toBe('2027-02-28');
     expect(res.body.data.remark).toBe('อัปเดต');
+  });
+
+  it('POST /policies/process-daily — maintains policy statuses', async () => {
+    const res = await http()
+      .post('/api/policies/process-daily')
+      .set('Authorization', `Bearer ${agentToken}`);
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('activatedCount');
+    expect(res.body).toHaveProperty('expiringCount');
+    expect(res.body).toHaveProperty('expiredCount');
   });
 });

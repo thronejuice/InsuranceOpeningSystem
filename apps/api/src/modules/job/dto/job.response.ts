@@ -17,6 +17,12 @@ interface JobWithRelations {
   assignedTo: string | null;
   brokerStaffId?: string | null;
   selectedQuotationId: string | null;
+  cancelRequestedAt?: Date | null;
+  cancelRequestedById?: string | null;
+  cancelRequestReason?: string | null;
+  cancelledAt?: Date | null;
+  cancelledById?: string | null;
+  cancellationReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
   customer?: { id: string; customerCode: string; firstName: string | null; lastName: string | null; companyName: string | null; customerType: string } | null;
@@ -55,6 +61,12 @@ export interface JobResponse {
   branchCode: string | null;
   branchName: string | null;
   selectedQuotationId: string | null;
+  cancelRequestedAt?: string | null;
+  cancelRequestedById?: string | null;
+  cancelRequestReason?: string | null;
+  cancelledAt?: string | null;
+  cancelledById?: string | null;
+  cancellationReason?: string | null;
   createdAt: string;
   updatedAt: string;
   allowedActions: JobAction[];
@@ -96,6 +108,12 @@ export function toJobResponse(job: JobWithRelations, permissions: string[], canW
     branchCode: job.branch?.code ?? null,
     branchName: job.branch?.name ?? null,
     selectedQuotationId: job.selectedQuotationId,
+    cancelRequestedAt: job.cancelRequestedAt ? (job.cancelRequestedAt as Date).toISOString() : null,
+    cancelRequestedById: job.cancelRequestedById ?? null,
+    cancelRequestReason: job.cancelRequestReason ?? null,
+    cancelledAt: job.cancelledAt ? (job.cancelledAt as Date).toISOString() : null,
+    cancelledById: job.cancelledById ?? null,
+    cancellationReason: job.cancellationReason ?? null,
     createdAt: (job.createdAt as Date).toISOString(),
     updatedAt: (job.updatedAt as Date).toISOString(),
     allowedActions: getAllowedActions(job.status as JobStatus, permissions, canWrite),

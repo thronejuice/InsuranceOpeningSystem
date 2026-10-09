@@ -298,9 +298,9 @@ describe('Proposal API (e2e)', () => {
     expect((res.body as Buffer).length).toBe(docs[0].size);
   });
 
-  // ─── Accept proposal — triggers Supervisor approval ───────────────────────
+  // ─── Accept proposal — premium 50,000 does NOT require approval (D-8) ────
 
-  it('POST /proposals/:id/accept — premium 50,000 → approval PENDING (SUPERVISOR)', async () => {
+  it('POST /proposals/:id/accept — premium 50,000 does not require approval → CUSTOMER_ACCEPTED (D-8)', async () => {
     const res = await http()
       .post(`/api/proposals/${proposalSupId}/accept`)
       .set('Authorization', `Bearer ${agentToken}`)
@@ -308,12 +308,10 @@ describe('Proposal API (e2e)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('ACCEPTED');
-    expect(res.body.data.approvals).toHaveLength(1);
-    expect(res.body.data.approvals[0].approvalType).toBe('SUPERVISOR');
-    expect(res.body.data.approvals[0].status).toBe('PENDING');
+    expect(res.body.data.approvals).toHaveLength(0);
 
     const jobRes = await http().get(`/api/jobs/${jobSupId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('WAITING_APPROVAL');
+    expect(jobRes.body.data.status).toBe('CUSTOMER_ACCEPTED');
   });
 
   // ─── Accept proposal — triggers Manager approval ──────────────────────────

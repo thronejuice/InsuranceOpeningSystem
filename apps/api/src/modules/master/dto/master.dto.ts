@@ -15,6 +15,7 @@ import {
   ApprovalConditionField,
   ApprovalConditionOperator,
   ApprovalRoleTarget,
+  ApprovalEntityType,
   CompanyStatus,
   DocumentType,
   RiskFieldType,
@@ -140,6 +141,10 @@ export class UpdateDocumentChecklistDto {
 
 export class CreateApprovalRuleDto {
   @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional({ enum: ApprovalEntityType }) @IsOptional() @IsEnum(ApprovalEntityType) entityType?: ApprovalEntityType;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() productId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() insuranceTypeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) riskLevel?: string;
   @ApiProperty({ enum: ApprovalConditionField }) @IsEnum(ApprovalConditionField) conditionField!: ApprovalConditionField;
   @ApiProperty({ enum: ApprovalConditionOperator }) @IsEnum(ApprovalConditionOperator) conditionOperator!: ApprovalConditionOperator;
   @ApiProperty() @IsDecimal() thresholdValue!: string;
@@ -150,6 +155,10 @@ export class CreateApprovalRuleDto {
 
 export class UpdateApprovalRuleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional({ enum: ApprovalEntityType }) @IsOptional() @IsEnum(ApprovalEntityType) entityType?: ApprovalEntityType;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() productId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() insuranceTypeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) riskLevel?: string;
   @ApiPropertyOptional({ enum: ApprovalConditionField }) @IsOptional() @IsEnum(ApprovalConditionField) conditionField?: ApprovalConditionField;
   @ApiPropertyOptional({ enum: ApprovalConditionOperator }) @IsOptional() @IsEnum(ApprovalConditionOperator) conditionOperator?: ApprovalConditionOperator;
   @ApiPropertyOptional() @IsOptional() @IsDecimal() thresholdValue?: string;

@@ -39,10 +39,14 @@ export function renderEmail(
     actionText = 'ดูรายละเอียดใบเสนอราคาที่ใกล้หมดอายุ';
   } else if (type === NotificationType.POLICY_ISSUED) {
     actionText = 'ดูรายละเอียดกรมธรรม์';
+  } else if (type === NotificationType.POLICY_EXPIRING) {
+    actionText = 'ดูรายละเอียดกรมธรรม์ที่ใกล้หมดอายุ';
   } else if (type === NotificationType.CUSTOMER_ACCEPTED) {
     actionText = 'ดูรายละเอียดการยอมรับข้อเสนอ';
   } else if (type === NotificationType.CUSTOMER_REJECTED) {
     actionText = 'ดูรายละเอียดการปฏิเสธข้อเสนอ';
+  } else if (type === NotificationType.APPROVAL_REJECTED) {
+    actionText = 'ดูรายละเอียดผลการพิจารณาอนุมัติ';
   }
 
   const detailsHtml = payload.entityType

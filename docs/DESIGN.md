@@ -291,24 +291,33 @@ export const JOB_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
   QUOTATION_RECEIVED:  ['QUOTATION_SELECTED'],
   QUOTATION_SELECTED:  ['PROPOSAL_SENT'],
   PROPOSAL_SENT:       ['WAITING_CUSTOMER'],
-  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL'],
+  WAITING_CUSTOMER:    ['CUSTOMER_ACCEPTED', 'CUSTOMER_REJECTED', 'WAITING_APPROVAL', 'QUOTATION_RECEIVED'],
   CUSTOMER_ACCEPTED:   ['WAITING_APPROVAL', 'BINDING'],
-  WAITING_APPROVAL:    ['APPROVED'],
+  WAITING_APPROVAL:    ['APPROVED', 'APPROVAL_REJECTED'],
+  APPROVAL_REJECTED:   ['WAITING_APPROVAL', 'QUOTATION_RECEIVED', 'CANCELLED'],
   APPROVED:            ['BINDING'],
-  BINDING:             ['POLICY_PENDING'],
+  BINDING:             ['POLICY_PENDING', 'APPROVED', 'CUSTOMER_ACCEPTED'],
   POLICY_PENDING:      ['POLICY_ISSUED'],
-  POLICY_ISSUED:       ['RENEWAL', 'CLOSED'],
+  POLICY_ISSUED:       ['CLOSED'],
   CUSTOMER_REJECTED:   ['CLOSED'],
-  CANCELLED: [], CLOSED: [], EXPIRED: [], RENEWAL: [],
+  CANCELLED:           [],
+  CLOSED:              [],
+  EXPIRED:             [],
+  RENEWAL:             [],
 };
 
 // "Any Open Status → CANCELLED"
 export const NON_CANCELLABLE: JobStatus[] =
   ['POLICY_ISSUED', 'CANCELLED', 'CLOSED', 'EXPIRED', 'RENEWAL'];
 
+/** Statuses that require manager approval before cancelling (D-26) */
+export const CANCEL_REQUIRES_APPROVAL_STATUSES: JobStatus[] = [
+  'BINDING', 'POLICY_PENDING',
+];
+
 export function canTransition(from: JobStatus, to: JobStatus): boolean {
   if (to === 'CANCELLED') return !NON_CANCELLABLE.includes(from);
-  return JOB_TRANSITIONS[from].includes(to);
+  return (JOB_TRANSITIONS[from] ?? []).includes(to);
 }
 ```
 
@@ -330,10 +339,17 @@ export function canTransition(from: JobStatus, to: JobStatus): boolean {
 | `proposals/{id}/revise` / `jobs/{id}/revise` | WAITING_CUSTOMER / APPROVAL_REJECTED → QUOTATION_RECEIVED | Proposal ปัจจุบัน → SUPERSEDED; Approval ค้าง → CANCELLED; Quotation SELECTED → RECEIVED |
 | `proposals/{id}/accept` | WAITING_CUSTOMER → CUSTOMER_ACCEPTED → (WAITING_APPROVAL \| อยู่รอ bind) | ประเมิน `approval_rules`, proposal ไม่หมดอายุ, แนบ evidence หรือ remark ตาม method |
 | `proposals/{id}/reject` | WAITING_CUSTOMER → CUSTOMER_REJECTED | ต้องมี reject reason |
-| `approvals/{id}/approve` | WAITING_APPROVAL → APPROVED | approver ต้องมี role ตาม rule |
-| `bind` | CUSTOMER_ACCEPTED/APPROVED → BINDING → POLICY_PENDING | BR-006..009, idempotency key |
-| `policy` (create + issue) | POLICY_PENDING → POLICY_ISSUED | policy_no unique, BR-010 |
-| `cancel` | any cancellable → CANCELLED | ต้องมี reason |
+| `approvals/{id}/reject` | WAITING_APPROVAL → APPROVAL_REJECTED | บันทึก `rejectReason`, `comment` (D-7, D-8) |
+| `approvals/{id}/resubmit` | APPROVAL_REJECTED → WAITING_APPROVAL | สร้าง Approval ใหม่สถานะ PENDING, บันทึก `resubmittedAt/By` |
+| `approvals/{id}/approve` | WAITING_APPROVAL → APPROVED | approver ต้องมี role ตาม rule (SUPERVISOR / MANAGER) |
+| `jobs/{id}/bind` | CUSTOMER_ACCEPTED/APPROVED → BINDING | เอกสารบังคับต้อง VERIFIED ครบ (D-22), Job คงสถานะ BINDING (single-hop) |
+| `jobs/{id}/bind/confirm` | BINDING → POLICY_PENDING | Binding → CONFIRMED, บันทึก binderNumber/date/premium/underwriter |
+| `jobs/{id}/bind/reject` | BINDING → APPROVED หรือ CUSTOMER_ACCEPTED | Binding → REJECTED พร้อมเหตุผล, ส่ง Job กลับสถานะก่อน bind เพื่อ re-bind ได้ |
+| `policies` (issue) | POLICY_PENDING → POLICY_ISSUED → CLOSED | ประเมินสถานะเริ่มต้นตามวันเริ่มคุ้มครอง (PENDING หรือ ACTIVE) และ Job auto-close ใน transaction เดียว (D-10) |
+| `jobs/{id}/cancel` | any cancellable (ก่อน BINDING) → CANCELLED | ต้องมี reason |
+| `jobs/{id}/cancel-request` | BINDING / POLICY_PENDING (ไม่เปลี่ยน status ทันที) | บันทึก `cancelRequestedAt/By/Reason` รอผู้จัดการอนุมัติ (D-26) |
+| `jobs/{id}/cancel-approve` | BINDING / POLICY_PENDING → CANCELLED | ผู้จัดการอนุมัติยกเลิก, Binding active → CANCELLED |
+| `jobs/{id}/cancel-reject` | BINDING / POLICY_PENDING (คงสถานะเดิม) | ผู้จัดการปฏิเสธคำขอยกเลิกงาน, เคลียร์คำขอ |
 | `close` | POLICY_ISSUED / CUSTOMER_REJECTED → CLOSED | |
 
 ### 7.2 รูปแบบ transition (ทุก action ใช้ pattern นี้)
@@ -421,6 +437,41 @@ PENDING → APPROVED
   - บันทึกประวัติ `ProposalAcceptance` พร้อม IP Address
   - ส่ง Notification `CUSTOMER_ACCEPTED` ไปยัง Agent, Broker Staff และเจ้าของ Job
   - กรณีปฏิเสธ (`POST /proposals/:id/reject`) ส่ง Notification `CUSTOMER_REJECTED`
+
+### 7.5 Approval V2, Binding Lifecycle & Policy V2 (V2, Day 18–21)
+
+#### Approval V2 (D18, D21)
+- **Approval Rule Engine (D-8):**
+  - ประเมินเงื่อนไขบริบท: `productId`, `insuranceTypeId`, `riskLevel` (`LOW | MEDIUM | HIGH`), และ `entityType` (`JOB | ENDORSEMENT`)
+  - กฎเริ่มต้น: เบี้ยสุทธิ `< 100,000` บาท ไม่ต้องขออนุมัติ; บทบาท `SUPERVISOR` และ `MANAGER` มีสิทธิ์ `approval.approve`
+- **Reject & Resubmit Flow:**
+  - ปฏิเสธการอนุมัติ (`POST /api/approvals/:id/reject`): บันทึก `rejectReason`, `comment`, `rejectedBy`, `rejectedAt` และเปลี่ยนสถานะ Job เป็น `APPROVAL_REJECTED`
+  - ยื่นขออนุมัติใหม่ (`POST /api/approvals/:id/resubmit`): สำหรับคำขอที่ถูกปฏิเสธและ Job อยู่ใน `APPROVAL_REJECTED` บันทึก `resubmittedAt`, `resubmittedBy`, ออก Approval แถวใหม่สถานะ `PENDING`, และปรับ Job กลับเป็น `WAITING_APPROVAL`
+  - แจ้งเตือน: `APPROVAL_REQUESTED` (in-app + email) และ `APPROVAL_REJECTED` (in-app + email)
+
+#### Binding Lifecycle & Cancel V2 (D19, D21)
+- **Binding Model & Single-hop (D-9, D-22):**
+  - โมเดล `Binding` มีสถานะ `PENDING`, `SUBMITTED`, `CONFIRMED`, `REJECTED`, `CANCELLED`
+  - การเรียก `POST /api/jobs/:id/bind`: ปรับเป็น single-hop โดย Job คงสถานะ `BINDING` (ไม่ข้ามไป `POLICY_PENDING` ทันที) และต้องมีเอกสาร checklist ระดับ `VERIFIED` ครบถ้วน (422 `BINDING_DOCUMENTS_NOT_VERIFIED`)
+- **Confirm & Insurer Reject Actions:**
+  - `confirmBinding` (`POST /api/jobs/:id/bind/confirm`): ยืนยันรับประกัน บันทึก `binderNumber`, `binderDate`, `premium`, `paymentCondition`, `underwriter`, `binderDocumentId` และเปลี่ยน Job เป็น `POLICY_PENDING`
+  - `insurerRejectBinding` (`POST /api/jobs/:id/bind/reject`): บริษัทประกันปฏิเสธ บันทึก `rejectionReason` และส่ง Job กลับสถานะก่อน bind (`APPROVED` หรือ `CUSTOMER_ACCEPTED`) เพื่อเปิดทางให้ยื่นใหม่ (Re-bind)
+- **Job Cancellation V2 (D-26):**
+  - ก่อนสถานะ `BINDING` ยกเลิกได้ทันที (`POST /api/jobs/:id/cancel`)
+  - ในสถานะ `BINDING` และ `POLICY_PENDING` ห้ามยกเลิกตรงๆ ต้องส่งคำขอผ่าน `POST /api/jobs/:id/cancel-request` พร้อมเหตุผล
+  - ผู้จัดการ (`job.cancel`) สามารถกดอนุมัติ (`POST /api/jobs/:id/cancel-approve`) ส่งผลให้ Job และ Binding ที่ยัง active เป็น `CANCELLED` หรือปฏิเสธคำขอ (`POST /api/jobs/:id/cancel-reject`)
+
+#### Policy Lifecycle V2 (D20, D21)
+- **Policy Statuses:** `DRAFT`, `PENDING`, `ACTIVE`, `EXPIRING`, `EXPIRED`, `CANCEL_REQUESTED`, `CANCELLED`, `RENEWED` (ยกเลิกสถานะ `ISSUED`)
+- **Issue Policy Flow (D-10):**
+  - ประเมินสถานะเริ่มต้นตาม `job.effectiveDate`: วันเริ่มในอนาคต $\to$ `PENDING`, วันเริ่มวันนี้หรืออดีต $\to$ `ACTIVE`
+  - ใน transaction เดียวกัน: Job เปลี่ยนจาก `POLICY_PENDING` $\to$ `POLICY_ISSUED` $\to$ `CLOSED` โดยอัตโนมัติ
+  - บันทึก `sumInsured`, `deductible`, `policyDocumentId` (เอกสารกรมธรรม์ตัวจริง)
+- **Daily Maintenance (`maintainPolicyStatuses`):**
+  - `PENDING` $\to$ `ACTIVE` (เมื่อถึงวันเริ่มคุ้มครอง)
+  - `ACTIVE` $\to$ `EXPIRING` (เมื่อเหลือ $\le 90$ วันก่อนหมดอายุ) พร้อมส่ง `POLICY_EXPIRING` (email)
+  - `EXPIRING` / `ACTIVE` $\to$ `EXPIRED` (เมื่อเลยวันสิ้นสุดความคุ้มครอง)
+- **Renewal Decoupling (D-19):** ตัด transition `POLICY_ISSUED -> RENEWAL` ออกจาก Job และให้การต่ออายุอ้างอิงจาก Record Policy โดยตรง
 
 ---
 

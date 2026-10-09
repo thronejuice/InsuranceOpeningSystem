@@ -308,7 +308,7 @@ export class ProposalService {
 
     // Evaluate approval rules
     const quotation = await this.txHost.tx.quotation.findFirst({ where: { id: proposal.quotationId } });
-    const approverRole = await this.evaluateRules(quotation!);
+    const approverRole = await this.evaluateRules(quotation!, job);
 
     if (approverRole) {
       // Create approval + job → WAITING_APPROVAL
@@ -512,11 +512,18 @@ export class ProposalService {
     return { expiredCount: expired.count };
   }
 
-  private async evaluateRules(quotation: {
-    netPremium: { toString(): string };
-    grossPremium: { toString(): string };
-    discount: { toString(): string };
-  }) {
+  private async evaluateRules(
+    quotation: {
+      netPremium: { toString(): string };
+      grossPremium: { toString(): string };
+      discount: { toString(): string };
+    },
+    job?: {
+      id: string;
+      productId?: string | null;
+      insuranceTypeId?: string | null;
+    },
+  ) {
     const rules = await this.txHost.tx.approvalRule.findMany({
       where: { active: true },
       orderBy: { sortOrder: 'asc' },
@@ -524,7 +531,30 @@ export class ProposalService {
     const gross = new Decimal(quotation.grossPremium.toString());
     const discountAmt = new Decimal(quotation.discount.toString());
     const discountPct = gross.isZero() ? new Decimal(0) : discountAmt.div(gross).times(100);
-    return evaluateApprovalRules(quotation.netPremium.toString(), discountPct.toFixed(4), rules);
+
+    let riskLevel: string | null = null;
+    if (job?.id && this.txHost.tx.underwriting) {
+      const latestUw = await this.txHost.tx.underwriting.findFirst({
+        where: { jobId: job.id, status: 'APPROVED' },
+        orderBy: { version: 'desc' },
+        select: { riskLevel: true },
+      });
+      if (latestUw?.riskLevel) {
+        riskLevel = latestUw.riskLevel;
+      }
+    }
+
+    return evaluateApprovalRules(
+      {
+        netPremium: quotation.netPremium.toString(),
+        discountPercent: discountPct.toFixed(4),
+        entityType: 'JOB',
+        productId: job?.productId ?? null,
+        insuranceTypeId: job?.insuranceTypeId ?? null,
+        riskLevel,
+      },
+      rules,
+    );
   }
 
   private async getJobOrThrow(jobId: string) {

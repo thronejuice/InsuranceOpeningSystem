@@ -91,6 +91,24 @@ export class JobController {
     return this.workflow.transition(id, 'CANCELLED', { reason: dto.reason });
   }
 
+  @Post(':id/cancel-request')
+  @RequirePermissions('job.cancel')
+  requestCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelJobDto) {
+    return this.workflow.requestCancel(id, { reason: dto.reason });
+  }
+
+  @Post(':id/cancel-approve')
+  @RequirePermissions('job.cancel')
+  approveCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkflowActionDto) {
+    return this.workflow.approveCancel(id, { reason: dto.reason });
+  }
+
+  @Post(':id/cancel-reject')
+  @RequirePermissions('job.cancel')
+  rejectCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelJobDto) {
+    return this.workflow.rejectCancel(id, { reason: dto.reason });
+  }
+
   @Post(':id/close')
   @RequirePermissions('job.update')
   close(@Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkflowActionDto) {

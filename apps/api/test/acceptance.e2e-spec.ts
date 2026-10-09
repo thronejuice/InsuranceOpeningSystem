@@ -320,7 +320,7 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
 
   // ─── Step 20: Binding ──────────────────────────────────────────────────────
 
-  it('Step 20: All preconditions met — Bind → POLICY_PENDING', async () => {
+  it('Step 20: All preconditions met — Bind → BINDING, Confirm → POLICY_PENDING', async () => {
     const precRes = await http()
       .get(`/api/jobs/${jobId}/bind/preconditions`)
       .set('Authorization', `Bearer ${agentToken}`);
@@ -336,26 +336,37 @@ describe('Acceptance Flow (spec §47 steps 1–21)', () => {
 
     expect(bindRes.status).toBe(201);
     expect(bindRes.body.data.jobId).toBe(jobId);
+    expect(bindRes.body.data.status).toBe('SUBMITTED');
 
     const jobRes = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('POLICY_PENDING');
+    expect(jobRes.body.data.status).toBe('BINDING');
+
+    const confirmRes = await http()
+      .post(`/api/jobs/${jobId}/bind/confirm`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ binderNumber: 'BIND-ACC-01' });
+
+    expect(confirmRes.status).toBe(201);
+    const confirmedJobRes = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
+    expect(confirmedJobRes.body.data.status).toBe('POLICY_PENDING');
   });
 
   // ─── Step 21: Issue Policy ─────────────────────────────────────────────────
 
-  it('Step 21: Issue Policy → POLICY_ISSUED with policyNo', async () => {
+  it('Step 21: Issue Policy → policy created, job auto-closes (D-10)', async () => {
     const res = await http()
       .post(`/api/jobs/${jobId}/policy`)
       .set('Authorization', `Bearer ${agentToken}`)
       .send({ remark: 'policy acceptance test' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.status).toBe('ISSUED');
+    // Effective date is 2027-01-01 (future), so initial status is PENDING (D-10)
+    expect(res.body.data.status).toBe('PENDING');
     expect(res.body.data.policyNo).toMatch(/^PL-\d{4}-\d+$/);
     expect(res.body.data.netPremium).toBeTruthy();
 
     const jobRes = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
-    expect(jobRes.body.data.status).toBe('POLICY_ISSUED');
+    expect(jobRes.body.data.status).toBe('CLOSED');
   });
 
   // ─── Step 25: Activity Timeline ───────────────────────────────────────────
