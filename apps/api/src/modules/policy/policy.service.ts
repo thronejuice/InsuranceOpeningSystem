@@ -121,6 +121,7 @@ export class PolicyService {
 
     const job = await this.getJobOrThrow(jobId);
     await this.assertJobAccess(jobId);
+    await this.assertJobDocument(jobId, dto.binderDocumentId);
 
     if (job.status !== 'CUSTOMER_ACCEPTED' && job.status !== 'APPROVED') {
       throw new BusinessException('JOB_INVALID_STATUS', `Cannot bind job in status ${job.status}`, 409);
@@ -254,6 +255,7 @@ export class PolicyService {
     const userId = this.cls.get('userId')!;
     const job = await this.getJobOrThrow(jobId);
     await this.assertJobAccess(jobId);
+    await this.assertJobDocument(jobId, dto.binderDocumentId);
 
     if (job.status !== 'BINDING') {
       throw new BusinessException('JOB_INVALID_STATUS', `Cannot confirm binding for job in status ${job.status}`, 409);
@@ -373,6 +375,7 @@ export class PolicyService {
     const userId = this.cls.get('userId')!;
     const job = await this.getJobOrThrow(jobId);
     await this.assertJobAccess(jobId);
+    await this.assertJobDocument(jobId, dto.policyDocumentId);
 
     if (job.status !== 'POLICY_PENDING') {
       throw new BusinessException('JOB_INVALID_STATUS', `Cannot issue policy for job in status ${job.status}`, 409);
@@ -472,6 +475,7 @@ export class PolicyService {
     const policy = await this.repo.findPolicyById(id);
     if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
     await this.assertJobAccess(policy.jobId);
+    if (dto.policyDocumentId) await this.assertJobDocument(policy.jobId, dto.policyDocumentId);
 
     const updated = await this.repo.updatePolicy(id, {
       ...(dto.paymentDueDate !== undefined && {
@@ -587,5 +591,14 @@ export class PolicyService {
     });
     if (!job) throw new BusinessException('JOB_NOT_FOUND', 'Job not found', 404);
     return job;
+  }
+
+  /** Guards against connecting a binder/policy document that was uploaded for a different job (IDOR). */
+  private async assertJobDocument(jobId: string, documentId?: string): Promise<void> {
+    if (!documentId) return;
+    const doc = await this.txHost.tx.document.findFirst({
+      where: { id: documentId, jobId, deletedAt: null },
+    });
+    if (!doc) throw new BusinessException('DOCUMENT_NOT_FOUND', 'Document not found for this job', 404);
   }
 }
