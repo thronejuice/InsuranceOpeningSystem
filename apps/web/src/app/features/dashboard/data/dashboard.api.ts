@@ -23,6 +23,9 @@ export interface ManagerDashboard {
   policyCount: number;
   conversionRate: string;
   overdueCount: number;
+  arOutstanding?: string;
+  renewalPipelineCount?: number;
+  pendingApprovals?: number;
 }
 
 export interface FunnelData {

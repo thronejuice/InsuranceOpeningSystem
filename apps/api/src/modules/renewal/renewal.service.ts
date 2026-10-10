@@ -18,10 +18,17 @@ import {
   RENEWAL_COPY_DOCUMENT_TYPES,
   validateRenewalDates,
 } from './domain/renewal-dates.js';
+import {
+  deriveRenewalStatusFromJob,
+  getTimelineStepForDays,
+  RENEWAL_TIMELINE_STEPS,
+} from './domain/renewal-timeline.js';
 import { DataScopeService } from '../../common/access/data-scope.service.js';
 import { JobWorkflowService } from '../job/job-workflow.service.js';
+import { NotificationService } from '../notification/notification.service.js';
+import { NotificationType, RenewalStatus, PolicyStatus } from '../../generated/prisma/enums.js';
 
-const RENEWAL_THRESHOLDS_DAYS = [90, 60, 30, 7];
+const RENEWAL_THRESHOLDS_DAYS = [90, 60, 45, 30, 15, 7];
 
 @Injectable()
 export class RenewalService {
@@ -33,6 +40,7 @@ export class RenewalService {
     private readonly cls: ClsService<AppClsStore>,
     private readonly scope: DataScopeService,
     private readonly workflow: JobWorkflowService,
+    private readonly notifications?: NotificationService,
   ) {}
 
   async list(query: RenewalQueryDto): Promise<{ items: RenewalResponse[]; total: number }> {
@@ -233,16 +241,89 @@ export class RenewalService {
   }
 
   /**
-   * Called by the BullMQ daily scheduler.
-   * Creates Renewal records + tasks for policies expiring within threshold windows.
-   * Idempotent: skips policies that already have an active (non-CANCELLED/LOST/RENEWED) renewal.
+   * Day 38: Action contactCustomer before a renewal job is created.
+   * Transitions status to CUSTOMER_CONTACTED.
    */
   @Transactional()
-  async runDailyRenewalCheck(): Promise<void> {
+  async contactCustomer(renewalId: string): Promise<RenewalResponse> {
+    const renewal = await this.repo.findById(renewalId);
+    if (!renewal) throw new BusinessException('RENEWAL_NOT_FOUND', 'Renewal record not found', 404);
+
+    if (renewal.status !== 'PENDING' && renewal.status !== 'IN_PROGRESS') {
+      throw new BusinessException('RENEWAL_INVALID_STATUS', `Cannot contact customer in status ${renewal.status}`, 409);
+    }
+
+    const updated = await this.repo.update(renewalId, {
+      status: RenewalStatus.CUSTOMER_CONTACTED,
+    });
+
+    await this.audit.log({
+      action: 'RENEWAL_CONTACTED_CUSTOMER',
+      entityType: 'RENEWAL',
+      entityId: renewalId,
+      oldValue: { status: renewal.status },
+      newValue: { status: RenewalStatus.CUSTOMER_CONTACTED },
+    });
+
+    return toRenewalResponse(updated);
+  }
+
+  /**
+   * Day 38 / D-18: Sync hook called from JobWorkflowService when a Renewal Job transitions.
+   * Updates associated Renewal status to match the Job progression.
+   */
+  @Transactional()
+  async syncRenewalFromJob(jobId: string, jobStatus: string): Promise<void> {
+    const renewal = await this.txHost.tx.renewal.findFirst({
+      where: { newJobId: jobId },
+      include: { previousPolicy: true },
+    });
+    if (!renewal) return;
+
+    const nextStatus = deriveRenewalStatusFromJob(jobStatus);
+    if (!nextStatus || nextStatus === renewal.status) return;
+
+    await this.repo.update(renewal.id, {
+      status: nextStatus,
+    });
+
+    // If Renewal Job issues policy (RENEWED), transition previous policy to RENEWED
+    if (nextStatus === RenewalStatus.RENEWED) {
+      await this.txHost.tx.policy.update({
+        where: { id: renewal.previousPolicyId },
+        data: { status: PolicyStatus.RENEWED },
+      });
+    }
+
+    await this.audit.log({
+      action: 'SYNC_RENEWAL_STATUS',
+      entityType: 'RENEWAL',
+      entityId: renewal.id,
+      jobId,
+      oldValue: { status: renewal.status },
+      newValue: { status: nextStatus },
+      remark: `Synced from Job status ${jobStatus}`,
+    });
+  }
+
+  /**
+   * Called by daily scheduler (D-18 / D-19).
+   * 1. Creates Renewal records + tasks for policies expiring within 90/60/45/30/15/7 days.
+   * 2. Emits RENEWAL_DUE notifications.
+   * 3. For expired policies where renewal was not completed:
+   *    - Marks active Renewal as EXPIRED (LOST).
+   *    - If a renewal Job exists and is not closed/issued, marks Job as EXPIRED.
+   */
+  @Transactional()
+  async runDailyRenewalCheck(): Promise<{ createdCount: number; expiredCount: number }> {
     const db = this.txHost.tx;
     const now = new Date();
+    let createdCount = 0;
+    let expiredCount = 0;
 
-    for (const days of RENEWAL_THRESHOLDS_DAYS) {
+    // 1. Process Timeline Steps (90, 60, 45, 30, 15, 7)
+    for (const step of RENEWAL_TIMELINE_STEPS) {
+      const days = step.daysBeforeExpiry;
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + days);
 
@@ -254,27 +335,39 @@ export class RenewalService {
       const policies = await this.repo.findPoliciesExpiring(startOfDay, endOfDay);
 
       for (const policy of policies) {
-        const existing = await this.repo.findActiveByPolicyId(policy.id);
-        if (existing) continue;
+        let renewal = await this.repo.findActiveByPolicyId(policy.id);
+        if (!renewal) {
+          renewal = await this.repo.create({
+            previousPolicy: { connect: { id: policy.id } },
+            renewalDate: now,
+            targetExpiryDate: policy.expiryDate ?? now,
+            status: RenewalStatus.PENDING,
+            assignee: policy.job?.assignedTo
+              ? { connect: { id: policy.job.assignedTo } }
+              : undefined,
+          });
+          createdCount++;
+        }
 
-        const renewal = await this.repo.create({
-          previousPolicy: { connect: { id: policy.id } },
-          renewalDate: now,
-          targetExpiryDate: policy.expiryDate ?? now,
-          status: 'PENDING',
-          assignee: policy.job?.assignedTo
-            ? { connect: { id: policy.job.assignedTo } }
-            : undefined,
+        // Create timeline follow-up task if not yet created for this step
+        const existingTask = await db.task.findFirst({
+          where: {
+            policyId: policy.id,
+            taskType: 'RENEWAL_FOLLOW_UP',
+            subject: { contains: `${days} วัน` },
+          },
         });
 
-        if (policy.jobId) {
+        if (!existingTask) {
           await db.task.create({
             data: {
-              job: { connect: { id: policy.jobId } },
-              taskType: 'RENEWAL',
-              subject: `ต่ออายุกรมธรรม์ ${policy.policyNo} ครบกำหนดใน ${days} วัน`,
+              policy: { connect: { id: policy.id } },
+              job: policy.jobId ? { connect: { id: policy.jobId } } : undefined,
+              customer: policy.job?.customerId ? { connect: { id: policy.job.customerId } } : undefined,
+              taskType: 'RENEWAL_FOLLOW_UP',
+              subject: `${step.taskSubject} (กรมธรรม์ ${policy.policyNo})`,
               dueDate: policy.expiryDate ?? now,
-              priority: days <= 7 ? 'URGENT' : days <= 30 ? 'HIGH' : 'MEDIUM',
+              priority: step.taskPriority,
               status: 'TODO',
               assignee: policy.job?.assignedTo
                 ? { connect: { id: policy.job.assignedTo } }
@@ -283,8 +376,50 @@ export class RenewalService {
           });
         }
 
-        void renewal;
+        // Emit RENEWAL_DUE notification
+        if (this.notifications) {
+          const recipientIds = [policy.job?.agentId, policy.job?.assignedTo].filter((id): id is string => Boolean(id));
+          if (recipientIds.length > 0) {
+            await this.notifications.emit(
+              NotificationType.RENEWAL_DUE,
+              recipientIds,
+              {
+                title: `แจ้งเตือนต่ออายุกรมธรรม์ (${policy.policyNo})`,
+                message: `กรมธรรม์เลขที่ ${policy.policyNo} จะหมดอายุในอีก ${days} วัน (${step.taskSubject})`,
+                entityType: 'RENEWAL',
+                entityId: renewal.id,
+                jobId: policy.jobId ?? undefined,
+              },
+            );
+          }
+        }
       }
     }
+
+    // 2. Handle Policies that have reached expiry without completed renewal
+    const expiredRenewals = await db.renewal.findMany({
+      where: {
+        targetExpiryDate: { lt: now },
+        status: { in: [RenewalStatus.PENDING, RenewalStatus.IN_PROGRESS, RenewalStatus.QUOTATION, RenewalStatus.CUSTOMER_CONTACTED] },
+      },
+      include: { newJob: true },
+    });
+
+    for (const r of expiredRenewals) {
+      await this.repo.update(r.id, {
+        status: RenewalStatus.LOST,
+      });
+      expiredCount++;
+
+      // D-19: Renewal Job EXPIRED
+      if (r.newJob && !['POLICY_ISSUED', 'CLOSED', 'CANCELLED', 'EXPIRED'].includes(r.newJob.status)) {
+        await db.job.update({
+          where: { id: r.newJob.id },
+          data: { status: 'EXPIRED' },
+        });
+      }
+    }
+
+    return { createdCount, expiredCount };
   }
 }

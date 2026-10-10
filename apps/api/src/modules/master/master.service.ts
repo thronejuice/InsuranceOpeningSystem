@@ -14,6 +14,8 @@ import type {
   CreateInsuranceCoverageDto,
   CreateInsuranceProductDto,
   CreateInsuranceTypeDto,
+  CreateInsurerContactDto,
+  UpdateInsurerContactDto,
   CreateRiskFieldDto,
   UpdateApprovalRuleDto,
   UpdateBranchDto,
@@ -142,6 +144,7 @@ export class MasterService {
       phone: dto.phone,
       email: dto.email,
       address: dto.address,
+      bankAccount: dto.bankAccount,
       status: dto.status,
     });
   }
@@ -156,6 +159,60 @@ export class MasterService {
   async deleteCompany(id: string) {
     await this.getCompany(id);
     return this.repo.softDeleteCompany(id);
+  }
+
+  // ─── Insurer Contacts & Stats ───────────────────────────────────────────
+
+  async listCompanyContacts(companyId: string, underwritersOnly = false) {
+    await this.getCompany(companyId);
+    const contacts = await this.repo.findContactsByCompany(companyId);
+    return underwritersOnly ? contacts.filter((c) => c.isUnderwriter && c.active) : contacts;
+  }
+
+  @Transactional()
+  async createCompanyContact(companyId: string, dto: CreateInsurerContactDto) {
+    await this.getCompany(companyId);
+    if (dto.isPrimary) {
+      // Clear other primary flags
+      const existing = await this.repo.findContactsByCompany(companyId);
+      for (const c of existing) {
+        if (c.isPrimary) {
+          await this.repo.updateContact(c.id, { isPrimary: false });
+        }
+      }
+    }
+    return this.repo.createContact({
+      insuranceCompany: { connect: { id: companyId } },
+      name: dto.name,
+      position: dto.position,
+      email: dto.email,
+      phone: dto.phone,
+      isUnderwriter: dto.isUnderwriter ?? false,
+      isPrimary: dto.isPrimary ?? false,
+    });
+  }
+
+  @Transactional()
+  async updateCompanyContact(contactId: string, dto: UpdateInsurerContactDto) {
+    const contact = await this.repo.findContactById(contactId);
+    if (!contact) throw new BusinessException('CONTACT_NOT_FOUND', 'Contact not found', 404);
+
+    if (dto.isPrimary) {
+      const existing = await this.repo.findContactsByCompany(contact.insuranceCompanyId);
+      for (const c of existing) {
+        if (c.isPrimary && c.id !== contactId) {
+          await this.repo.updateContact(c.id, { isPrimary: false });
+        }
+      }
+    }
+    return this.repo.updateContact(contactId, dto);
+  }
+
+  @Transactional()
+  async deleteCompanyContact(contactId: string) {
+    const contact = await this.repo.findContactById(contactId);
+    if (!contact) throw new BusinessException('CONTACT_NOT_FOUND', 'Contact not found', 404);
+    return this.repo.softDeleteContact(contactId);
   }
 
   // ─── Insurance Coverage ──────────────────────────────────────────────────

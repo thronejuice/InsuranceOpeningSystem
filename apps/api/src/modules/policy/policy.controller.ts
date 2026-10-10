@@ -8,6 +8,12 @@ import { RejectBindingDto } from './dto/reject-binding.dto.js';
 import { CreatePolicyDto } from './dto/create-policy.dto.js';
 import { UpdatePolicyDto } from './dto/update-policy.dto.js';
 import { ListPolicyDto } from './dto/list-policy.dto.js';
+import {
+  CalculateCancellationRefundDto,
+  RequestCancellationDto,
+  ApproveCancellationDto,
+  RejectCancellationDto,
+} from './dto/cancel-policy.dto.js';
 
 @ApiTags('policies')
 @ApiBearerAuth()
@@ -67,6 +73,12 @@ export class PolicyController {
     return this.service.getPolicyById(id);
   }
 
+  @Get('policies/:id/versions')
+  @RequirePermissions('policy.view')
+  getVersions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getPolicyVersions(id);
+  }
+
   @Post('jobs/:jobId/policy')
   @RequirePermissions('policy.create')
   createPolicy(
@@ -86,8 +98,47 @@ export class PolicyController {
   }
 
   @Post('policies/process-daily')
-  @RequirePermissions('policy.update')
+  @RequirePermissions('maintenance.run')
   processDaily() {
     return this.service.maintainPolicyStatuses();
   }
+
+  // ─── Policy Cancellation (Day 33) ──────────────────────────────────────────
+
+  @Post('policies/:id/cancel-calculate')
+  @RequirePermissions('policy.view')
+  calculateCancellation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CalculateCancellationRefundDto,
+  ) {
+    return this.service.calculateCancellation(id, dto);
+  }
+
+  @Post('policies/:id/cancel-request')
+  @RequirePermissions('policy.update')
+  requestCancellation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestCancellationDto,
+  ) {
+    return this.service.requestCancellation(id, dto);
+  }
+
+  @Post('policies/:id/cancel-approve')
+  @RequirePermissions('policy.update')
+  approveCancellation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveCancellationDto,
+  ) {
+    return this.service.approveCancellation(id, dto);
+  }
+
+  @Post('policies/:id/cancel-reject')
+  @RequirePermissions('policy.update')
+  rejectCancellation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectCancellationDto,
+  ) {
+    return this.service.rejectCancellation(id, dto);
+  }
 }
+

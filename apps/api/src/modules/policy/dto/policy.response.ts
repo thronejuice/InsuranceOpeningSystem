@@ -55,6 +55,14 @@ export interface PolicyResponse {
   issuedAt: string | null;
   remark: string | null;
   version: number;
+  cancelReason?: string | null;
+  cancelRequestDate?: string | null;
+  cancelEffectiveDate?: string | null;
+  cancelInsurerDocumentId?: string | null;
+  cancelRefundAmount?: string | null;
+  cancelOutstandingAmount?: string | null;
+  cancelledAt?: string | null;
+  cancelledById?: string | null;
   createdAt: string;
   updatedAt: string;
   coverages: PolicyCoverageRow[];
@@ -138,6 +146,14 @@ export function toPolicyResponse(p: {
   issuedAt: Date | null;
   remark: string | null;
   version: number;
+  cancelReason?: string | null;
+  cancelRequestDate?: Date | null;
+  cancelEffectiveDate?: Date | null;
+  cancelInsurerDocumentId?: string | null;
+  cancelRefundAmount?: { toString(): string } | null;
+  cancelOutstandingAmount?: { toString(): string } | null;
+  cancelledAt?: Date | null;
+  cancelledById?: string | null;
   createdAt: Date;
   updatedAt: Date;
   coverages: Array<{
@@ -173,6 +189,14 @@ export function toPolicyResponse(p: {
     issuedAt: p.issuedAt ? p.issuedAt.toISOString() : null,
     remark: p.remark,
     version: p.version,
+    cancelReason: p.cancelReason ?? null,
+    cancelRequestDate: p.cancelRequestDate ? (p.cancelRequestDate as Date).toISOString().slice(0, 10) : null,
+    cancelEffectiveDate: p.cancelEffectiveDate ? (p.cancelEffectiveDate as Date).toISOString().slice(0, 10) : null,
+    cancelInsurerDocumentId: p.cancelInsurerDocumentId ?? null,
+    cancelRefundAmount: p.cancelRefundAmount ? p.cancelRefundAmount.toString() : null,
+    cancelOutstandingAmount: p.cancelOutstandingAmount ? p.cancelOutstandingAmount.toString() : null,
+    cancelledAt: p.cancelledAt ? (p.cancelledAt as Date).toISOString() : null,
+    cancelledById: p.cancelledById ?? null,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     coverages: p.coverages.map((c) => ({

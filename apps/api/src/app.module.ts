@@ -27,6 +27,7 @@ import { DocumentModule } from './modules/document/document.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { JobModule } from './modules/job/job.module.js';
 import { MasterModule } from './modules/master/master.module.js';
+import { InsurerModule } from './modules/insurer/insurer.module.js';
 import { QuotationModule } from './modules/quotation/quotation.module.js';
 import { ProposalModule } from './modules/proposal/proposal.module.js';
 import { ApprovalModule } from './modules/approval/approval.module.js';
@@ -44,6 +45,8 @@ import { ImportModule } from './modules/import/import.module.js';
 import { CompanyProfileModule } from './modules/company-profile/company-profile.module.js';
 import { UnderwritingModule } from './modules/underwriting/underwriting.module.js';
 import { InvoiceModule } from './modules/invoice/invoice.module.js';
+import { EndorsementModule } from './modules/endorsement/endorsement.module.js';
+import { RefundModule } from './modules/refund/refund.module.js';
 
 const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env');
 
@@ -97,6 +100,7 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     DocumentModule,
     JobModule,
     MasterModule,
+    InsurerModule,
     QuotationModule,
     ProposalModule,
     ApprovalModule,
@@ -114,6 +118,8 @@ const rootEnvPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.
     CompanyProfileModule,
     UnderwritingModule,
     InvoiceModule,
+    EndorsementModule,
+    RefundModule,
     HealthModule,
   ],
   providers: [

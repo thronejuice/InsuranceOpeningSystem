@@ -33,6 +33,8 @@ export interface User {
   branch?: UserBranch | null;
   managerId?: string | null;
   manager?: UserManager | null;
+  /** Percent of gross commission; null = system default. */
+  agentSharePct?: string | null;
 }
 
 export interface Role {
@@ -66,6 +68,7 @@ export class UsersApi {
     roleIds?: string[];
     branchId?: string | null;
     managerId?: string | null;
+    agentSharePct?: string;
   }) {
     return this.http.post<ApiResponse<User>>('/api/users', body);
   }
@@ -79,6 +82,7 @@ export class UsersApi {
       roleIds?: string[];
       branchId?: string | null;
       managerId?: string | null;
+      agentSharePct?: string | null;
     },
   ) {
     return this.http.put<ApiResponse<User>>(`/api/users/${id}`, body);

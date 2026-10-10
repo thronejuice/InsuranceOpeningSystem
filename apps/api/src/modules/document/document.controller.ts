@@ -45,7 +45,7 @@ export class DocumentController {
   // ─── Document-level endpoints ─────────────────────────────────────────────
 
   @Post('documents/expire-outdated')
-  @RequirePermissions('document.verify')
+  @RequirePermissions('maintenance.run')
   expireOutdated() {
     return this.svc.expireOutdatedDocuments();
   }

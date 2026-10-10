@@ -1,13 +1,9 @@
-import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PaginationQueryDto } from '../../../common/http/pagination.dto.js';
+import { TaskStatus } from '../../../generated/prisma/enums.js';
 
-export enum TaskStatus {
-  TODO = 'TODO',
-  IN_PROGRESS = 'IN_PROGRESS',
-  DONE = 'DONE',
-  CANCELLED = 'CANCELLED',
-}
+export { TaskStatus };
 
 export class TaskQueryDto extends PaginationQueryDto {
   @IsBoolean()
@@ -23,4 +19,16 @@ export class TaskQueryDto extends PaginationQueryDto {
   @IsEnum(TaskStatus)
   @IsOptional()
   status?: TaskStatus;
+
+  @IsUUID()
+  @IsOptional()
+  customerId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  policyId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  jobId?: string;
 }

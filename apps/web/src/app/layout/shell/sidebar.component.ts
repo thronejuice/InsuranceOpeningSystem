@@ -36,8 +36,12 @@ const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'การเงินและอนุมัติ',
     items: [
+      { label: 'ใบแจ้งหนี้', icon: 'pi pi-file', route: '/invoices', permission: 'invoice.view' },
       { label: 'การชำระเงิน', icon: 'pi pi-credit-card', route: '/payments', permission: 'payment.view' },
+      { label: 'การคืนเงิน', icon: 'pi pi-replay', route: '/refunds', permission: 'invoice.view' },
+      { label: 'ลูกหนี้คงค้าง (AR)', icon: 'pi pi-clock', route: '/receivables', permission: 'receivable.view' },
       { label: 'ค่าคอมมิชชั่น', icon: 'pi pi-dollar', route: '/commissions', permission: 'commission.view' },
+      { label: 'ใบสรุปค่าคอม', icon: 'pi pi-wallet', route: '/commission-statements', permission: 'commission.view' },
       { label: 'การอนุมัติ', icon: 'pi pi-check-circle', route: '/approvals', permission: 'approval.manage' },
       { label: 'Underwriting', icon: 'pi pi-shield', route: '/underwriting', permission: 'underwriting.review' },
     ],

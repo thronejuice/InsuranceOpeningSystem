@@ -473,6 +473,51 @@ PENDING → APPROVED
   - `EXPIRING` / `ACTIVE` $\to$ `EXPIRED` (เมื่อเลยวันสิ้นสุดความคุ้มครอง)
 - **Renewal Decoupling (D-19):** ตัด transition `POLICY_ISSUED -> RENEWAL` ออกจาก Job และให้การต่ออายุอ้างอิงจาก Record Policy โดยตรง
 
+### 7.6 Billing, Money Flow & Commission (V2, Day 22–30)
+
+#### Money flow
+
+```text
+Policy issued ──► Invoices (1 ต่องวดตาม Payment Term; ยอดงวดสุดท้ายรับเศษสตางค์)
+                    │  POST /invoices/:id/payments  (Idempotency-Key, lock invoice FOR UPDATE)
+                    ▼
+                 Payment ──► Receipt (RC-)         ยกเลิก payment → receipt VOID, invoice คำนวณสถานะใหม่
+                    │
+                    ▼  ทุกครั้งที่ invoice เปลี่ยน: computeInvoiceStatus() ตัวเดียว
+        PENDING → PARTIALLY_PAID → PAID   (OVERDUE โดยงานรายวัน, CANCELLED)
+                    │
+                    ▼  invoice ที่ไม่ CANCELLED ทุกใบ PAID
+        Commission  APPROVED ──► PAYABLE  (กลับเป็น APPROVED ถ้า payment ถูกยกเลิก — ยกเว้นแถวที่อยู่ใน statement แล้ว)
+                    │  statement รายเดือนต่อผู้รับ
+                    ▼
+        Statement DRAFT → CONFIRMED → PAID   ⇒ commission PAID, adjustment SETTLED
+```
+
+- **Invoice / Payment:** payment ผูก invoice เท่านั้น (OQ-10); จำนวนเงินต้อง ≤ ยอดค้างของ invoice; ใช้ `Decimal` (decimal.js) ทุกจุด, JSON เป็น string; `INVOICE`/`DEBIT_NOTE`/`CREDIT_NOTE` อยู่ใน enum เดียวกัน (note จริงมาใน Phase 5)
+- **AR (`GET /receivables`):** รวมยอดค้างต่อลูกค้า/กรมธรรม์ แยก aging ตามวันเลยกำหนด Asia/Bangkok (`NOT_DUE`, 0–30, 31–60, 61–90, 90+); ไม่นับ CANCELLED/CREDIT_NOTE
+- **Billing PDF:** เรนเดอร์สดจาก DB ทุกครั้ง (ไม่เก็บเป็น Document) ด้วย `common/pdf/document-parts.ts` ที่ใช้ร่วมกับ Proposal; ไฟล์ HTML template เป็น pure function + unit test
+- **Commission:** สูตรอยู่ใน `commission/domain/commission.ts` (pure): Gross = เบี้ยสุทธิ × อัตรา; ส่วน Agent / override หัวหน้าทีม / Broker รวมเท่า Gross เสมอ (เศษอยู่ที่ Broker); WHT หักจากส่วนของผู้รับแต่ละคน (OQ-15..18); ค่าตั้งต้นอยู่ใน `system_settings` (`commission.wht_rate`, `commission.default_agent_share_pct`, `commission.override_rate`) และ `users.agent_share_pct` override ได้ต่อคน
+- **Adjustment:** แถวใหม่ +/− ไม่แก้แถวเดิม; WHT ใช้เรตของแถวเดิม; หักคืนรวมต้องไม่เกินส่วนแบ่งเดิม (OQ-20/21)
+- **Statement:** หนึ่งใบต่อผู้รับต่อเดือน (unique index บางส่วนที่ไม่นับ CANCELLED); ยอดรวมไม่ติดลบ — adjustment ติดลบที่ไม่พอหักจะยกไปใบถัดไป; claim รายการด้วย `updateMany` แบบมีเงื่อนไข กันสร้างซ้อน (OQ-19/22)
+- **Concurrency:** payment ล็อก invoice แถวด้วย `SELECT … FOR UPDATE`; adjustment ล็อกแถว commission; statement ใช้ conditional claim + CHECK constraint (ดู migration `20261009140000`)
+- **Permissions:** `invoice.view/update`, `receivable.view`, `payment.view/create`, `commission.view/create/approve/adjust/statement` — ผู้รับที่ไม่มี `commission.statement` เห็น/ส่งออกได้เฉพาะ statement ของตน
+- **Export:** `GET /commission-statements/:id/export` สร้าง .xlsx (Statement / Commissions / Adjustments) ใช้ scope เดียวกับ `GET :id`
+
+#### Frontend (Day 28–29)
+- `features/billing/` — `PolicyInvoicesComponent` (ใช้ใน Policy detail และ Job tab Payment), หน้า `/invoices`, `/receivables`; PDF ดึงเป็น blob ด้วย token แล้วเปิดแท็บใหม่
+- `features/commissions/` — `PolicyCommissionsComponent` (ใช้ใน Policy detail และ Job tab Commission), `AdjustDialogComponent`, หน้า `/commissions` (รายการ + สรุป), `/commission-statements` (+ detail)
+- Master → "ตั้งค่าค่าคอม (WHT/Share)" แก้ system settings; ฟอร์ม User มีช่อง `agentSharePct` (ว่าง = ใช้ค่าเริ่มต้น)
+- UI ไม่คำนวณเงินเอง: ปุ่มและยอดทั้งหมดมาจาก response ของ backend; ผลรวมในหน้า invoice ของ policy รวมเป็นสตางค์จำนวนเต็ม ไม่ใช้ float
+
+### 7.7 Insurer, Reports & Demo data (V2, Day 42–45)
+
+- **Insurer (`insurers/:id`):** ผู้ติดต่อ/Underwriter หลายคน (`insurer_contacts`; unique index บางส่วนบังคับ **ผู้ติดต่อหลักได้คนเดียว** ต่อบริษัท), ผลิตภัณฑ์ที่รับ (`insurer_products`, soft delete, unique บางส่วนต่อ insurer × product) พร้อมอัตราค่าคอมที่มีผล ณ วันนี้และประวัติอัตรา (ตัวอัตราอยู่ที่ `commission_rates` ตาม D11 — ไม่เก็บซ้ำ), สถิติ (`GET /insurers/:id/stats`, `report.view`): อัตราได้งาน = SELECTED ÷ ได้รับราคา (ไม่นับ REQUESTED/CANCELLED), เบี้ยรวมที่ออกกรมธรรม์ไม่นับ DRAFT/CANCELLED แยกยอดที่ยกเลิก — คำนวณด้วย Decimal ใน `insurer/domain/stats.ts` (OQ-24)
+- **ฟอร์ม Quotation/Binding:** เสนอชื่อ Underwriter จาก `GET /master/companies/:id/contacts?underwriter=true` (พิมพ์เองได้ — ฟิลด์ยังเป็น string)
+- **Reports:** ทุก export (`/reports/*/export`) และ dashboard กรองด้วย `DataScopeService` (invoice/receivable/endorsement/refund/renewal/payment/commission/policy/quotation/job); statements ใช้กฎเดียวกับ `GET /commission-statements`; ตัวเลขใน Excel มาจาก Decimal string; Receivables มีชีต Summary ต่อ aging bucket
+- **Dashboard (manager):** `arOutstanding` = Σ invoice/debit note ที่ยังไม่ปิด − Σ payment ACTIVE ที่ผูกกับใบเหล่านั้น (scope เดียวกับผู้ดู), pipeline ต่ออายุ = renewal ที่ยังไม่ตัดสิน, approval รอ = PENDING ของ job ที่เห็นได้; funnel กรอง scope เช่นกัน
+- **Demo data (`src/seed-mock/`):** ขับ API จริงในโปรเซสเดียว (`NestFactory.create` + supertest) ตามบทบาทจริง (agent/staff/manager/finance/admin) จึงได้ history, audit, notification ครบ; "เดินเวลา" ด้วยการแก้วันที่ใน DB เฉพาะที่จำเป็น (ระบุในคอมเมนต์) แล้วเรียกงานรายวัน; รันผ่าน `nest build` เพราะ tsx ไม่ emit decorator metadata
+- **Migration:** `db push` เคยทำให้ schema นำหน้า migration (ตาราง/คอลัมน์ insurer, task V2) — แก้ใน `20261010090000_insurer_products` และ `20261010100000_task_v2` (เขียนแบบ IF NOT EXISTS) และเพิ่มกฎใน CLAUDE.md ให้ตรวจ drift ด้วย `migrate diff` ก่อนปิดงาน
+
 ---
 
 ## 8. Security
@@ -539,6 +584,21 @@ features/customers/
 - Tab **Underwriting (V2 Day 9):** สถานะล่าสุด + ประวัติทุกรอบ (version), ฟอร์ม review (riskLevel/riskScore/reason/condition/exclusion/deductible/requiredSurvey/requiredDocuments) และปุ่ม request-review/approve/require-info/reject/resume ตาม permission `underwriting.review` + maker-checker (ผู้ขอ ≠ ผู้ตรวจ)
 - Tab **Risk** เป็น dynamic form สร้างจาก `risk_field_definitions` ของ product (TEXT/NUMBER/DATE/BOOLEAN/SELECT/MULTI_SELECT)
 - Tab ที่ยังไม่ถึงขั้น (เช่น Policy ตอนยัง OPEN) แสดงแต่ disabled พร้อมบอกว่าต้องถึงสถานะไหน
+
+### 9.5 Policy Detail Tabs (Phase 5, Day 35)
+
+- Tab **Coverages (ความคุ้มครอง):** รายการความคุ้มครอง ทุนประกัน เบี้ย ค่าเสียหายส่วนแรก และอัตรา
+- Tab **Invoices (ใบแจ้งหนี้และการชำระเงิน):** รายการงวด แจ้งหนี้ สถานะค้างชำระ บันทึกชำระเงิน และดาวน์โหลดใบเสร็จ/ใบแจ้งหนี้ PDF
+- Tab **Endorsements (สลักหลัง):** ตารางประวัติสลักหลัง (`DRAFT`, `SUBMITTED`, `APPROVED`, `ISSUED`, `REJECTED`), dialog สร้างคำขอสลักหลังแยกตามประเภท (`CHANGE_SUM_INSURED`, `CHANGE_INSURED_NAME`, `CHANGE_ADDRESS`, `CHANGE_BENEFICIARY`, `OTHER`), คำนวณเบี้ยเฉลี่ยตามวัน (Pro-rata), diff before/after, และปุ่ม Approve/Reject/Issue
+- Tab **Versions (ประวัติเวอร์ชัน):** ไทม์ไลน์ snapshot ย้อนหลังของกรมธรรม์ทุกเวอร์ชันก่อนมีการสลักหลัง (`policy_versions`)
+- Tab **Commissions (ค่าคอมมิชชัน):** สถานะการจ่ายและส่วนแบ่งตัวแทน
+- ส่วน **Cancellation (การยกเลิกกรมธรรม์):** คำนวณเบี้ยคืนตามตาราง Short-rate, ยื่นคำขอยกเลิก (`CANCEL_REQUESTED`), ผู้จัดการอนุมัติพร้อมแนบเอกสารยืนยันจากบริษัทประกัน (`CANCELLED`), ออกใบลดหนี้ Credit Note และสร้างคำขอคืนเงิน Refund ให้อัตโนมัติ
+
+### 9.6 Refunds Management (`/refunds`, Phase 5)
+
+- หน้ารายการคำขอคืนเงินสำหรับฝ่ายการเงิน/ผู้ดูแลระบบ รองรับการกรองตามสถานะ (`REQUESTED`, `APPROVED`, `PROCESSED`, `REJECTED`)
+- ระบบ Maker-Checker: ผู้อนุมัติ (`invoice.update`) ต้องไม่ใช่ผู้ยื่นคำขอ
+- การบันทึกจ่ายเงิน Payout (`payment.create`): เลือกช่องทางชำระเงิน (โอน/เงินสด/เช็ค), ธนาคาร, เลขที่อ้างอิง และปรับสถานะ Credit Note เป็น `PAID` พร้อมปรับ Payment Status รวมของกรมธรรม์เป็น `REFUNDED`
 
 ---
 

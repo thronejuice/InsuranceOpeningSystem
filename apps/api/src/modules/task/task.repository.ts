@@ -10,6 +10,14 @@ export class TaskRepository {
 
   get tx() { return this.txHost.tx; }
 
+  findPolicy(where: Prisma.PolicyWhereInput) {
+    return this.tx.policy.findFirst({ where, select: { id: true } });
+  }
+
+  findCustomer(where: Prisma.CustomerWhereInput) {
+    return this.tx.customer.findFirst({ where, select: { id: true } });
+  }
+
   findJob(where: Prisma.JobWhereInput) {
     return this.tx.job.findFirst({ where: { deletedAt: null, ...where }, select: { id: true } });
   }

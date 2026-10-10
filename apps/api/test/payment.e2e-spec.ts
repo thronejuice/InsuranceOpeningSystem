@@ -99,6 +99,7 @@ describe('Payment API', () => {
       upsertPerm('invoice.view'),
       upsertPerm('invoice.update'),
       upsertPerm('receivable.view'),
+      upsertPerm('maintenance.run'),
     ]);
 
     // Payer role (can view + create payments)
@@ -114,6 +115,7 @@ describe('Payment API', () => {
             { permission: { connect: { code: 'invoice.view' } } },
             { permission: { connect: { code: 'invoice.update' } } },
             { permission: { connect: { code: 'receivable.view' } } },
+            { permission: { connect: { code: 'maintenance.run' } } },
           ],
         },
       },

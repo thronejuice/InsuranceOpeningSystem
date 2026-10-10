@@ -38,7 +38,7 @@ export class RenewalRepository {
         status: { in: ['ACTIVE', 'EXPIRING'] },
         expiryDate: { gte: startOfDay, lte: endOfDay },
       },
-      include: { job: { select: { assignedTo: true, agentId: true } } },
+      include: { job: { select: { assignedTo: true, agentId: true, customerId: true } } },
     });
   }
 

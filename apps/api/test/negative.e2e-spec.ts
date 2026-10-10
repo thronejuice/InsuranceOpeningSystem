@@ -58,10 +58,10 @@ describe('Negative / Edge-case Tests (spec §44)', () => {
     const quoRes = await http()
       .post(`/api/jobs/${jobId}/quotations`)
       .set('Authorization', `Bearer ${agentToken}`)
-      .send({ insuranceCompanyId: company!.id, grossPremium: '50000.00', validUntil: '2027-12-31' });
+      .send({ insuranceCompanyId: company!.id, grossPremium: '150000.00', validUntil: '2027-12-31' });
     const quotationId = quoRes.body.data.id as string;
     await http().put(`/api/quotations/${quotationId}`).set('Authorization', `Bearer ${agentToken}`)
-      .send({ grossPremium: '48000.00', quotationDate: '2026-10-01', validUntil: '2027-12-31' });
+      .send({ grossPremium: '148000.00', quotationDate: '2026-10-01', validUntil: '2027-12-31' });
 
     if (targetStatus === 'QUOTATION_RECEIVED') return { jobId, quotationId };
 

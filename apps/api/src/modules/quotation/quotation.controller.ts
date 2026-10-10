@@ -77,7 +77,7 @@ export class QuotationController {
   }
 
   @Post('quotations/process-daily')
-  @RequirePermissions('job.view')
+  @RequirePermissions('maintenance.run')
   processDaily() {
     return this.service.processDaily();
   }

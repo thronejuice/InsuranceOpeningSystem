@@ -283,7 +283,7 @@ describe('Proposal API (e2e)', () => {
   it('POST /proposals/:id/send — stores the final PDF as a PROPOSAL document, served on download', async () => {
     const proposal = await prisma.proposal.findUniqueOrThrow({ where: { id: proposalSupId } });
     const docs = await prisma.document.findMany({
-      where: { jobId: jobSupId, documentType: 'PROPOSAL', status: 'ACTIVE' },
+      where: { jobId: jobSupId, documentType: 'PROPOSAL' },
     });
     expect(docs).toHaveLength(1);
     expect(docs[0].originalName).toBe(`${proposal.proposalNo}.pdf`);

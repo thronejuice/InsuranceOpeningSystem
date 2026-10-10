@@ -18,6 +18,7 @@ export const MASTER_ROUTES: Routes = [
       { path: 'branches', loadComponent: () => import('./pages/branches.page').then((m) => m.BranchesPage) },
       { path: 'commission-rates', loadComponent: () => import('./pages/commission-rates.page').then((m) => m.CommissionRatesPage) },
       { path: 'payment-terms', loadComponent: () => import('./pages/payment-terms.page').then((m) => m.PaymentTermsPage) },
+      { path: 'system-settings', loadComponent: () => import('./pages/system-settings.page').then((m) => m.SystemSettingsPage) },
       { path: 'company-profile', loadComponent: () => import('./pages/company-profile.page').then((m) => m.CompanyProfilePage) },
     ],
   },

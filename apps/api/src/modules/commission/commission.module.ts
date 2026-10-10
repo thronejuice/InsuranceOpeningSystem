@@ -17,6 +17,6 @@ import { SystemSettingModule } from '../system-setting/system-setting.module.js'
     CommissionStatementService,
     CommissionSummaryService,
   ],
-  exports: [CommissionService],
+  exports: [CommissionService, CommissionStatementService],
 })
 export class CommissionModule {}

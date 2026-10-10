@@ -6,6 +6,7 @@ import { AppFieldErrorComponent } from '../../../shared/components/app-field-err
 import { HasPermissionDirective } from '../../../shared/directives/has-permission.directive';
 import { MasterApi, type InsuranceCompany } from '../data/master.api';
 import { applyServerErrors } from '../../../shared/utils/form-errors';
+import { RouterLink } from '@angular/router';
 import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialog, UiInput, UiTable } from '../../../shared/ui';
 
 @Component({
@@ -13,7 +14,7 @@ import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialo
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [ConfirmationService],
-  imports: [ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective],
+  imports: [RouterLink, ReactiveFormsModule, UiTable, UiButton, UiDialog, UiInput, UiConfirmDialog, AppPageHeaderComponent, AppStateComponent, AppFieldErrorComponent, HasPermissionDirective],
   template: `
     <ui-confirm-dialog />
     <app-page-header title="บริษัทประกันภัย" subtitle="จัดการบริษัทประกันภัย">
@@ -31,18 +32,21 @@ import { ConfirmationService, MessageService, UiButton, UiConfirmDialog, UiDialo
             <th style="width:130px">โทรศัพท์</th>
             <th>อีเมล</th>
             <th style="width:80px">สถานะ</th>
-            <th style="width:100px"></th>
+            <th style="width:140px"></th>
           </tr>
         </ng-template>
         <ng-template #body let-row>
           <tr>
             <td><code>{{ row.code }}</code></td>
-            <td>{{ row.name }}</td>
+            <td>
+              <a [routerLink]="['/insurers', row.id]" class="company-link">{{ row.name }}</a>
+            </td>
             <td>{{ row.phone }}</td>
             <td>{{ row.email }}</td>
             <td><span [class]="row.status === 'ACTIVE' ? 'badge-active' : 'badge-inactive'">{{ row.status === 'ACTIVE' ? 'ใช้งาน' : 'ไม่ใช้งาน' }}</span></td>
             <td>
               <div class="action-buttons">
+                <ui-button [routerLink]="['/insurers', row.id]" icon="pi pi-eye" [text]="true" size="small" severity="info" />
                 <ui-button *appHasPermission="'master.manage'" icon="pi pi-pencil" [text]="true" size="small" severity="secondary" (onClick)="openEdit(row)" />
                 <ui-button *appHasPermission="'master.manage'" icon="pi pi-trash" [text]="true" size="small" severity="danger" (onClick)="confirmDelete(row)" />
               </div>

@@ -68,6 +68,12 @@ export class PaymentService {
     if (query.policyId) {
       await this.assertPolicyAccess(query.policyId);
     }
+    if (query.invoiceId) {
+      // a stranger asking for another agent's invoice gets "not found", not an empty list
+      const invoice = await this.txHost.tx.invoice.findFirst({ where: { id: query.invoiceId }, select: { policyId: true } });
+      if (!invoice) throw new BusinessException('INVOICE_NOT_FOUND', 'Invoice not found', 404);
+      await this.assertPolicyAccess(invoice.policyId);
+    }
 
     const where: Prisma.PaymentWhereInput = {
       ...(query.policyId ? { policyId: query.policyId } : {}),

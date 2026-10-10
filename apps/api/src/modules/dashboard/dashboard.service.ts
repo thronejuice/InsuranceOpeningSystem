@@ -2,9 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { TransactionHost } from '@nestjs-cls/transactional';
 import type { TransactionalAdapterPrisma } from '@nestjs-cls/transactional-adapter-prisma';
 import { ClsService } from 'nestjs-cls';
+import { Decimal } from 'decimal.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { AppClsStore } from '../../common/cls/app-cls-store.js';
 import { DataScopeService } from '../../common/access/data-scope.service.js';
+
+/** Renewals still being worked (the pipeline); ACCEPTED onwards are decided. */
+const OPEN_RENEWAL_STATUSES: ('PENDING' | 'IN_PROGRESS' | 'QUOTATION' | 'CUSTOMER_CONTACTED')[] = [
+  'PENDING', 'IN_PROGRESS', 'QUOTATION', 'CUSTOMER_CONTACTED',
+];
 
 @Injectable()
 export class DashboardService {
@@ -87,6 +94,9 @@ export class DashboardService {
       commissionResult,
       policyCount,
       overdueCount,
+      arOutstandingResult,
+      renewalCount,
+      pendingApprovalCount,
     ] = await Promise.all([
       tx.job.count({ where: { deletedAt: null, ...jobScope } }),
       tx.job.groupBy({
@@ -117,6 +127,13 @@ export class DashboardService {
           job: { deletedAt: null, ...jobScope },
         },
       }),
+      this.arOutstanding(policyJobScope),
+      tx.renewal.count({
+        where: { status: { in: OPEN_RENEWAL_STATUSES }, previousPolicy: policyJobScope },
+      }),
+      tx.approval.count({
+        where: { status: 'PENDING', job: { deletedAt: null, ...jobScope } },
+      }),
     ]);
 
     const statusMap = Object.fromEntries(jobStatuses.map((s) => [s, 0]));
@@ -135,13 +152,36 @@ export class DashboardService {
       policyCount,
       conversionRate: conversion,
       overdueCount,
+      arOutstanding: arOutstandingResult,
+      renewalPipelineCount: renewalCount,
+      pendingApprovals: pendingApprovalCount,
     };
+  }
+
+  /**
+   * What customers still owe the broker: open invoices / debit notes minus the payments already received
+   * against them, for the policies the caller may see. Decimal arithmetic, returned as a string.
+   */
+  private async arOutstanding(policyJobScope: Prisma.PolicyWhereInput): Promise<string> {
+    const tx = this.txHost.tx;
+    const open: Prisma.InvoiceWhereInput = {
+      status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+      type: { in: ['INVOICE', 'DEBIT_NOTE'] },
+      policy: policyJobScope,
+    };
+    const [billed, received] = await Promise.all([
+      tx.invoice.aggregate({ where: open, _sum: { amount: true } }),
+      tx.payment.aggregate({ where: { status: 'ACTIVE', invoice: open }, _sum: { amount: true } }),
+    ]);
+    return new Decimal(billed._sum.amount ?? 0).minus(received._sum.amount ?? 0).toFixed(2);
   }
 
   // ─── Sales Funnel (spec §25.3) ────────────────────────────────────────────
 
   async funnel() {
     const tx = this.txHost.tx;
+    const jobScope = { deletedAt: null, ...this.scope.jobViewScope() };
+    const policyScope = { status: { not: 'CANCELLED' as const }, job: jobScope };
 
     const [
       totalJobs,
@@ -151,28 +191,28 @@ export class DashboardService {
       policyJobs,
       premiumResult,
     ] = await Promise.all([
-      tx.job.count({ where: { deletedAt: null } }),
+      tx.job.count({ where: jobScope }),
       tx.job.count({
         where: {
-          deletedAt: null,
+          ...jobScope,
           status: { in: ['QUOTATION_REQUESTED', 'QUOTATION_RECEIVED', 'QUOTATION_SELECTED', 'PROPOSAL_SENT', 'WAITING_CUSTOMER', 'CUSTOMER_ACCEPTED', 'WAITING_APPROVAL', 'APPROVED', 'BINDING', 'POLICY_PENDING', 'POLICY_ISSUED', 'RENEWAL', 'CLOSED'] },
         },
       }),
       tx.job.count({
         where: {
-          deletedAt: null,
+          ...jobScope,
           status: { in: ['PROPOSAL_SENT', 'WAITING_CUSTOMER', 'CUSTOMER_ACCEPTED', 'WAITING_APPROVAL', 'APPROVED', 'BINDING', 'POLICY_PENDING', 'POLICY_ISSUED', 'RENEWAL', 'CLOSED'] },
         },
       }),
       tx.job.count({
         where: {
-          deletedAt: null,
+          ...jobScope,
           status: { in: ['CUSTOMER_ACCEPTED', 'WAITING_APPROVAL', 'APPROVED', 'BINDING', 'POLICY_PENDING', 'POLICY_ISSUED', 'RENEWAL', 'CLOSED'] },
         },
       }),
-      tx.policy.count({ where: { status: { not: 'CANCELLED' as const } } }),
+      tx.policy.count({ where: policyScope }),
       tx.policy.aggregate({
-        where: { status: { not: 'CANCELLED' as const } },
+        where: policyScope,
         _sum: { totalPremium: true },
         _avg: { totalPremium: true },
       }),

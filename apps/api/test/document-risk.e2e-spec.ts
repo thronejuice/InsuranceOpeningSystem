@@ -223,11 +223,11 @@ describe('Missing Document / Risk / Duplicate Policy (spec §44 N8–N10)', () =
       const jobId = jobRes.body.data.id as string;
 
       const quoRes = await http().post(`/api/jobs/${jobId}/quotations`).set('Authorization', `Bearer ${agentToken}`)
-        .send({ insuranceCompanyId: company.id, grossPremium: '10000.00', validUntil: '2027-12-31' });
+        .send({ insuranceCompanyId: company.id, grossPremium: '150000.00', validUntil: '2027-12-31' });
       const quotationId = quoRes.body.data.id as string;
 
       await http().put(`/api/quotations/${quotationId}`).set('Authorization', `Bearer ${agentToken}`)
-        .send({ grossPremium: '10000.00', quotationDate: '2026-10-01', validUntil: '2027-12-31' });
+        .send({ grossPremium: '150000.00', quotationDate: '2026-10-01', validUntil: '2027-12-31' });
 
       const listRes = await http().get(`/api/jobs/${jobId}/quotations`).set('Authorization', `Bearer ${agentToken}`);
       const version = listRes.body.data[0].version as number;

@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { ApiBearerAuth, ApiProduces, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { RequirePermissions } from '../../common/auth/auth.decorators.js';
 import { CommissionService } from './commission.service.js';
 import { CommissionQueryDto } from './dto/commission-query.dto.js';
@@ -9,6 +10,7 @@ import { CommissionSummaryService } from './commission-summary.service.js';
 import { CreateAdjustmentDto, ListAdjustmentDto } from './dto/adjustment.dto.js';
 import { CancelStatementDto, CreateStatementDto, ListStatementDto, MarkStatementPaidDto } from './dto/statement.dto.js';
 import { CommissionSummaryQueryDto } from './dto/summary-query.dto.js';
+import { buildStatementWorkbook } from './statement-export.js';
 
 @ApiTags('commissions')
 @ApiBearerAuth()
@@ -93,6 +95,18 @@ export class CommissionStatementController {
   @RequirePermissions('commission.view')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.get(id);
+  }
+
+  /** Same visibility as `GET :id` — a payee can export only their own statement. */
+  @Get(':id/export')
+  @RequirePermissions('commission.view')
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async export(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const statement = await this.service.get(id);
+    const file = await buildStatementWorkbook(statement);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${statement.statementNo}.xlsx"`);
+    res.end(file);
   }
 
   @Post(':id/confirm')

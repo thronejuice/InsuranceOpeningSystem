@@ -260,7 +260,7 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
 
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
     await page.getByRole('button', { name: 'สร้างใบเสนอ' }).click();
 
     await page.locator('#prop-valid').fill('2027-12-31');
@@ -275,20 +275,20 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     // Verify Proposal card appears with v1 badge and DRAFT status
     const propCard = page.locator('.proposal-card').first();
     await expect(propCard.locator('.version-badge')).toContainText('v1', { timeout: 10_000 });
-    await expect(propCard.locator('app-status-badge')).toContainText('ฉบับร่าง', { timeout: 10_000 });
+    await expect(propCard.locator('app-status-badge')).toContainText('ร่าง', { timeout: 10_000 });
 
     // Click "ส่งใบเสนอ"
     await propCard.getByRole('button', { name: 'ส่งใบเสนอ' }).click();
 
     // Verify Proposal status changes to SENT ("ส่งแล้ว") and Job status becomes WAITING_CUSTOMER ("รอลูกค้าตอบรับ")
     await expect(propCard.locator('app-status-badge')).toContainText('ส่งแล้ว', { timeout: 10_000 });
-    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้าตอบรับ', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้า', { timeout: 10_000 });
   });
 
   test('Step 7 — Revise Proposal v1 (reverts Job to QUOTATION_RECEIVED)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
 
     const propCard = page.locator('.proposal-card').first();
     await propCard.getByRole('button', { name: 'ปรับปรุงข้อเสนอ (Revise)' }).click();
@@ -317,7 +317,7 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     await expect(page.locator('app-status-badge').first()).toContainText('เลือกราคาแล้ว', { timeout: 10_000 });
 
     // Switch to Tab ใบเสนอ
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
     await page.getByRole('button', { name: 'สร้างใบเสนอ' }).click();
 
     await page.locator('#prop-valid').fill('2027-12-31');
@@ -330,18 +330,18 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     // Verify Proposal v2 card is created with v2 badge
     const v2Card = page.locator('.proposal-card', { hasText: 'v2' }).first();
     await expect(v2Card).toBeVisible({ timeout: 10_000 });
-    await expect(v2Card.locator('app-status-badge')).toContainText('ฉบับร่าง');
+    await expect(v2Card.locator('app-status-badge')).toContainText('ร่าง');
 
     // Send proposal v2
     await v2Card.getByRole('button', { name: 'ส่งใบเสนอ' }).click();
     await expect(v2Card.locator('app-status-badge')).toContainText('ส่งแล้ว', { timeout: 10_000 });
-    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้าตอบรับ', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้า', { timeout: 10_000 });
   });
 
   test('Step 9 — Accept Proposal v2 with Evidence file', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
 
     const v2Card = page.locator('.proposal-card', { hasText: 'v2' }).first();
     await v2Card.getByRole('button', { name: 'ยอมรับ (Accept)' }).click();
@@ -360,7 +360,7 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     await page.getByRole('button', { name: 'ยืนยันการยอมรับ' }).click();
 
     // Verify Proposal v2 status is ACCEPTED ("ตอบรับแล้ว")
-    await expect(v2Card.locator('app-status-badge')).toContainText('ตอบรับแล้ว', { timeout: 10_000 });
+    await expect(v2Card.locator('app-status-badge')).toContainText('ลูกค้ายอมรับ', { timeout: 10_000 });
 
     // Verify Job status is CUSTOMER_ACCEPTED ("ลูกค้ายอมรับ")
     await expect(page.locator('app-status-badge').first()).toContainText('ลูกค้ายอมรับ', { timeout: 10_000 });
@@ -369,7 +369,7 @@ test.describe.serial('Phase 2 — Quotation, Proposal & Acceptance Flow', () => 
     const accCard = v2Card.locator('.acceptance-card');
     await expect(accCard).toBeVisible({ timeout: 10_000 });
     await expect(accCard.getByText('นายสมชาย ใจดี (ลูกค้า)')).toBeVisible();
-    await expect(accCard.getByText(/อีเมล|EMAIL/)).toBeVisible();
+    await expect(accCard.getByText(/อีเมล|EMAIL/).first()).toBeVisible();
     await expect(accCard.getByText('signed-acceptance.pdf')).toBeVisible();
     await expect(accCard.getByText('ลูกค้ายืนยันและส่งใบตอบรับลงนามทางอีเมล')).toBeVisible();
   });

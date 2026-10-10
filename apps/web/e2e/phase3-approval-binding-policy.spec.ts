@@ -92,7 +92,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
     const fireType = types.find((t: { code: string }) => t.code === 'FIRE') ?? types[0];
 
     productName = `E2E P3 Fire ${RUN_ID}`;
-    await apiCall('POST', '/api/master/insurance-products', adminToken, {
+    await apiCall('POST', '/api/master/products', adminToken, {
       code: PRODUCT_CODE,
       name: productName,
       insuranceTypeId: fireType.id,
@@ -110,8 +110,8 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   // ── Step 1: Create Job and Submit (DRAFT → OPEN) ─────────────────────────────
   test('Step 1 — Create job and submit to OPEN', async () => {
     const page = adminPage;
-    await page.goto(`${BASE}/jobs/new`);
-    await expect(page.getByText('สร้างงานประกันใหม่')).toBeVisible();
+    await page.goto(`${BASE}/jobs/create`);
+    await expect(page.getByText('เปิดงานประกันภัยใหม่')).toBeVisible();
 
     // Select customer
     const searchInput = page.locator('#customer-search');
@@ -127,17 +127,20 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
     await page.locator('#effectiveDate').fill('2026-10-09');
     await page.locator('#effectiveDate').press('Tab');
 
+    // The responsible agent is required
+    await selectMatOption(page, 'agentId', /.+/);
+
     // Create job (DRAFT)
-    await page.getByRole('button', { name: 'บันทึกข้อมูล' }).click();
-    await page.waitForURL(/\/jobs\/[0-9a-f-]+/);
+    await page.getByRole('button', { name: 'เปิดงานประกัน' }).click();
+    await page.waitForURL(/\/jobs\/[0-9a-f]{8}-[0-9a-f-]+/);
     jobId = page.url().split('/jobs/')[1].split('?')[0];
     expect(jobId).toBeTruthy();
 
-    await expect(page.locator('app-status-badge').first()).toContainText('ฉบับร่าง');
+    await expect(page.locator('app-status-badge').first()).toContainText('ร่าง');
 
     // Submit Job → OPEN
     await page.getByRole('button', { name: 'ส่งงาน' }).click();
-    await expect(page.locator('app-status-badge').first()).toContainText('เปิดงานแล้ว', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('เปิด', { timeout: 10_000 });
   });
 
   // ── Step 2: Request quotation & record price (trigger approval: >= 100,000) ──
@@ -148,8 +151,9 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
 
     // Click "ขอราคา"
     await page.getByRole('button', { name: 'ขอราคา' }).click();
-    await expect(page.getByText('ขอใบเสนอราคา')).toBeVisible();
-    await selectMatOption(page, 'quo-company', /.+/);
+    await selectMatOption(page, 'req-company', /.+/);
+    await page.locator('#req-gross').fill('120000');
+    await page.locator('#req-valid').fill('2027-12-31');
     await page.getByRole('button', { name: 'ส่งคำขอ' }).click();
 
     // Scope to the quotation row's action button
@@ -186,7 +190,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
     await expect(page.locator('app-status-badge').first()).toContainText('เลือกราคาแล้ว', { timeout: 10_000 });
 
     // Create proposal on Tab ใบเสนอ
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
     await page.getByRole('button', { name: 'สร้างใบเสนอ' }).click();
     await page.locator('#prop-valid').fill('2027-12-31');
     await selectMatOption(page, 'prop-payment-term', /.+/);
@@ -199,14 +203,14 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
     // Send proposal
     await propCard.getByRole('button', { name: 'ส่งใบเสนอ' }).click();
     await expect(propCard.locator('app-status-badge')).toContainText('ส่งแล้ว', { timeout: 10_000 });
-    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้าตอบรับ', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('รอลูกค้า', { timeout: 10_000 });
   });
 
   // ── Step 4: Customer Accept triggers approval rule → WAITING_APPROVAL ─────────
   test('Step 4 — Customer accept triggers approval rule (WAITING_APPROVAL)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ใบเสนอ' }).click();
+    await page.getByRole('tab', { name: 'ใบเสนอ', exact: true }).click();
 
     const propCard = page.locator('.proposal-card').first();
     await propCard.getByRole('button', { name: 'ยอมรับ (Accept)' }).click();
@@ -226,7 +230,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 5 — Reject approval on Tab 8 (Job becomes APPROVAL_REJECTED)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'การอนุมัติ' }).click();
+    await page.getByRole('tab', { name: 'อนุมัติ', exact: true }).click();
 
     // Table of approvals
     await expect(page.locator('.data-table')).toBeVisible({ timeout: 10_000 });
@@ -248,7 +252,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 6 — Resubmit approval on Tab 8 (Job returns to WAITING_APPROVAL)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'การอนุมัติ' }).click();
+    await page.getByRole('tab', { name: 'อนุมัติ', exact: true }).click();
 
     // In APPROVAL_REJECTED state, the "ยื่นใหม่" button appears on the rejected approval
     await page.getByRole('button', { name: 'ยื่นใหม่' }).first().click();
@@ -265,7 +269,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 7 — Approve approval on Tab 8 (Job becomes APPROVED)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'การอนุมัติ' }).click();
+    await page.getByRole('tab', { name: 'อนุมัติ', exact: true }).click();
 
     // Click "อนุมัติ" button
     await page.locator('.row-actions').getByRole('button', { name: 'อนุมัติ' }).first().click();
@@ -278,26 +282,27 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 8 — Bind job on Tab 9 (single-hop, Job remains BINDING)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ยืนยันคุ้มครอง' }).click();
+    await page.getByRole('tab', { name: 'Binding' }).click();
 
     // Click "ส่งยืนยันคุ้มครอง (Bind)"
     await page.getByRole('button', { name: 'ส่งยืนยันคุ้มครอง (Bind)' }).click();
 
     // Job status should be BINDING ("รอยืนยันคุ้มครอง"), Binding card should display SUBMITTED ("ยื่นคำขอแล้ว" / SUBMITTED)
-    await expect(page.locator('app-status-badge').first()).toContainText('รอยืนยันคุ้มครอง', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('ออกกรมธรรม์', { timeout: 10_000 });
     const bindingCard = page.locator('.binding-card');
     await expect(bindingCard).toBeVisible({ timeout: 10_000 });
-    await expect(bindingCard.locator('app-status-badge')).toContainText(/ยื่นคำขอ|SUBMITTED/, { timeout: 10_000 });
+    await expect(bindingCard.locator('app-status-badge')).toContainText(/ยื่นเรื่อง|SUBMITTED/, { timeout: 10_000 });
   });
 
   // ── Step 9: Tab 9 Binding — Insurer Reject (Job reverts to APPROVED) ───────────
   test('Step 9 — Insurer reject binding (Job reverts to APPROVED)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ยืนยันคุ้มครอง' }).click();
+    await page.getByRole('tab', { name: 'Binding' }).click();
 
     // Click "บริษัทประกันปฏิเสธ (Insurer Reject)"
-    await page.getByRole('button', { name: 'บริษัทประกันปฏิเสธ (Insurer Reject)' }).click();
+    // the job header action bar has a button with the same name — use the one inside the Binding tab
+    await page.locator('.binding-action-row').getByRole('button', { name: 'บริษัทประกันปฏิเสธ' }).click();
 
     await expect(page.getByText('บริษัทประกันปฏิเสธการรับประกัน (Insurer Reject)')).toBeVisible();
     await page.locator('#rb-reason').fill('บริษัทประกันขอปฏิเสธเนื่องจากพื้นที่อยู่นอกเขตรับประกัน');
@@ -313,22 +318,22 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 10 — Re-bind job (Job returns to BINDING)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ยืนยันคุ้มครอง' }).click();
+    await page.getByRole('tab', { name: 'Binding' }).click();
 
     // In REJECTED state, button says "ยื่นออกกรมธรรม์ใหม่ (Re-bind)"
-    await page.getByRole('button', { name: 'ยื่นออกกรมธรรม์ใหม่ (Re-bind)' }).click();
+    await page.locator('.binding-action-row').getByRole('button', { name: 'ยื่นออกกรมธรรม์ใหม่' }).click();
 
     // Job transitions to BINDING again
-    await expect(page.locator('app-status-badge').first()).toContainText('รอยืนยันคุ้มครอง', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('ออกกรมธรรม์', { timeout: 10_000 });
     const bindingCard = page.locator('.binding-card');
-    await expect(bindingCard.locator('app-status-badge')).toContainText(/ยื่นคำขอ|SUBMITTED/, { timeout: 10_000 });
+    await expect(bindingCard.locator('app-status-badge')).toContainText(/ยื่นเรื่อง|SUBMITTED/, { timeout: 10_000 });
   });
 
   // ── Step 11: Tab 9 Binding — Confirm Binding (Job becomes POLICY_PENDING) ──────
   test('Step 11 — Confirm binding with binder details (Job becomes POLICY_PENDING)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'ยืนยันคุ้มครอง' }).click();
+    await page.getByRole('tab', { name: 'Binding' }).click();
 
     // Click "ยืนยันรับประกัน (Confirm Binding)"
     await page.getByRole('button', { name: 'ยืนยันรับประกัน (Confirm Binding)' }).click();
@@ -351,7 +356,7 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
   test('Step 12 — Issue policy (Policy becomes ACTIVE and Job automatically CLOSED)', async () => {
     const page = adminPage;
     await page.goto(`${BASE}/jobs/${jobId}`);
-    await page.getByRole('tab', { name: 'กรมธรรม์' }).click();
+    await page.getByRole('tab', { name: 'กรมธรรม์', exact: true }).click();
 
     await page.locator('#issue-sum-insured').fill('5000000');
     await page.locator('#issue-deductible').fill('2000');
@@ -362,10 +367,10 @@ test.describe.serial('Phase 3 — Approval, Binding & Policy Lifecycle Flow', ()
     // Policy card is rendered with ACTIVE status ("คุ้มครองแล้ว" / ACTIVE)
     const policyCard = page.locator('.policy-card');
     await expect(policyCard).toBeVisible({ timeout: 10_000 });
-    await expect(policyCard.locator('app-status-badge')).toContainText(/คุ้มครองอยู่|ACTIVE|คุ้มครองแล้ว/, { timeout: 10_000 });
+    await expect(policyCard.locator('app-status-badge')).toContainText(/ใช้งาน|ACTIVE/, { timeout: 10_000 });
 
     // Job status automatically transitions to CLOSED ("ปิดงานแล้ว") in the same transaction (D-10)
-    await expect(page.locator('app-status-badge').first()).toContainText('ปิดงานแล้ว', { timeout: 10_000 });
+    await expect(page.locator('app-status-badge').first()).toContainText('ปิด', { timeout: 10_000 });
 
     // Verify sumInsured & deductible are displayed in Policy details
     await expect(policyCard.getByText('5,000,000')).toBeVisible();

@@ -10,6 +10,7 @@ const TABS = [
   { label: 'เงื่อนไขการชำระเงิน', route: 'payment-terms' },
   { label: 'Risk Fields', route: 'risk-fields' },
   { label: 'Document Checklist', route: 'document-checklists' },
+  { label: 'ตั้งค่าค่าคอม (WHT/Share)', route: 'system-settings' },
   { label: 'ข้อมูลบริษัท (หัวกระดาษ)', route: 'company-profile' },
 ];
 

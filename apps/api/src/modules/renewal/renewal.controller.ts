@@ -25,6 +25,20 @@ export class RenewalController {
     return this.service.renewPolicy(policyId, dto);
   }
 
+  @Post('renewals/:id/contact-customer')
+  @RequirePermissions('renewal.update')
+  @ApiOperation({ summary: 'Mark renewal status as customer contacted' })
+  contactCustomer(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.contactCustomer(id);
+  }
+
+  @Post('renewals/process-daily')
+  @RequirePermissions('maintenance.run')
+  @ApiOperation({ summary: 'Run daily renewal timeline checks' })
+  processDaily() {
+    return this.service.runDailyRenewalCheck();
+  }
+
   @Get('jobs/:jobId/renewal-reference')
   @RequirePermissions('renewal.view')
   @ApiOperation({ summary: 'Previous policy summary for a renewal job (null when not a renewal)' })

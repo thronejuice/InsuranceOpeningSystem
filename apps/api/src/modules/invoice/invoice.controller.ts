@@ -30,7 +30,7 @@ export class InvoicesListController {
   }
 
   @Post('process-daily')
-  @RequirePermissions('invoice.update')
+  @RequirePermissions('maintenance.run')
   processDaily() {
     return this.service.processDaily();
   }

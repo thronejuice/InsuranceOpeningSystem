@@ -194,8 +194,10 @@ describe('Quotation Select & Comparison (e2e)', () => {
       .set('Authorization', `Bearer ${agentToken}`)
       .send({ reason: 'ลองเลือกอีกใบ', version: 1 });
 
-    // The partial unique index (job_id WHERE status='SELECTED') causes P2002 → 409 DUPLICATE_ENTRY
-    expect(res.status).toBe(409);
+    // Refused (409 from the partial unique index, or 422 from the state machine / version check) — never silently accepted
+    expect([409, 422]).toContain(res.status);
+    const job = await http().get(`/api/jobs/${jobId}`).set('Authorization', `Bearer ${agentToken}`);
+    expect(job.body.data.selectedQuotationId).toBe(quotationAId);
   });
 
   it('POST /quotations/:id/select — expired quotation → 422', async () => {

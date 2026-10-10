@@ -1,26 +1,21 @@
 import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { TaskType, TaskPriority } from '../../../generated/prisma/enums.js';
 
-export enum TaskType {
-  CALL_CUSTOMER = 'CALL_CUSTOMER',
-  REQUEST_DOCUMENT = 'REQUEST_DOCUMENT',
-  REQUEST_QUOTATION = 'REQUEST_QUOTATION',
-  FOLLOW_UP_QUOTATION = 'FOLLOW_UP_QUOTATION',
-  SEND_PROPOSAL = 'SEND_PROPOSAL',
-  FOLLOW_UP_CUSTOMER = 'FOLLOW_UP_CUSTOMER',
-  FOLLOW_UP_PAYMENT = 'FOLLOW_UP_PAYMENT',
-  FOLLOW_UP_POLICY = 'FOLLOW_UP_POLICY',
-  RENEWAL = 'RENEWAL',
-  OTHER = 'OTHER',
-}
-
-export enum TaskPriority {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  URGENT = 'URGENT',
-}
+export { TaskType, TaskPriority };
 
 export class CreateTaskDto {
+  @IsUUID()
+  @IsOptional()
+  jobId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  customerId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  policyId?: string;
+
   @IsEnum(TaskType)
   taskType!: TaskType;
 

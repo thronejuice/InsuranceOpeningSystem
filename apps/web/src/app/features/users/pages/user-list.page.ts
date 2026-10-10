@@ -117,6 +117,11 @@ import { MatTooltip } from '@angular/material/tooltip';
           <ui-select formControlName="managerId" [options]="managerOptions()" optionLabel="fullName" optionValue="id"
             placeholder="เลือกหัวหน้างาน" [showClear]="true" class="w-full" />
         </div>
+        <div class="field">
+          <label for="u-share">ส่วนแบ่งค่าคอมของ Agent (%)</label>
+          <input uiInput id="u-share" formControlName="agentSharePct" class="w-full" inputmode="decimal" placeholder="เว้นว่าง = ใช้ค่าเริ่มต้นของระบบ" />
+          <app-field-error [control]="userForm.get('agentSharePct')" />
+        </div>
         @if (editUserId()) {
           <div class="field-row">
             <ui-toggleswitch formControlName="isActive" />
@@ -190,6 +195,7 @@ export class UserListPage implements OnInit {
     roleIds: [[] as string[]],
     branchId: [null as string | null],
     managerId: [null as string | null],
+    agentSharePct: ['', [Validators.pattern(/^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)?$/)]],
     isActive: [true],
   });
 
@@ -230,6 +236,7 @@ export class UserListPage implements OnInit {
       roleIds: user.roles.map((r) => r.id),
       branchId: user.branchId ?? null,
       managerId: user.managerId ?? null,
+      agentSharePct: user.agentSharePct ?? '',
       isActive: user.isActive,
     });
     this.userForm.get('username')!.disable();
@@ -274,6 +281,7 @@ export class UserListPage implements OnInit {
         roleIds: val.roleIds || [],
         branchId: val.branchId || null,
         managerId: val.managerId || null,
+        agentSharePct: val.agentSharePct?.trim() || null,
       };
       this.api.updateUser(id, updateData).subscribe({
         next: () => { this.toast.add({ severity: 'success', summary: 'บันทึกสำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
@@ -288,6 +296,7 @@ export class UserListPage implements OnInit {
         roleIds: val.roleIds || [],
         branchId: val.branchId || null,
         managerId: val.managerId || null,
+        ...(val.agentSharePct?.trim() ? { agentSharePct: val.agentSharePct.trim() } : {}),
       }).subscribe({
         next: () => { this.toast.add({ severity: 'success', summary: 'สร้างผู้ใช้สำเร็จ' }); this.userDialogVisible = false; this.saving.set(false); this.load(); },
         error: (err) => this.handleSaveError(err),

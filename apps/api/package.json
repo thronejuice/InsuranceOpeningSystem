@@ -23,9 +23,10 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:seed:mock": "tsx prisma/seed-mock.ts",
-    "db:seed:mock:renewal": "tsx prisma/seed-mock-renewal-tasks.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:seed:mock": "nest build && node dist/seed-mock/main.js",
+    "db:reset": "prisma migrate reset --force",
+    "docs:matrix": "tsx prisma/permission-matrix.ts",
+    "routes": "nest build && node dist/tools/route-inventory.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

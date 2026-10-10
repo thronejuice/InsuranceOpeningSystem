@@ -107,6 +107,24 @@ const ACTIVE_STATUSES = ['DRAFT', 'OPEN', 'WAITING_INFORMATION', 'QUOTATION_REQU
                 <div class="stat-label">งานเกินกำหนด</div>
                 <div class="stat-value">{{ m.overdueCount }}</div>
               </a>
+              @if (m.arOutstanding) {
+                <a class="stat-card accent-yellow" [routerLink]="['/receivables']">
+                  <div class="stat-label">ลูกหนี้ค้างชำระ (AR)</div>
+                  <div class="stat-value stat-money">{{ m.arOutstanding | money }}</div>
+                </a>
+              }
+              @if (m.renewalPipelineCount !== undefined) {
+                <a class="stat-card accent-purple" [routerLink]="['/renewals']">
+                  <div class="stat-label">ไปป์ไลน์ต่ออายุ</div>
+                  <div class="stat-value">{{ m.renewalPipelineCount }}</div>
+                </a>
+              }
+              @if (m.pendingApprovals !== undefined) {
+                <a class="stat-card accent-blue" [routerLink]="['/jobs']" [queryParams]="{status:'WAITING_APPROVAL'}">
+                  <div class="stat-label">รายการรออนุมัติ</div>
+                  <div class="stat-value">{{ m.pendingApprovals }}</div>
+                </a>
+              }
             </div>
 
             <!-- Bar chart: jobs by status -->

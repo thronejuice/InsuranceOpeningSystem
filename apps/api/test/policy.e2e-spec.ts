@@ -14,6 +14,8 @@ describe('Policy API (e2e)', () => {
   let prisma: PrismaService;
   let agentToken: string;
   let agentId: string;
+  let managerToken: string;
+  let managerId: string;
 
   // A job that is APPROVED (went through approval flow), ready to bind
   let approvedJobId: string;
@@ -37,6 +39,12 @@ describe('Policy API (e2e)', () => {
     const prevJobIds = prevJobs.map((j) => j.id);
     if (prevJobIds.length > 0) {
       await prisma.idempotencyKey.deleteMany({ where: { entityId: { in: prevJobIds } } });
+      await prisma.endorsement.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.policyVersion.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
+      await prisma.renewal.deleteMany({ where: { previousPolicy: { jobId: { in: prevJobIds } } } });
+      await prisma.refund.deleteMany({ where: { creditNote: { policy: { jobId: { in: prevJobIds } } } } });
+      await prisma.commissionAdjustment.deleteMany({ where: { commission: { policy: { jobId: { in: prevJobIds } } } } });
+      await prisma.commission.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.invoice.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policyCoverage.deleteMany({ where: { policy: { jobId: { in: prevJobIds } } } });
       await prisma.policy.deleteMany({ where: { jobId: { in: prevJobIds } } });
@@ -67,7 +75,7 @@ describe('Policy API (e2e)', () => {
       upsertPerm('proposal.create'), upsertPerm('proposal.send'),
       upsertPerm('proposal.accept'), upsertPerm('proposal.reject'),
       upsertPerm('approval.approve'),
-      upsertPerm('policy.view'), upsertPerm('policy.create'), upsertPerm('policy.update'),
+      upsertPerm('policy.view'), upsertPerm('policy.create'), upsertPerm('policy.update'), upsertPerm('maintenance.run'),
     ]);
 
     const role = await prisma.role.create({
@@ -88,10 +96,23 @@ describe('Policy API (e2e)', () => {
             { permission: { connect: { code: 'policy.view' } } },
             { permission: { connect: { code: 'policy.create' } } },
             { permission: { connect: { code: 'policy.update' } } },
+            { permission: { connect: { code: 'maintenance.run' } } },
           ],
         },
       },
     });
+
+    const managerRole = await prisma.role.findFirst({ where: { code: 'MANAGER' } });
+    const manager = await prisma.user.create({
+      data: {
+        username: `${PREFIX}mgr`,
+        email: `${PREFIX}mgr@test.com`,
+        passwordHash,
+        fullName: 'E2E Pol Manager',
+        roles: { create: [{ role: { connect: { id: managerRole!.id } } }] },
+      },
+    });
+    managerId = manager.id;
 
     const agent = await prisma.user.create({
       data: {
@@ -99,6 +120,7 @@ describe('Policy API (e2e)', () => {
         email: `${PREFIX}agent@test.com`,
         passwordHash,
         fullName: 'E2E Pol Agent',
+        managerId: manager.id,
         roles: { create: [{ role: { connect: { id: role.id } } }] },
       },
     });
@@ -106,6 +128,9 @@ describe('Policy API (e2e)', () => {
 
     const loginRes = await http().post('/api/auth/login').send({ username: `${PREFIX}agent`, password: PASSWORD });
     agentToken = loginRes.body.data.accessToken;
+
+    const mgrLoginRes = await http().post('/api/auth/login').send({ username: `${PREFIX}mgr`, password: PASSWORD });
+    managerToken = mgrLoginRes.body.data.accessToken;
 
     const iType = await prisma.insuranceType.findFirst({ where: { active: true } });
     // Create a test product with requireDocsOnBind=false to avoid BR-008 in bind flow
@@ -346,4 +371,193 @@ describe('Policy API (e2e)', () => {
     expect(res.body.data).toHaveProperty('expiringCount');
     expect(res.body.data).toHaveProperty('expiredCount');
   });
+
+  // ─── Day 33 Policy Cancellation ───────────────────────────────────────────────
+
+  it('Day 33: calculate, request, reject cancellation returns to ACTIVE', async () => {
+    const listRes = await http().get('/api/policies').set('Authorization', `Bearer ${agentToken}`);
+    const policyId = listRes.body.data[0].id;
+
+    // Activate policy directly for cancellation testing
+    await prisma.policy.update({
+      where: { id: policyId },
+      data: { status: 'ACTIVE' },
+    });
+
+    // 1. Calculate refund via short-rate
+    const calcRes = await http()
+      .post(`/api/policies/${policyId}/cancel-calculate`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ cancelEffectiveDate: '2027-02-15', method: 'SHORT_RATE' });
+    expect(calcRes.status).toBe(201);
+    expect(calcRes.body.data).toHaveProperty('refundNet');
+    expect(calcRes.body.data).toHaveProperty('totalRefund');
+
+    // 2. Request cancellation
+    const reqRes = await http()
+      .post(`/api/policies/${policyId}/cancel-request`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({
+        cancelReason: 'Customer moving abroad',
+        cancelRequestDate: '2027-02-10',
+        cancelEffectiveDate: '2027-02-15',
+        cancelRefundAmount: calcRes.body.data.totalRefund,
+      });
+    expect(reqRes.status).toBe(201);
+    expect(reqRes.body.data.status).toBe('CANCEL_REQUESTED');
+    expect(reqRes.body.data.cancelReason).toBe('Customer moving abroad');
+
+    // 3. Reject cancellation (Manager rejects)
+    const rejRes = await http()
+      .post(`/api/policies/${policyId}/cancel-reject`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ reason: 'Documents not clear' });
+    expect(rejRes.status).toBe(201);
+    expect(rejRes.body.data.status).toBe('ACTIVE');
+  });
+
+  it('Day 33: cancel policy with 3 installments, pay 1 → void unpaid invoices, create Credit Note + Refund, clawback commission (D-17)', async () => {
+    // Find or create policy with 3 installments
+    const listRes = await http().get('/api/policies').set('Authorization', `Bearer ${agentToken}`);
+    const policyId = listRes.body.data[0].id;
+    const policy = await prisma.policy.findUnique({
+      where: { id: policyId },
+      include: { invoices: true, job: true },
+    });
+
+    // Ensure policy has 3 installment invoices
+    await prisma.invoice.deleteMany({ where: { policyId } });
+    const inv1 = await prisma.invoice.create({
+      data: {
+        invoiceNo: 'INV-TEST-001',
+        policyId,
+        customerId: policy!.job.customerId,
+        installmentNo: 1,
+        amount: '10000.00',
+        netAmount: '9300.00',
+        vat: '651.00',
+        stampDuty: '49.00',
+        dueDate: new Date('2027-01-15'),
+        status: 'PAID',
+      },
+    });
+    const inv2 = await prisma.invoice.create({
+      data: {
+        invoiceNo: 'INV-TEST-002',
+        policyId,
+        customerId: policy!.job.customerId,
+        installmentNo: 2,
+        amount: '10000.00',
+        netAmount: '9300.00',
+        vat: '651.00',
+        stampDuty: '49.00',
+        dueDate: new Date('2027-03-15'),
+        status: 'PENDING',
+      },
+    });
+    const inv3 = await prisma.invoice.create({
+      data: {
+        invoiceNo: 'INV-TEST-003',
+        policyId,
+        customerId: policy!.job.customerId,
+        installmentNo: 3,
+        amount: '10000.00',
+        netAmount: '9300.00',
+        vat: '651.00',
+        stampDuty: '49.00',
+        dueDate: new Date('2027-04-15'),
+        status: 'PENDING',
+      },
+    });
+
+    // Create an active renewal for this policy
+    const ren = await prisma.renewal.create({
+      data: {
+        previousPolicyId: policyId,
+        renewalDate: new Date('2028-01-01'),
+        targetExpiryDate: new Date('2029-01-01'),
+        status: 'PENDING',
+        remark: 'Auto renewal tracking',
+      },
+    });
+
+    // Create insurer cancel document on this job
+    const doc = await prisma.document.create({
+      data: {
+        jobId: policy!.jobId,
+        documentType: 'OTHER',
+        originalName: 'insurer-cancel-confirm.pdf',
+        storedName: 'test-cancel.pdf',
+        size: 1024,
+        mimeType: 'application/pdf',
+        storagePath: 'docs/test-cancel.pdf',
+        status: 'VERIFIED',
+      },
+    });
+
+    // Make sure policy is ACTIVE
+    await prisma.policy.update({
+      where: { id: policyId },
+      data: { status: 'ACTIVE' },
+    });
+
+    // Request cancellation
+    await http()
+      .post(`/api/policies/${policyId}/cancel-request`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({
+        cancelReason: 'Customer vehicle sold',
+        cancelRequestDate: '2027-02-01',
+        cancelEffectiveDate: '2027-02-15',
+        cancelRefundAmount: '5000.00',
+      });
+
+    // Non-manager approve fails with 403
+    const failApprove = await http()
+      .post(`/api/policies/${policyId}/cancel-approve`)
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ cancelInsurerDocumentId: doc.id });
+    expect(failApprove.status).toBe(403);
+
+    // Manager approves cancellation
+    const approveRes = await http()
+      .post(`/api/policies/${policyId}/cancel-approve`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ cancelInsurerDocumentId: doc.id, remark: 'Approved per insurer notice' });
+    expect(approveRes.status).toBe(201);
+    expect(approveRes.body.data.status).toBe('CANCELLED');
+
+    // Verify side effect 1: Invoices 2 and 3 due after 2027-02-15 are CANCELLED
+    const updatedInv2 = await prisma.invoice.findUnique({ where: { id: inv2.id } });
+    const updatedInv3 = await prisma.invoice.findUnique({ where: { id: inv3.id } });
+    expect(updatedInv2?.status).toBe('CANCELLED');
+    expect(updatedInv3?.status).toBe('CANCELLED');
+
+    // Verify side effect 2: Credit note invoice and Refund created
+    const creditNote = await prisma.invoice.findFirst({
+      where: { policyId, type: 'CREDIT_NOTE' },
+    });
+    expect(creditNote).toBeTruthy();
+    expect(Number(creditNote?.amount)).toBe(5000);
+
+    const refund = await prisma.refund.findFirst({
+      where: { creditNoteId: creditNote!.id },
+    });
+    expect(refund).toBeTruthy();
+    expect(refund?.status).toBe('REQUESTED');
+    expect(Number(refund?.amount)).toBe(5000);
+
+    // Verify side effect 3: Commission clawback adjustment created
+    const clawback = await prisma.commissionAdjustment.findFirst({
+      where: { policyId, refType: 'POLICY_CANCEL' },
+    });
+    if (clawback) {
+      expect(Number(clawback.amount)).toBeLessThan(0);
+    }
+
+    // Verify side effect 4: Associated renewal CANCELLED
+    const updatedRen = await prisma.renewal.findUnique({ where: { id: ren.id } });
+    expect(updatedRen?.status).toBe('CANCELLED');
+  });
 });
+

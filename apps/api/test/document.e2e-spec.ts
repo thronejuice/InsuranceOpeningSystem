@@ -89,7 +89,7 @@ describe('Document API (e2e)', () => {
     await Promise.all([
       upsertPerm('job.view'), upsertPerm('job.create'), upsertPerm('job.update'),
       upsertPerm('job.view_all'), upsertPerm('job.submit'), upsertPerm('customer.view'),
-      upsertPerm('document.verify'),
+      upsertPerm('document.verify'), upsertPerm('maintenance.run'),
     ]);
 
     const agentRole = await prisma.role.create({
@@ -118,6 +118,7 @@ describe('Document API (e2e)', () => {
             { permission: { connect: { code: 'job.view' } } },
             { permission: { connect: { code: 'job.view_all' } } },
             { permission: { connect: { code: 'document.verify' } } },
+            { permission: { connect: { code: 'maintenance.run' } } },
           ],
         },
       },

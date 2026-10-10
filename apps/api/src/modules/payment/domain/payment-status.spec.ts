@@ -57,4 +57,17 @@ describe('derivePaymentStatus (spec §19.2)', () => {
   it('boundary — totalPaid = totalPremium - 0.01 with future due → PARTIAL', () => {
     expect(derivePaymentStatus(s('10000.00', '9999.99', DUE))).toBe('PARTIAL');
   });
+
+  it('REFUNDED — totalRefunded equals or exceeds totalPaid', () => {
+    expect(
+      derivePaymentStatus({
+        totalPremium: '10000.00',
+        totalPaid: '5000.00',
+        totalRefunded: '5000.00',
+        paymentDueDate: DUE,
+        now: NOW,
+      }),
+    ).toBe('REFUNDED');
+  });
 });
+

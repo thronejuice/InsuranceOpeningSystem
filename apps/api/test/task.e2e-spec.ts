@@ -161,14 +161,14 @@ describe('Task Data Scope (e2e)', () => {
     expect(res.body.data.items.some((t: { id: string }) => t.id === taskIdA)).toBe(true);
   });
 
-  it('Agent B cannot list tasks on Agent A job → 403', async () => {
+  it('Agent B cannot list tasks on Agent A job → 404 (existence not revealed)', async () => {
     const res = await http()
       .get(`/api/jobs/${jobIdA}/tasks`)
       .set('Authorization', `Bearer ${agentBToken}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
-  it('Agent B cannot create task on Agent A job → 403', async () => {
+  it('Agent B cannot create task on Agent A job → 404 (existence not revealed)', async () => {
     const res = await http()
       .post(`/api/jobs/${jobIdA}/tasks`)
       .set('Authorization', `Bearer ${agentBToken}`)
@@ -176,14 +176,14 @@ describe('Task Data Scope (e2e)', () => {
         subject: 'Agent B intruder task',
         taskType: 'CALL_CUSTOMER',
       });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
-  it('Agent B cannot complete task on Agent A job → 403', async () => {
+  it('Agent B cannot complete task on Agent A job → 404 (existence not revealed)', async () => {
     const res = await http()
       .post(`/api/tasks/${taskIdA}/complete`)
       .set('Authorization', `Bearer ${agentBToken}`);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('Agent A can complete task on their own job → 200', async () => {

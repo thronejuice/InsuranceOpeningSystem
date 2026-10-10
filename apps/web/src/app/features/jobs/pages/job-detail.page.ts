@@ -42,19 +42,14 @@ import {
   type PreconditionCheck,
   type BindingResponse,
   type PolicyResponse,
-  type PaymentListResponse,
-  type CreatePaymentDto,
-  type PaymentRecord,
-  type CommissionListResponse,
-  type CreateCommissionDto,
-  type CommissionType,
   type TaskRecord,
   type TaskType,
   type TaskPriority,
-  type PaymentMethod,
   type RenewalReference,
   type JobAssignmentHistory,
 } from '../data/jobs.api';
+import { PolicyInvoicesComponent } from '../../billing/components/policy-invoices.component';
+import { PolicyCommissionsComponent } from '../../commissions/components/policy-commissions.component';
 import { MasterApi, type InsuranceCoverage, type InsuranceCompany, type PaymentTerm } from '../../master/data/master.api';
 import {
   UnderwritingApi,
@@ -147,7 +142,7 @@ interface RecordItem {
   selector: 'app-job-detail-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, MatTooltip, FormsModule, ReactiveFormsModule, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiDialog, UiInput, UiTimeline, UiMessage, UiSelect, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe, HasPermissionDirective],
+  imports: [RouterLink, MatTooltip, FormsModule, ReactiveFormsModule, UiButton, UiTabs, UiTabList, UiTab, UiTabPanels, UiTabPanel, UiDialog, UiInput, UiTimeline, UiMessage, UiSelect, AppPageHeaderComponent, AppStateComponent, AppStatusBadgeComponent, ThDatePipe, MoneyPipe, HasPermissionDirective, PolicyInvoicesComponent, PolicyCommissionsComponent],
   template: `
     @if (state() === 'loading') {
       <app-state state="loading" />
@@ -1595,151 +1590,21 @@ interface RecordItem {
             }
           </ui-tabpanel>
 
-          <!-- UiTab 11: Payment -->
+          <!-- UiTab 11: Payment (invoices & payments, Phase 4) -->
           <ui-tabpanel [value]="11">
-            @if (paymentState() === 'loading') {
-              <app-state state="loading" />
-            } @else if (paymentState() === 'error') {
-              <app-state state="error" />
-            } @else if (!policy()) {
+            @if (!policy()) {
               <app-state state="empty" emptyMessage="ต้องออกกรมธรรม์ก่อนบันทึกการชำระเงิน" />
             } @else {
-              <div class="section-header">
-                <div class="payment-summary">
-                  <span class="info-label">ยอดชำระแล้ว: </span>
-                  <strong>{{ (paymentData()?.totalPaid ?? '0') | money }}</strong>
-                  &nbsp;/&nbsp;{{ policy()!.totalPremium | money }}
-                  @if (paymentData()?.paymentStatus) {
-                    <app-status-badge [status]="paymentData()!.paymentStatus" />
-                  }
-                </div>
-              </div>
-
-              <!-- Add payment form -->
-              <div class="add-form">
-                <h4 class="section-title">บันทึกการชำระเงิน</h4>
-                <div class="form-row">
-                  <div class="field">
-                    <label>จำนวนเงิน <span class="required">*</span></label>
-                    <input uiInput type="text" [(ngModel)]="payAmount" placeholder="0.00" style="max-width:160px" />
-                  </div>
-                  <div class="field">
-                    <label>วิธีชำระ <span class="required">*</span></label>
-                    <ui-select class="w-full" [(ngModel)]="payMethod" [options]="payMethodOptions" optionLabel="label" optionValue="value" placeholder="เลือก" style="max-width:180px" />
-                  </div>
-                  <div class="field">
-                    <label>วันที่ชำระ</label>
-                    <input uiInput type="date" [(ngModel)]="payDate" style="max-width:160px" />
-                  </div>
-                  <div class="field">
-                    <label>เลขอ้างอิง</label>
-                    <input uiInput type="text" [(ngModel)]="payRef" style="max-width:180px" />
-                  </div>
-                </div>
-                @if (payError()) {
-                  <ui-message severity="error" class="my-2 block">{{ payError() }}</ui-message>
-                }
-                <ui-button label="บันทึก" icon="pi pi-plus" [loading]="savingPayment()" [disabled]="savingPayment()" (onClick)="doAddPayment()" styleClass="mt-2" />
-              </div>
-
-              <!-- Payment list -->
-              @if ((paymentData()?.payments ?? []).length > 0) {
-                <table class="data-table" style="margin-top:1rem">
-                  <thead>
-                    <tr>
-                      <th>เลขที่</th>
-                      <th>วันที่</th>
-                      <th style="text-align:right">จำนวนเงิน</th>
-                      <th>วิธีชำระ</th>
-                      <th>สถานะ</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (p of paymentData()!.payments; track p.id) {
-                      <tr>
-                        <td>{{ p.paymentNo }}</td>
-                        <td>{{ p.paymentDate | thDate }}</td>
-                        <td style="text-align:right">{{ p.amount | money }}</td>
-                        <td>{{ p.paymentMethod }}</td>
-                        <td><app-status-badge [status]="p.status" /></td>
-                        <td>
-                          @if (p.status === 'ACTIVE') {
-                            <ui-button label="ยกเลิก" icon="pi pi-times" severity="danger" size="small" [text]="true" (onClick)="doCancelPayment(p)" />
-                          }
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              } @else {
-                <app-state state="empty" emptyMessage="ยังไม่มีการชำระเงิน" />
-              }
+              <app-policy-invoices [policyId]="policy()!.id" />
             }
           </ui-tabpanel>
 
           <!-- UiTab 12: Commission -->
           <ui-tabpanel [value]="12">
-            @if (commissionState() === 'loading') {
-              <app-state state="loading" />
-            } @else if (commissionState() === 'error') {
-              <app-state state="error" />
-            } @else if (!policy()) {
+            @if (!policy()) {
               <app-state state="empty" emptyMessage="ต้องออกกรมธรรม์ก่อนคำนวณค่าคอมมิชชัน" />
             } @else {
-              <!-- Add commission form -->
-              <div class="add-form">
-                <h4 class="section-title">คำนวณค่าคอมมิชชัน</h4>
-                <div class="form-row">
-                  <div class="field">
-                    <label>ประเภทคอมมิชชัน <span class="required">*</span></label>
-                    <ui-select class="w-full" [(ngModel)]="commType" [options]="commTypeOptions" optionLabel="label" optionValue="value" placeholder="เลือก" style="max-width:200px" />
-                  </div>
-                  <div class="field">
-                    <label>ฐานคำนวณ <span class="required">*</span></label>
-                    <input uiInput type="text" [(ngModel)]="commBase" placeholder="0.00" style="max-width:160px" />
-                  </div>
-                  <div class="field">
-                    <label>อัตรา (%) <span class="required">*</span></label>
-                    <input uiInput type="text" [(ngModel)]="commRate" placeholder="0.00" style="max-width:120px" />
-                  </div>
-                </div>
-                @if (commBase && commRate) {
-                  <small class="commission-preview">จำนวนที่คำนวณ: {{ calcCommissionPreview() }}</small>
-                }
-                @if (commError()) {
-                  <ui-message severity="error" class="my-2 block">{{ commError() }}</ui-message>
-                }
-                <ui-button label="บันทึก" icon="pi pi-calculator" [loading]="savingCommission()" [disabled]="savingCommission()" (onClick)="doAddCommission()" styleClass="mt-2" />
-              </div>
-
-              <!-- Commission list -->
-              @if ((commissionData()?.items ?? []).length > 0) {
-                <table class="data-table" style="margin-top:1rem">
-                  <thead>
-                    <tr>
-                      <th>ประเภท</th>
-                      <th style="text-align:right">ฐาน</th>
-                      <th style="text-align:right">อัตรา (%)</th>
-                      <th style="text-align:right">จำนวน</th>
-                      <th>สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (c of commissionData()!.items; track c.id) {
-                      <tr>
-                        <td>{{ c.commissionType }}</td>
-                        <td style="text-align:right">{{ c.commissionBase | money }}</td>
-                        <td style="text-align:right">{{ c.commissionRate | money }}</td>
-                        <td style="text-align:right">{{ c.commissionAmount | money }}</td>
-                        <td><app-status-badge [status]="c.status" /></td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              } @else {
-                <app-state state="empty" emptyMessage="ยังไม่มีค่าคอมมิชชัน" />
-              }
+              <app-policy-commissions [policyId]="policy()!.id" />
             }
           </ui-tabpanel>
 
@@ -1820,7 +1685,7 @@ interface RecordItem {
             } @else {
               @if (uwLatest(); as latest) {
                 <div class="info-grid">
-                  <div class="info-item"><span class="info-label">สถานะ</span><span class="info-value"><app-status-badge [status]="latest.status" /></span></div>
+                  <div class="info-item"><span class="info-label">สถานะ</span><span class="info-value"><app-status-badge [status]="latest.status" context="underwriting" /></span></div>
                   <div class="info-item"><span class="info-label">รอบที่</span><span class="info-value">v{{ latest.version }}</span></div>
                   <div class="info-item"><span class="info-label">ผู้ขอ</span><span class="info-value">{{ latest.requestedBy?.fullName || '-' }}</span></div>
                   <div class="info-item"><span class="info-label">วันที่ขอ</span><span class="info-value">{{ latest.requestedAt | thDate }}</span></div>
@@ -1914,7 +1779,7 @@ interface RecordItem {
                     @for (h of uwHistory(); track h.id) {
                       <tr>
                         <td>v{{ h.version }}</td>
-                        <td><app-status-badge [status]="h.status" /></td>
+                        <td><app-status-badge [status]="h.status" context="underwriting" /></td>
                         <td>{{ h.requestedBy?.fullName || '-' }}</td>
                         <td>{{ h.underwriter?.fullName || '-' }}</td>
                         <td>{{ h.reviewedAt ? (h.reviewedAt | thDate) : '-' }}</td>
@@ -1932,6 +1797,10 @@ interface RecordItem {
     }
 
     <!-- Cancel / Reason UiDialog -->
+    <datalist id="uw-options">
+      @for (n of underwriterNames(); track n) { <option [value]="n"></option> }
+    </datalist>
+
     <ui-dialog
       [(visible)]="showReasonDialog"
       [header]="reasonDialogTitle()"
@@ -2101,7 +1970,7 @@ interface RecordItem {
         <div class="field-row">
           <div class="field">
             <label for="rec-underwriter">ผู้พิจารณารับประกัน (Underwriter)</label>
-            <input uiInput id="rec-underwriter" [(ngModel)]="recUnderwriter" class="w-full" placeholder="ชื่อผู้พิจารณา" />
+            <input uiInput id="rec-underwriter" [(ngModel)]="recUnderwriter" class="w-full" list="uw-options" placeholder="เลือกจากผู้ติดต่อของบริษัท หรือพิมพ์ชื่อ" />
           </div>
           <div class="field">
             <label for="rec-insurer-ref">เลขอ้างอิง บ.ประกัน (Reference)</label>
@@ -2791,7 +2660,7 @@ interface RecordItem {
 
         <div class="field">
           <label for="cb-underwriter">ผู้พิจารณารับประกัน (Underwriter บริษัทประกัน)</label>
-          <input uiInput id="cb-underwriter" [(ngModel)]="confirmBinderUnderwriter" class="w-full" placeholder="ชื่อ-นามสกุล หรือ รหัส Underwriter" />
+          <input uiInput id="cb-underwriter" [(ngModel)]="confirmBinderUnderwriter" class="w-full" list="uw-options" placeholder="เลือกจากผู้ติดต่อของบริษัท หรือพิมพ์ชื่อ" />
         </div>
 
         <div class="field">
@@ -3523,6 +3392,8 @@ export class JobDetailPage implements OnInit, OnDestroy {
   confirmBinderPremium = '';
   confirmBinderPaymentCondition = '';
   confirmBinderUnderwriter = '';
+  /** Underwriter contacts of the insurer in the open dialog (suggestions only — free text is still accepted). */
+  readonly underwriterNames = signal<string[]>([]);
   confirmBinderFile: File | null = null;
   confirmBinderRemark = '';
   readonly confirmingBinding = signal(false);
@@ -3557,40 +3428,6 @@ export class JobDetailPage implements OnInit, OnDestroy {
   showRejectCancelJobDialog = false;
   rejectCancelJobReason = '';
   readonly rejectCancelJobError = signal<string | null>(null);
-
-  // ─── Payment tab ──────────────────────────────────────────────────────────
-  readonly paymentState = signal<'loading' | 'error' | 'none'>('none');
-  readonly paymentData = signal<PaymentListResponse | null>(null);
-  readonly savingPayment = signal(false);
-  readonly payError = signal<string | null>(null);
-  payAmount = '';
-  payMethod: PaymentMethod = 'TRANSFER';
-  payDate = '';
-  payRef = '';
-  readonly payMethodOptions = [
-    { label: 'โอนเงิน', value: 'TRANSFER' },
-    { label: 'เงินสด', value: 'CASH' },
-    { label: 'บัตรเครดิต', value: 'CREDIT_CARD' },
-    { label: 'เช็ค', value: 'CHEQUE' },
-    { label: 'ออนไลน์', value: 'ONLINE' },
-    { label: 'อื่นๆ', value: 'OTHER' },
-  ];
-
-  // ─── Commission tab ────────────────────────────────────────────────────────
-  readonly commissionState = signal<'loading' | 'error' | 'none'>('none');
-  readonly commissionData = signal<CommissionListResponse | null>(null);
-  readonly savingCommission = signal(false);
-  readonly commError = signal<string | null>(null);
-  commType: CommissionType = 'AGENT';
-  commBase = '';
-  commRate = '';
-  readonly commTypeOptions = [
-    { label: 'บริษัท', value: 'COMPANY' },
-    { label: 'ตัวแทน', value: 'AGENT' },
-    { label: 'ทีม', value: 'TEAM' },
-    { label: 'ผู้แนะนำ', value: 'REFERRAL' },
-    { label: 'อื่นๆ', value: 'OTHER' },
-  ];
 
   // ─── Task tab ─────────────────────────────────────────────────────────────
   readonly taskState = signal<'loading' | 'error' | 'none'>('none');
@@ -3629,13 +3466,6 @@ export class JobDetailPage implements OnInit, OnDestroy {
   };
 
   taskTypeLabel(t: string): string { return this.TASK_TYPE_LABELS[t] ?? t; }
-
-  calcCommissionPreview(): string {
-    const b = parseFloat(this.commBase);
-    const r = parseFloat(this.commRate);
-    if (isNaN(b) || isNaN(r)) return '-';
-    return new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(b * r / 100);
-  }
 
   // ─── Document tab ─────────────────────────────────────────────────────────
   readonly docState = signal<'loading' | 'none'>('none');
@@ -3820,8 +3650,6 @@ export class JobDetailPage implements OnInit, OnDestroy {
     if (t === 8 && this.proposals().length === 0) this.loadProposals();
     if (t === 9) this.loadPreconditions();
     if (t === 10 && !this.policy()) this.loadPolicy();
-    if (t === 11) this.loadPayments();
-    if (t === 12) this.loadCommissions();
     if (t === 13) this.loadTasks();
     if (t === 14 && !this.uwLatest() && this.uwHistory().length === 0) this.loadUnderwriting();
   }
@@ -4526,6 +4354,15 @@ export class JobDetailPage implements OnInit, OnDestroy {
     });
   }
 
+  private loadUnderwriters(insurerId: string | null | undefined): void {
+    this.underwriterNames.set([]);
+    if (!insurerId) return;
+    this.masterApi.listUnderwriters(insurerId).subscribe({
+      next: (r) => this.underwriterNames.set(r.data.map((c) => c.name)),
+      error: () => this.underwriterNames.set([]),
+    });
+  }
+
   openRecordPrice(q: Quotation): void {
     this.recordingMode = 'record';
     this.initRecordingForm(q);
@@ -4538,6 +4375,7 @@ export class JobDetailPage implements OnInit, OnDestroy {
 
   private initRecordingForm(q: Quotation): void {
     this.recordingQuo = q;
+    this.loadUnderwriters(q.insuranceCompanyId);
     this.recGross = q.grossPremium;
     this.recDiscount = q.discount;
     this.recDeductible = q.deductible ?? '';
@@ -4685,11 +4523,14 @@ export class JobDetailPage implements OnInit, OnDestroy {
     if (!this.selectReason.trim()) { this.selectError.set('กรุณากรอกเหตุผล'); return; }
     const col = this.selectingCompany();
     if (!col) return;
-    const quo = this.quotations().find((q) => q.id === col.quotationId);
-    if (!quo) return;
+    // The comparison tab can be opened before the quotations tab ever loaded, so the list may be empty
+    const versionToSelect = col.version ?? this.quotations().find((q) => q.id === col.quotationId)?.version;
+    if (versionToSelect === undefined) {
+      this.selectError.set('ไม่พบเวอร์ชันของใบเสนอราคา กรุณาโหลดหน้าใหม่');
+      return;
+    }
     this.selectingQuo.set(true);
     this.selectError.set(null);
-    const versionToSelect = col.version ?? quo.version;
     this.api.selectQuotation(col.quotationId, { reason: this.selectReason.trim(), version: versionToSelect }).subscribe({
       next: (updated) => {
         this.quotations.update((list) => list.map((q) => q.id === updated.id ? updated : q));
@@ -5202,6 +5043,7 @@ export class JobDetailPage implements OnInit, OnDestroy {
 
   openConfirmBindingDialog(): void {
     const b = this.binding();
+    this.loadUnderwriters(b?.insurerId);
     this.confirmBinderNumber = b?.binderNumber ?? '';
     this.confirmBinderDate = b?.binderDate ? b.binderDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
     this.confirmBinderPremium = b?.premium ?? '';
@@ -5323,9 +5165,7 @@ export class JobDetailPage implements OnInit, OnDestroy {
         this.policy.set(res.data[0] ?? null);
         this.policyState.set('none');
         const t = this.activeTab();
-        if (t === 11) this.loadPayments();
-        if (t === 12) this.loadCommissions();
-        if (t === 13) this.loadTasks();
+                if (t === 13) this.loadTasks();
       },
       error: () => this.policyState.set('none'),
     });
@@ -5474,100 +5314,6 @@ export class JobDetailPage implements OnInit, OnDestroy {
         this.isProcessingCancelReject.set(false);
         const body = e.error as { message?: string } | null;
         this.rejectCancelJobError.set(body?.message ?? 'ไม่สามารถปฏิเสธคำขอยกเลิกได้');
-      },
-    });
-  }
-
-  // ─── Payment ──────────────────────────────────────────────────────────────
-
-  private loadPayments(): void {
-    const pol = this.policy();
-    if (!pol) return;
-    this.paymentState.set('loading');
-    this.api.listPayments(pol.id).subscribe({
-      next: (data) => { this.paymentData.set(data); this.paymentState.set('none'); },
-      error: () => this.paymentState.set('error'),
-    });
-  }
-
-  doAddPayment(): void {
-    if (!this.payAmount || !this.payMethod) return;
-    const pol = this.policy();
-    if (!pol) return;
-    this.savingPayment.set(true);
-    this.payError.set(null);
-    const body: CreatePaymentDto = {
-      amount: this.payAmount,
-      paymentMethod: this.payMethod,
-      ...(this.payDate ? { paymentDate: this.payDate } : {}),
-      ...(this.payRef ? { referenceNo: this.payRef } : {}),
-    };
-    this.api.createPayment(pol.id, body).subscribe({
-      next: (data) => {
-        this.paymentData.set(data);
-        this.payAmount = '';
-        this.payRef = '';
-        this.savingPayment.set(false);
-        this.toast.add({ severity: 'success', summary: 'บันทึกการชำระเงินแล้ว' });
-      },
-      error: (e: HttpErrorResponse) => {
-        this.savingPayment.set(false);
-        const b = e.error as { message?: string } | null;
-        this.payError.set(b?.message ?? 'ไม่สามารถบันทึกได้');
-      },
-    });
-  }
-
-  doCancelPayment(payment: PaymentRecord): void {
-    const pol = this.policy();
-    if (!pol) return;
-    this.api.cancelPayment(pol.id, payment.id, 'ยกเลิกโดยผู้ใช้').subscribe({
-      next: (data) => {
-        this.paymentData.set(data);
-        this.toast.add({ severity: 'info', summary: 'ยกเลิกการชำระเงินแล้ว' });
-      },
-      error: (e: HttpErrorResponse) => {
-        const b = e.error as { message?: string } | null;
-        this.toast.add({ severity: 'error', summary: b?.message ?? 'เกิดข้อผิดพลาด' });
-      },
-    });
-  }
-
-  // ─── Commission ────────────────────────────────────────────────────────────
-
-  private loadCommissions(): void {
-    const pol = this.policy();
-    if (!pol) return;
-    this.commissionState.set('loading');
-    this.api.listCommissions(pol.id).subscribe({
-      next: (data) => { this.commissionData.set(data); this.commissionState.set('none'); },
-      error: () => this.commissionState.set('error'),
-    });
-  }
-
-  doAddCommission(): void {
-    if (!this.commType || !this.commBase || !this.commRate) return;
-    const pol = this.policy();
-    if (!pol) return;
-    this.savingCommission.set(true);
-    this.commError.set(null);
-    const body: CreateCommissionDto = {
-      commissionType: this.commType,
-      commissionBase: this.commBase,
-      commissionRate: this.commRate,
-    };
-    this.api.createCommission(pol.id, body).subscribe({
-      next: (data) => {
-        this.commissionData.set(data);
-        this.commBase = '';
-        this.commRate = '';
-        this.savingCommission.set(false);
-        this.toast.add({ severity: 'success', summary: 'บันทึกค่าคอมมิชชันแล้ว' });
-      },
-      error: (e: HttpErrorResponse) => {
-        this.savingCommission.set(false);
-        const b = e.error as { message?: string } | null;
-        this.commError.set(b?.message ?? 'ไม่สามารถบันทึกได้');
       },
     });
   }

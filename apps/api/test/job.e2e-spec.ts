@@ -568,7 +568,7 @@ describe('Job (e2e)', () => {
         .post(`/api/jobs/${jobId}/assign`)
         .set('Authorization', `Bearer ${managerToken}`)
         .send({ assigneeId: agentBId, role: 'BROKER_STAFF', reason: 'Initial assign' });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(201);
       expect(res.body.data.brokerStaffId).toBe(agentBId);
       expect(res.body.data.assignedTo).toBe(agentBId);
     });
@@ -578,7 +578,7 @@ describe('Job (e2e)', () => {
         .post(`/api/jobs/${jobId}/assign`)
         .set('Authorization', `Bearer ${managerToken}`)
         .send({ assigneeId: agentAId, role: 'BROKER_STAFF', reason: 'Reassign to Agent A' });
-      expect(reassignRes.status).toBe(200);
+      expect(reassignRes.status).toBe(201);
       expect(reassignRes.body.data.brokerStaffId).toBe(agentAId);
 
       const historyRes = await http()

@@ -56,4 +56,39 @@ export class ReportController {
   exportRenewals(@Query() query: RenewalQueryDto, @Res() res: Response): Promise<void> {
     return this.service.exportRenewals(query, res);
   }
+
+  @Get('invoices/export')
+  @RequirePermissions('report.view')
+  @ApiOperation({ summary: 'Export invoices to Excel' })
+  exportInvoices(@Res() res: Response): Promise<void> {
+    return this.service.exportInvoices(res);
+  }
+
+  @Get('receivables/export')
+  @RequirePermissions('report.view')
+  @ApiOperation({ summary: 'Export receivables aging to Excel' })
+  exportReceivables(@Res() res: Response): Promise<void> {
+    return this.service.exportReceivables(res);
+  }
+
+  @Get('commission-statements/export')
+  @RequirePermissions('report.view')
+  @ApiOperation({ summary: 'Export commission statements to Excel' })
+  exportCommissionStatements(@Res() res: Response): Promise<void> {
+    return this.service.exportCommissionStatements(res);
+  }
+
+  @Get('endorsements/export')
+  @RequirePermissions('report.view')
+  @ApiOperation({ summary: 'Export endorsements to Excel' })
+  exportEndorsements(@Res() res: Response): Promise<void> {
+    return this.service.exportEndorsements(res);
+  }
+
+  @Get('refunds/export')
+  @RequirePermissions('report.view')
+  @ApiOperation({ summary: 'Export refunds to Excel' })
+  exportRefunds(@Res() res: Response): Promise<void> {
+    return this.service.exportRefunds(res);
+  }
 }

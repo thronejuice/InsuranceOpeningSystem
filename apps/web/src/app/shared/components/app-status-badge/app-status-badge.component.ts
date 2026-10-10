@@ -51,6 +51,43 @@ const STATUS_MAP: Record<string, { label: string; severity: Severity }> = {
   CANCEL_REQUESTED: { label: 'ขอยกเลิก', severity: 'warn' },
   SUBMITTED: { label: 'ยื่นเรื่องแล้ว', severity: 'info' },
   CONFIRMED: { label: 'ยืนยันแล้ว', severity: 'success' },
+
+  // Billing & commission (V2, Phase 4)
+  PENDING: { label: 'รอดำเนินการ', severity: 'warn' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', severity: 'info' },
+  PAID: { label: 'ชำระแล้ว', severity: 'success' },
+  OVERDUE: { label: 'เกินกำหนด', severity: 'danger' },
+  ISSUED: { label: 'ออกแล้ว', severity: 'success' },
+  VOID: { label: 'โมฆะ', severity: 'danger' },
+  CALCULATED: { label: 'คำนวณแล้ว', severity: 'info' },
+  PAYABLE: { label: 'พร้อมจ่าย', severity: 'success' },
+  IN_STATEMENT: { label: 'อยู่ในใบสรุป', severity: 'info' },
+  SETTLED: { label: 'ชำระแล้ว', severity: 'success' },
+
+  // Endorsement & Refund (V2, Phase 5)
+  REVIEWING: { label: 'กำลังตรวจสอบ', severity: 'info' },
+  PROCESSED: { label: 'คืนเงินแล้ว', severity: 'success' },
+  REFUNDED: { label: 'คืนเงินครบแล้ว', severity: 'secondary' },
+};
+
+
+/** Some words mean different things per entity (REQUESTED = "waiting for a price" on a quotation, "waiting for approval" elsewhere). */
+const CONTEXT_MAP: Record<string, Record<string, { label: string; severity: Severity }>> = {
+  underwriting: {
+    PENDING: { label: 'รอตรวจพิจารณา', severity: 'warn' },
+    INFO_REQUIRED: { label: 'รอข้อมูลเพิ่มเติม', severity: 'info' },
+  },
+  endorsement: {
+    REQUESTED: { label: 'รออนุมัติ', severity: 'warn' },
+    REVIEWING: { label: 'กำลังตรวจสอบ', severity: 'info' },
+    APPROVED: { label: 'อนุมัติแล้ว (รอออก)', severity: 'success' },
+    ISSUED: { label: 'ออกสลักหลังแล้ว', severity: 'success' },
+  },
+  refund: {
+    REQUESTED: { label: 'รออนุมัติ', severity: 'warn' },
+    APPROVED: { label: 'อนุมัติแล้ว (รอจ่าย)', severity: 'info' },
+    PROCESSED: { label: 'จ่ายแล้ว', severity: 'success' },
+  },
 };
 
 @Component({
@@ -62,12 +99,18 @@ const STATUS_MAP: Record<string, { label: string; severity: Severity }> = {
 })
 export class AppStatusBadgeComponent {
   @Input({ required: true }) status!: string;
+  /** Optional entity name ('endorsement' | 'refund') for words that differ per entity. */
+  @Input() context?: string;
+
+  private entry(): { label: string; severity: Severity } | undefined {
+    return (this.context ? CONTEXT_MAP[this.context]?.[this.status] : undefined) ?? STATUS_MAP[this.status];
+  }
 
   label(): string {
-    return STATUS_MAP[this.status]?.label ?? this.status;
+    return this.entry()?.label ?? this.status;
   }
 
   severity(): Severity {
-    return STATUS_MAP[this.status]?.severity;
+    return this.entry()?.severity;
   }
 }

@@ -101,7 +101,7 @@ export class ProposalController {
   }
 
   @Post('proposals/daily-check')
-  @RequirePermissions('proposal.create')
+  @RequirePermissions('maintenance.run')
   processDaily() {
     return this.service.processDaily();
   }

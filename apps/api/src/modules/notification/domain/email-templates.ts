@@ -51,6 +51,10 @@ export function renderEmail(
     actionText = 'ดูใบแจ้งหนี้ที่ใกล้ครบกำหนดชำระ';
   } else if (type === NotificationType.PAYMENT_OVERDUE) {
     actionText = 'ดูใบแจ้งหนี้ที่เกินกำหนดชำระ';
+  } else if (type === NotificationType.RENEWAL_DUE) {
+    actionText = 'ดูรายการต่ออายุกรมธรรม์';
+  } else if (type === NotificationType.TASK_OVERDUE) {
+    actionText = 'ดูงานที่ค้างเกินกำหนด';
   }
 
   const detailsHtml = payload.entityType

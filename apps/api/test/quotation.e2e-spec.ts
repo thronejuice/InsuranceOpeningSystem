@@ -185,7 +185,7 @@ describe('Quotation (e2e)', () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe('QUOTATION_COMPANY_DUPLICATE');
+    expect(res.body.code).toBe('QUOTATION_COMPANY_DUPLICATE');
   });
 
   it('GET /jobs/:jobId/quotations — lists quotations', async () => {
@@ -250,13 +250,13 @@ describe('Quotation (e2e)', () => {
     expect(res.status).toBe(422);
   });
 
-  it('PUT /quotations/:id — already RECEIVED cannot be recorded again (409)', async () => {
+  it('PUT /quotations/:id — a RECEIVED price can still be corrected before it is selected (V2)', async () => {
     const res = await http()
       .put(`/api/quotations/${quotationId}`)
       .set('Authorization', `Bearer ${agentToken}`)
       .send({ grossPremium: '10000.00' });
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
   });
 
   it('GET /quotations — Agent sees only their own quotations (BR-014)', async () => {
@@ -306,7 +306,7 @@ describe('Quotation (e2e)', () => {
 
   it('DELETE /quotations/:id — returns 404 for non-existent quotation', async () => {
     const res = await http()
-      .delete('/api/quotations/01912345-6789-7abc-def0-123456789abc')
+      .delete('/api/quotations/01912345-6789-7abc-8ef0-123456789abc')
       .set('Authorization', `Bearer ${agentBToken}`);
     expect(res.status).toBe(404);
   });

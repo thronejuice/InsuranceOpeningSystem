@@ -43,6 +43,20 @@ function formatDate(date: Date): string {
     } @else if (renewals().length === 0) {
       <app-state state="empty" emptyMessage="ยังไม่มีรายการต่ออายุ" />
     } @else {
+      <div class="filter-bar">
+        <label>สถานะ:</label>
+        <select [ngModel]="selectedStatus()" (ngModelChange)="onStatusChange($event)" class="status-select">
+          <option value="">ทั้งหมด</option>
+          <option value="PENDING">รอดำเนินการ (PENDING)</option>
+          <option value="CUSTOMER_CONTACTED">ติดต่อลูกค้าแล้ว (CUSTOMER_CONTACTED)</option>
+          <option value="IN_PROGRESS">กำลังดำเนินการ (IN_PROGRESS)</option>
+          <option value="QUOTATION">ขอ/เสนอราคา (QUOTATION)</option>
+          <option value="ACCEPTED">ลูกค้ายอมรับ (ACCEPTED)</option>
+          <option value="RENEWED">ต่ออายุสำเร็จ (RENEWED)</option>
+          <option value="LOST">ไม่ต่ออายุ/ยกเลิก (LOST/REJECTED)</option>
+        </select>
+      </div>
+
       <div class="card">
         <table class="data-table">
           <thead>
@@ -54,7 +68,7 @@ function formatDate(date: Date): string {
               <th>วันหมดอายุ</th>
               <th>งานใหม่</th>
               <th>สถานะ</th>
-              <th></th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -77,8 +91,11 @@ function formatDate(date: Date): string {
                 </td>
                 <td><app-status-badge [status]="r.status" /></td>
                 <td class="actions">
+                  @if ((r.status === 'PENDING' || r.status === 'IN_PROGRESS') && canCreate) {
+                    <ui-button label="ติดต่อลูกค้า" icon="pi pi-phone" severity="secondary" size="small" [outlined]="true" (onClick)="contactCustomer(r)" />
+                  }
                   @if (r.canRenew && canCreate) {
-                    <ui-button label="ต่ออายุ" icon="pi pi-refresh" size="small" (onClick)="openRenew(r)" />
+                    <ui-button label="สร้างงานต่ออายุ" icon="pi pi-refresh" size="small" (onClick)="openRenew(r)" />
                   }
                 </td>
               </tr>
@@ -131,6 +148,8 @@ function formatDate(date: Date): string {
     .sub { font-size: 0.75rem; color: var(--text-color-secondary); }
     .job-link { color: var(--primary-color); text-decoration: none; }
     .job-link:hover { text-decoration: underline; }
+    .filter-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .status-select { padding: 0.4rem 0.75rem; border: 1px solid var(--surface-border); border-radius: 6px; background: var(--surface-card); color: var(--text-color); font-size: 0.875rem; }
     .renew-form { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.25rem 0; }
     .summary { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem; background: var(--surface-ground); border-radius: 6px; font-size: 0.875rem; }
     .label { display: inline-block; min-width: 9rem; color: var(--text-color-secondary); }
@@ -148,6 +167,7 @@ export class RenewalsListPage implements OnInit {
 
   readonly state = signal<'loading' | 'error' | 'none'>('loading');
   readonly renewals = signal<RenewalRecord[]>([]);
+  readonly selectedStatus = signal<string>('');
 
   readonly showDialog = signal(false);
   readonly target = signal<RenewalRecord | null>(null);
@@ -160,10 +180,29 @@ export class RenewalsListPage implements OnInit {
     this.load();
   }
 
+  onStatusChange(status: string): void {
+    this.selectedStatus.set(status);
+    this.load();
+  }
+
   private load(): void {
-    this.api.listRenewals().subscribe({
+    const status = this.selectedStatus() || undefined;
+    this.api.listRenewals({ status }).subscribe({
       next: (res) => { this.renewals.set(res.items); this.state.set('none'); },
       error: () => this.state.set('error'),
+    });
+  }
+
+  contactCustomer(r: RenewalRecord): void {
+    this.api.contactCustomerRenewal(r.id).subscribe({
+      next: () => {
+        this.toast.add({ severity: 'success', summary: 'บันทึกการติดต่อลูกค้าแล้ว' });
+        this.load();
+      },
+      error: (e: HttpErrorResponse) => {
+        const body = e.error as { message?: string } | null;
+        this.toast.add({ severity: 'error', summary: 'ไม่สามารถบันทึกได้', detail: body?.message });
+      },
     });
   }
 

@@ -69,12 +69,19 @@ export class MasterRepository {
   findAllCompanies() {
     return this.db.insuranceCompany.findMany({
       where: { deletedAt: null },
+      include: { contacts: { where: { deletedAt: null } } },
       orderBy: { name: 'asc' },
     });
   }
 
   findCompanyById(id: string) {
-    return this.db.insuranceCompany.findFirst({ where: { id, deletedAt: null } });
+    return this.db.insuranceCompany.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        contacts: { where: { deletedAt: null }, orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
+        commissionRates: { where: { deletedAt: null }, include: { product: true }, orderBy: { effectiveFrom: 'desc' } },
+      },
+    });
   }
 
   findCompanyByCode(code: string) {
@@ -91,6 +98,31 @@ export class MasterRepository {
 
   softDeleteCompany(id: string) {
     return this.db.insuranceCompany.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  // ─── Insurer Contacts ───────────────────────────────────────────────────
+
+  findContactsByCompany(insuranceCompanyId: string) {
+    return this.db.insurerContact.findMany({
+      where: { insuranceCompanyId, deletedAt: null },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  findContactById(id: string) {
+    return this.db.insurerContact.findFirst({ where: { id, deletedAt: null } });
+  }
+
+  createContact(data: Prisma.InsurerContactCreateInput) {
+    return this.db.insurerContact.create({ data });
+  }
+
+  updateContact(id: string, data: Prisma.InsurerContactUpdateInput) {
+    return this.db.insurerContact.update({ where: { id }, data });
+  }
+
+  softDeleteContact(id: string) {
+    return this.db.insurerContact.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
   // ─── Insurance Coverage ──────────────────────────────────────────────────

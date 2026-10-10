@@ -409,6 +409,10 @@ describe('Phase 0 Day 3 — Data Scope Application', () => {
       const commissionAggregateMock = vi.fn().mockResolvedValue({ _sum: { commissionAmount: 0 } });
       const policyCountMock = vi.fn().mockResolvedValue(5);
       const taskCountMock = vi.fn().mockResolvedValue(2);
+      const invoiceAggregateMock = vi.fn().mockResolvedValue({ _sum: { amount: '1000.00' } });
+      const paymentAggregateMock = vi.fn().mockResolvedValue({ _sum: { amount: '250.00' } });
+      const renewalCountMock = vi.fn().mockResolvedValue(3);
+      const approvalCountMock = vi.fn().mockResolvedValue(4);
 
       const txHost = {
         tx: {
@@ -426,6 +430,10 @@ describe('Phase 0 Day 3 — Data Scope Application', () => {
           task: {
             count: taskCountMock,
           },
+          invoice: { aggregate: invoiceAggregateMock },
+          payment: { aggregate: paymentAggregateMock },
+          renewal: { count: renewalCountMock },
+          approval: { count: approvalCountMock },
         },
       };
 
@@ -461,6 +469,17 @@ describe('Phase 0 Day 3 — Data Scope Application', () => {
             job: expect.objectContaining(expectedJobScope),
           }),
         }),
+      );
+
+      // AR, renewal pipeline and pending approvals are scoped too (they used to count the whole company)
+      expect(invoiceAggregateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ policy: expect.objectContaining({ job: expect.objectContaining(expectedJobScope) }) }) }),
+      );
+      expect(renewalCountMock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ previousPolicy: expect.objectContaining({ job: expect.objectContaining(expectedJobScope) }) }) }),
+      );
+      expect(approvalCountMock).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ job: expect.objectContaining(expectedJobScope) }) }),
       );
 
       // Verify task.count received jobScope

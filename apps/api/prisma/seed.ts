@@ -21,6 +21,7 @@ import {
   SAMPLE_COMMISSION_RATES,
   SAMPLE_COMPANIES,
   SAMPLE_PAYMENT_TERMS,
+  SAMPLE_SHORT_RATE_TABLE,
   SAMPLE_USERS,
   type RoleCode,
 } from './seed-data.js';
@@ -257,6 +258,23 @@ async function main() {
     });
   }
 
+  // ─── Short-Rate Table (Phase 5 D33 / OQ-7) ───────────────────────────
+  for (const srt of SAMPLE_SHORT_RATE_TABLE) {
+    const existing = await prisma.shortRateTable.findFirst({
+      where: { daysFrom: srt.daysFrom, daysTo: srt.daysTo },
+    });
+    if (!existing) {
+      await prisma.shortRateTable.create({
+        data: {
+          daysFrom: srt.daysFrom,
+          daysTo: srt.daysTo,
+          ratePercent: srt.ratePercent,
+          description: srt.description,
+        },
+      });
+    }
+  }
+
   // ─── Approval Rules ────────────────────────────────────────────────────
   for (const rule of APPROVAL_RULES) {
     const existing = await prisma.approvalRule.findFirst({ where: { name: rule.name } });
@@ -264,6 +282,7 @@ async function main() {
       await prisma.approvalRule.create({
         data: {
           name: rule.name,
+          entityType: ('entityType' in rule ? rule.entityType : 'JOB') as never,
           conditionField: rule.conditionField as never,
           conditionOperator: rule.conditionOperator as never,
           thresholdValue: rule.thresholdValue,

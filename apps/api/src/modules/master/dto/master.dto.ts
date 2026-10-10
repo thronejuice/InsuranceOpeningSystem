@@ -68,6 +68,7 @@ export class CreateInsuranceCompanyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) bankAccount?: string;
   @ApiPropertyOptional({ enum: CompanyStatus }) @IsOptional() @IsEnum(CompanyStatus) status?: CompanyStatus;
 }
 
@@ -78,7 +79,27 @@ export class UpdateInsuranceCompanyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) email?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) bankAccount?: string;
   @ApiPropertyOptional({ enum: CompanyStatus }) @IsOptional() @IsEnum(CompanyStatus) status?: CompanyStatus;
+}
+
+export class CreateInsurerContactDto {
+  @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) position?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) email?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isUnderwriter?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isPrimary?: boolean;
+}
+
+export class UpdateInsurerContactDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) position?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) email?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isUnderwriter?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isPrimary?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }
 
 // ─── Insurance Coverage ──────────────────────────────────────────────────────

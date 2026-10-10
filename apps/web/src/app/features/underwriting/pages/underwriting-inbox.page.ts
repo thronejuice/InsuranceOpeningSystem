@@ -43,7 +43,7 @@ import { UnderwritingApi, type UnderwritingInboxItem } from '../data/underwritin
                 <td>{{ item.job.product.name }}</td>
                 <td>{{ item.job.agent.fullName }}</td>
                 <td>v{{ item.version }}</td>
-                <td><app-status-badge [status]="item.status" /></td>
+                <td><app-status-badge [status]="item.status" context="underwriting" /></td>
                 <td>{{ item.requestedAt | thDate }}</td>
                 <td>
                   <a [routerLink]="['/jobs', item.job.id]" [queryParams]="{ tab: 'underwriting' }" class="review-link">ไปตรวจ</a>

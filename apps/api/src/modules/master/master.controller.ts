@@ -12,7 +12,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { RequirePermissions } from '../../common/auth/auth.decorators.js';
+import { CurrentUser, RequirePermissions } from '../../common/auth/auth.decorators.js';
+import type { AuthUser } from '../../common/auth/auth-user.js';
 import { MasterService } from './master.service.js';
 import {
   CommissionRateQueryDto,
@@ -24,6 +25,7 @@ import {
   CreateInsuranceCoverageDto,
   CreateInsuranceProductDto,
   CreateInsuranceTypeDto,
+  CreateInsurerContactDto,
   CreateRiskFieldDto,
   UpdateApprovalRuleDto,
   UpdateBranchDto,
@@ -33,6 +35,7 @@ import {
   UpdateInsuranceCoverageDto,
   UpdateInsuranceProductDto,
   UpdateInsuranceTypeDto,
+  UpdateInsurerContactDto,
   UpdateRiskFieldDto,
   CreatePaymentTermDto,
   UpdatePaymentTermDto,
@@ -113,8 +116,12 @@ export class MasterController {
 
   @Get('companies/:id')
   @RequirePermissions()
-  getCompany(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getCompany(id);
+  async getCompany(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    const company = await this.service.getCompany(id);
+    // Commission rates are the broker's margin — only roles with commission.rate_view may see them
+    if (user.permissions.includes('commission.rate_view')) return company;
+    const { commissionRates: _hidden, ...visible } = company;
+    return visible;
   }
 
   @Post('companies')
@@ -134,6 +141,38 @@ export class MasterController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteCompany(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.deleteCompany(id);
+  }
+
+  @Get('companies/:id/contacts')
+  @RequirePermissions()
+  @ApiQuery({ name: 'underwriter', required: false, description: 'true = only active underwriter contacts (for quotation/binding forms)' })
+  listCompanyContacts(@Param('id', ParseUUIDPipe) id: string, @Query('underwriter') underwriter?: string) {
+    return this.service.listCompanyContacts(id, underwriter === 'true');
+  }
+
+  @Post('companies/:id/contacts')
+  @RequirePermissions('master.manage')
+  createCompanyContact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateInsurerContactDto,
+  ) {
+    return this.service.createCompanyContact(id, dto);
+  }
+
+  @Put('companies/contacts/:contactId')
+  @RequirePermissions('master.manage')
+  updateCompanyContact(
+    @Param('contactId', ParseUUIDPipe) contactId: string,
+    @Body() dto: UpdateInsurerContactDto,
+  ) {
+    return this.service.updateCompanyContact(contactId, dto);
+  }
+
+  @Delete('companies/contacts/:contactId')
+  @RequirePermissions('master.manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteCompanyContact(@Param('contactId', ParseUUIDPipe) contactId: string) {
+    return this.service.deleteCompanyContact(contactId);
   }
 
   // ─── Insurance Coverage ──────────────────────────────────────────────────
@@ -286,13 +325,13 @@ export class MasterController {
   // ─── Commission Rates (Phase 2 Day 11) ───────────────────────────────────
 
   @Get('commission-rates')
-  @RequirePermissions()
+  @RequirePermissions('commission.rate_view')
   listCommissionRates(@Query() query: CommissionRateQueryDto) {
     return this.service.listCommissionRates(query);
   }
 
   @Get('commission-rates/:id')
-  @RequirePermissions()
+  @RequirePermissions('commission.rate_view')
   getCommissionRate(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getCommissionRate(id);
   }

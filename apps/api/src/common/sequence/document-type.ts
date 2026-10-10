@@ -9,6 +9,8 @@ export const DOCUMENT_TYPES = {
   INVOICE: { prefix: 'INV', yearly: true },
   RECEIPT: { prefix: 'RC', yearly: true },
   STATEMENT: { prefix: 'CS', yearly: true },
+  ENDORSEMENT: { prefix: 'EN', yearly: true },
+  REFUND: { prefix: 'RF', yearly: true },
 } as const;
 
 export type DocumentType = keyof typeof DOCUMENT_TYPES;

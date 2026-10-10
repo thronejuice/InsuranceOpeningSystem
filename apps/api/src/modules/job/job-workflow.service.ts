@@ -399,6 +399,38 @@ export class JobWorkflowService {
       }
     }
 
+    // Day 38 / D-18: Sync associated Renewal status if this Job was spawned from a Renewal
+    if (this.txHost.tx.renewal?.findFirst && this.txHost.tx.renewal?.update) {
+      const associatedRenewal = await this.txHost.tx.renewal.findFirst({
+        where: { newJobId: job.id },
+      });
+      if (associatedRenewal) {
+        let renewalStatus: any = null;
+        if (to === 'OPEN' || to === 'WAITING_INFORMATION') renewalStatus = 'IN_PROGRESS';
+        else if (to === 'QUOTATION_REQUESTED' || to === 'QUOTATION_RECEIVED' || to === 'QUOTATION_SELECTED') renewalStatus = 'QUOTATION';
+        else if (to === 'PROPOSAL_SENT' || to === 'WAITING_CUSTOMER') renewalStatus = 'CUSTOMER_CONTACTED';
+        else if (['CUSTOMER_ACCEPTED', 'WAITING_APPROVAL', 'APPROVED', 'BINDING', 'POLICY_PENDING'].includes(to)) renewalStatus = 'ACCEPTED';
+        else if (to === 'CUSTOMER_REJECTED') renewalStatus = 'REJECTED';
+        else if (to === 'POLICY_ISSUED' || to === 'CLOSED') renewalStatus = 'RENEWED';
+        else if (to === 'CANCELLED') renewalStatus = 'CANCELLED';
+        else if (to === 'EXPIRED') renewalStatus = 'LOST';
+
+        if (renewalStatus && renewalStatus !== associatedRenewal.status) {
+          await this.txHost.tx.renewal.update({
+            where: { id: associatedRenewal.id },
+            data: { status: renewalStatus },
+          });
+
+          if (renewalStatus === 'RENEWED' && associatedRenewal.previousPolicyId) {
+            await this.txHost.tx.policy.update({
+              where: { id: associatedRenewal.previousPolicyId },
+              data: { status: 'RENEWED' },
+            });
+          }
+        }
+      }
+    }
+
     await this.audit.log({
       action: 'STATUS_CHANGED',
       entityType: 'JOB',

@@ -23,6 +23,12 @@ export class TaskController {
     return this.service.listByJob(jobId);
   }
 
+  @Post('tasks')
+  @RequirePermissions('task.create')
+  createGeneric(@Body() dto: CreateTaskDto) {
+    return this.service.create(dto.jobId, dto);
+  }
+
   @Post('jobs/:jobId/tasks')
   @RequirePermissions('task.create')
   create(
@@ -30,6 +36,12 @@ export class TaskController {
     @Body() dto: CreateTaskDto,
   ) {
     return this.service.create(jobId, dto);
+  }
+
+  @Post('tasks/process-daily')
+  @RequirePermissions('maintenance.run')
+  processDaily() {
+    return this.service.runDailyOverdueCheck();
   }
 
   @Post('tasks/:id/complete')

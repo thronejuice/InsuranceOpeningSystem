@@ -568,6 +568,14 @@ export interface PolicyResponse {
   issuedAt: string | null;
   remark: string | null;
   version: number;
+  cancelReason?: string | null;
+  cancelRequestDate?: string | null;
+  cancelEffectiveDate?: string | null;
+  cancelInsurerDocumentId?: string | null;
+  cancelRefundAmount?: string | null;
+  cancelOutstandingAmount?: string | null;
+  cancelledAt?: string | null;
+  cancelledById?: string | null;
   coverages: PolicyCoverage[];
   createdAt: string;
   updatedAt: string;
@@ -591,69 +599,32 @@ export interface UpdatePolicyDto {
 
 // ─── Payment ───────────────────────────────────────────────────────────────
 
-export type PaymentMethod = 'CASH' | 'TRANSFER' | 'CREDIT_CARD' | 'CHEQUE' | 'ONLINE' | 'OTHER';
-export type PaymentStatus = 'ACTIVE' | 'CANCELLED';
-export type PolicyPaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'OVERDUE';
-
-export interface PaymentRecord {
-  id: string;
-  paymentNo: string;
-  policyId: string;
-  paymentDate: string;
-  amount: string;
-  paymentMethod: PaymentMethod;
-  referenceNo: string | null;
-  status: PaymentStatus;
-  cancelReason: string | null;
-  remark: string | null;
-  createdAt: string;
-}
-
-export interface PaymentListResponse {
-  payments: PaymentRecord[];
-  totalPaid: string;
-  paymentStatus: PolicyPaymentStatus;
-}
-
-export interface CreatePaymentDto {
-  amount: string;
-  paymentMethod: PaymentMethod;
-  paymentDate?: string;
-  referenceNo?: string;
-  remark?: string;
-}
 
 // ─── Commission ────────────────────────────────────────────────────────────
 
-export type CommissionType = 'COMPANY' | 'AGENT' | 'TEAM' | 'REFERRAL' | 'OTHER';
-export type CommissionStatus = 'PENDING' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED';
 
-export interface CommissionRecord {
-  id: string;
-  policyId: string;
-  agentId: string | null;
-  commissionType: CommissionType;
-  commissionRate: string;
-  commissionBase: string;
-  commissionAmount: string;
-  status: CommissionStatus;
-  paidDate: string | null;
-  remark: string | null;
-  createdAt: string;
-}
-
-export interface CommissionListResponse {
-  items: CommissionRecord[];
-  total: number;
-}
-
-export type TaskType = 'CALL_CUSTOMER' | 'REQUEST_DOCUMENT' | 'REQUEST_QUOTATION' | 'FOLLOW_UP_QUOTATION' | 'SEND_PROPOSAL' | 'FOLLOW_UP_CUSTOMER' | 'FOLLOW_UP_PAYMENT' | 'FOLLOW_UP_POLICY' | 'RENEWAL' | 'OTHER';
+export type TaskType =
+  | 'CALL_CUSTOMER'
+  | 'REQUEST_DOCUMENT'
+  | 'REQUEST_QUOTATION'
+  | 'FOLLOW_UP_QUOTATION'
+  | 'SEND_PROPOSAL'
+  | 'FOLLOW_UP_CUSTOMER'
+  | 'FOLLOW_UP_PAYMENT'
+  | 'FOLLOW_UP_POLICY'
+  | 'FOLLOW_UP_INSURER'
+  | 'RENEWAL'
+  | 'RENEWAL_FOLLOW_UP'
+  | 'CLAIM_FOLLOW_UP'
+  | 'OTHER';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
 
 export interface TaskRecord {
   id: string;
-  jobId: string;
+  jobId: string | null;
+  customerId?: string | null;
+  policyId?: string | null;
   assignedTo: string | null;
   taskType: TaskType;
   subject: string;
@@ -679,6 +650,9 @@ export interface CreateTaskDto {
   dueDate?: string;
   priority?: TaskPriority;
   assignedTo?: string;
+  jobId?: string;
+  customerId?: string;
+  policyId?: string;
 }
 
 // ─── Renewal types ────────────────────────────────────────────────────────────
@@ -736,14 +710,6 @@ export interface RenewalListResponse {
   total: number;
 }
 
-export interface CreateCommissionDto {
-  commissionType: CommissionType;
-  commissionRate: string;
-  commissionBase: string;
-  paidDate?: string;
-  remark?: string;
-}
-
 // ─── Activities ────────────────────────────────────────────────────────────
 
 export interface ActivityItem {
@@ -764,13 +730,13 @@ export interface PaginationMeta {
   lastPage: number;
 }
 
-interface ListResponse<T> {
+export interface ListResponse<T> {
   success: boolean;
   data: T[];
   meta: PaginationMeta;
 }
 
-interface ItemResponse<T> {
+export interface ItemResponse<T> {
   success: boolean;
   data: T;
 }
@@ -1077,46 +1043,7 @@ export class JobsApi {
 
   // ─── Payment ─────────────────────────────────────────────────────────────
 
-  listPayments(policyId: string): Observable<PaymentListResponse> {
-    return this.http.get<{ success: boolean; data: PaymentListResponse }>(`/api/policies/${policyId}/payments`).pipe(map((r) => r.data));
-  }
-
-  createPayment(policyId: string, body: CreatePaymentDto): Observable<PaymentListResponse> {
-    return this.http.post<{ success: boolean; data: PaymentListResponse }>(`/api/policies/${policyId}/payments`, body).pipe(map((r) => r.data));
-  }
-
-  cancelPayment(policyId: string, paymentId: string, cancelReason: string): Observable<PaymentListResponse> {
-    return this.http.post<{ success: boolean; data: PaymentListResponse }>(`/api/policies/${policyId}/payments/${paymentId}/cancel`, { cancelReason }).pipe(map((r) => r.data));
-  }
-
-  listAllPayments(params?: { policyId?: string; page?: number; perPage?: number }): Observable<{ items: PaymentRecord[]; total: number }> {
-    let p = new HttpParams();
-    if (params?.page != null) p = p.set('page', params.page);
-    if (params?.perPage != null) p = p.set('perPage', params.perPage);
-    if (params?.policyId) p = p.set('policyId', params.policyId);
-    return this.http.get<{ success: boolean; data: { items: PaymentRecord[]; total: number } }>('/api/payments', { params: p }).pipe(map((r) => r.data));
-  }
-
   // ─── Commission ───────────────────────────────────────────────────────────
-
-  listCommissions(policyId: string): Observable<CommissionListResponse> {
-    return this.http.get<{ success: boolean; data: CommissionListResponse }>(`/api/policies/${policyId}/commissions`).pipe(map((r) => r.data));
-  }
-
-  createCommission(policyId: string, body: CreateCommissionDto): Observable<CommissionListResponse> {
-    return this.http.post<{ success: boolean; data: CommissionListResponse }>(`/api/policies/${policyId}/commission`, body).pipe(map((r) => r.data));
-  }
-
-  listAllCommissions(params?: { agentId?: string; status?: string; fromDate?: string; toDate?: string; page?: number; perPage?: number }): Observable<CommissionListResponse> {
-    let p = new HttpParams();
-    if (params?.page != null) p = p.set('page', params.page);
-    if (params?.perPage != null) p = p.set('perPage', params.perPage);
-    if (params?.agentId) p = p.set('agentId', params.agentId);
-    if (params?.status) p = p.set('status', params.status);
-    if (params?.fromDate) p = p.set('fromDate', params.fromDate);
-    if (params?.toDate) p = p.set('toDate', params.toDate);
-    return this.http.get<{ success: boolean; data: CommissionListResponse }>('/api/commissions', { params: p }).pipe(map((r) => r.data));
-  }
 
   // ─── Tasks ──────────────────────────────────────────────────────────────
 
@@ -1128,6 +1055,10 @@ export class JobsApi {
     return this.http.post<{ success: boolean; data: TaskRecord }>(`/api/jobs/${jobId}/tasks`, body).pipe(map((r) => r.data));
   }
 
+  createGenericTask(body: CreateTaskDto): Observable<TaskRecord> {
+    return this.http.post<{ success: boolean; data: TaskRecord }>('/api/tasks', body).pipe(map((r) => r.data));
+  }
+
   completeTask(id: string): Observable<TaskRecord> {
     return this.http.post<{ success: boolean; data: TaskRecord }>(`/api/tasks/${id}/complete`, {}).pipe(map((r) => r.data));
   }
@@ -1136,11 +1067,23 @@ export class JobsApi {
     return this.http.post<{ success: boolean; data: TaskRecord }>(`/api/tasks/${id}/cancel`, {}).pipe(map((r) => r.data));
   }
 
-  listAllTasks(params?: { mine?: boolean; overdue?: boolean; status?: string; page?: number; perPage?: number }): Observable<TaskListResponse> {
+  listAllTasks(params?: {
+    mine?: boolean;
+    overdue?: boolean;
+    status?: string;
+    jobId?: string;
+    customerId?: string;
+    policyId?: string;
+    page?: number;
+    perPage?: number;
+  }): Observable<TaskListResponse> {
     let p = new HttpParams();
     if (params?.mine) p = p.set('mine', 'true');
     if (params?.overdue) p = p.set('overdue', 'true');
     if (params?.status) p = p.set('status', params.status);
+    if (params?.jobId) p = p.set('jobId', params.jobId);
+    if (params?.customerId) p = p.set('customerId', params.customerId);
+    if (params?.policyId) p = p.set('policyId', params.policyId);
     if (params?.page) p = p.set('page', String(params.page));
     if (params?.perPage) p = p.set('perPage', String(params.perPage));
     return this.http.get<{ success: boolean; data: TaskListResponse }>('/api/tasks', { params: p }).pipe(map((r) => r.data));
@@ -1161,6 +1104,10 @@ export class JobsApi {
     if (params?.page != null) p = p.set('page', params.page);
     if (params?.perPage != null) p = p.set('perPage', params.perPage);
     return this.http.get<{ success: boolean; data: RenewalListResponse }>('/api/renewals', { params: p }).pipe(map((r) => r.data));
+  }
+
+  contactCustomerRenewal(renewalId: string): Observable<RenewalRecord> {
+    return this.http.post<{ success: boolean; data: RenewalRecord }>(`/api/renewals/${renewalId}/contact-customer`, {}).pipe(map((r) => r.data));
   }
 
   renewPolicy(policyId: string, body: RenewPolicyBody = {}): Observable<RenewalRecord> {

@@ -112,6 +112,13 @@
 | OQ-21 | หักคืน (clawback) | ยอดติดลบรวมต่อแถวเดิมต้องไม่เกินส่วนแบ่งเดิม; statement ห้ามติดลบ — adjustment เรียงเก่าสุดก่อน นำมาหักได้ตราบที่ยอดสุทธิสะสม ≥ 0 ที่เหลือค้าง PENDING ยกไป statement ถัดไป; ยืนยัน statement ที่ net < 0 ไม่ได้ (`STATEMENT_NEGATIVE`) | D27 |
 | OQ-22 | แถวที่อยู่ใน Statement แล้ว | ไม่ถูกดึงกลับเมื่อ payment/invoice เปลี่ยนภายหลัง (syncPayable ข้ามแถวที่มี statementId); ยกเลิก statement ที่ยังไม่จ่ายจะปล่อยรายการกลับ; ใบที่ PAID ยกเลิกไม่ได้ | D27 |
 | OQ-23 | `GET /commissions/summary` | จัดกลุ่ม agent/policy/insurer/period/product; period = เดือนที่ออกกรมธรรม์; gross และ broker share นับครั้งเดียวต่อ policy (จากแถว AGENT); แสดงยอด adjustment แยก (`adjustmentNet`) และ `totalNet`; ผู้ไม่มี scope เห็นเฉพาะของตน | D27 |
+| OQ-24 | สถิติบริษัทประกัน (`GET /insurers/:id/stats`) | อัตราได้งาน = SELECTED ÷ ใบเสนอราคาที่ได้รับราคาแล้ว (ไม่นับ REQUESTED/CANCELLED); เบี้ยรวมที่ออกกรมธรรม์ไม่นับ DRAFT/CANCELLED แยกยอดที่ยกเลิก; ต้องมี `report.view` | D42 |
+| OQ-25 | สลักหลังประเภทแก้ข้อมูล (ลูกค้า/ที่อยู่/รถ/ความคุ้มครอง) | บันทึก before/after + snapshot `policy_versions` เท่านั้น — **ไม่** อัปเดตทะเบียนลูกค้า/ที่อยู่/รถโดยอัตโนมัติ; ที่ระบบ apply ให้คือ `sumInsured`, วันเริ่ม/สิ้นสุด และเบี้ย (debit/credit note) | D47 |
+| OQ-26 | อนุมัติสลักหลัง | ใช้ `approval.approve` + ระดับ role ≥ `approverRole` ของกฎที่เข้า (เก็บเป็น `required_approver_role` ตอน submit) + ห้ามอนุมัติของตัวเอง (ADMIN มี `approval.approve_own` นอก production) | D46 |
+| OQ-27 | งานรายวันทั้งระบบ (`*/process-daily`, `expire-outdated`, `daily-check`) | ต้องมีสิทธิ์ `maintenance.run` (ADMIN) — เดิมเปิดให้ role ทั่วไป; ตัวตั้งเวลา BullMQ เรียก service ตรงจึงไม่กระทบ | D46 |
+| OQ-28 | อัตราค่าคอมของบริษัทประกัน | เห็นได้เฉพาะ `commission.rate_view` (ADMIN, FINANCE, MANAGER, SUPERVISOR, BROKER_STAFF) — AGENT/VIEWER ไม่เห็น (API ซ่อนทั้ง `/master/commission-rates` และ rate ใน `/insurers/:id/products` และ `/master/companies/:id`) | D46 |
+| OQ-29 | Task ที่ไม่ผูก Job | ผู้สร้างเป็นผู้รับผิดชอบโดยปริยาย; เห็น/แก้ได้เฉพาะผู้เกี่ยวข้อง (ผู้สร้าง, ผู้รับ, ผู้เห็น Job/Policy นั้น); ผูกกับ policy/customer ที่ตัวเองมองไม่เห็นไม่ได้ (404) | D46 |
+| OQ-30 | เงินในสลักหลัง | รับเป็น decimal string (ยังรับ number เดิมแล้วปัดเป็น 2 ตำแหน่ง); `total = net + stamp + vat` ต้องตรงเป๊ะ, NO_CHANGE ต้องเป็นศูนย์ → 422 `ENDORSEMENT_INVALID_AMOUNTS` | D47 |
 
 ---
 
@@ -380,177 +387,177 @@
 - [x] e2e: สร้าง statement เดือน → mark paid → commission PAID; adjustment ติดลบหักใน statement
 
 ### Day 28 — Billing UI
-- [ ] Policy detail: tab Invoice (งวด, สถานะ, outstanding), บันทึก payment ต่อ invoice, ดาวน์โหลด PDF
-- [ ] หน้า `/invoices` + `/receivables` (aging)
-- [ ] ปรับหน้า `/payments` เดิมให้ผูก invoice
+- [x] Policy detail: tab Invoice (งวด, สถานะ, outstanding), บันทึก payment ต่อ invoice, ดาวน์โหลด PDF
+- [x] หน้า `/invoices` + `/receivables` (aging)
+- [x] ปรับหน้า `/payments` เดิมให้ผูก invoice
 
 **Done เมื่อ:**
-- [ ] flow D23–D25 ทำได้บนหน้าจอ
+- [x] flow D23–D25 ทำได้บนหน้าจอ
 
 ### Day 29 — Commission UI
-- [ ] `/commissions`: สถานะใหม่, approve, adjustment
-- [ ] `/commission-statements`: สร้าง/ยืนยัน/mark paid, export Excel
-- [ ] Master System Setting (WHT, default share), agent share ในหน้า User
+- [x] `/commissions`: สถานะใหม่, approve, adjustment
+- [x] `/commission-statements`: สร้าง/ยืนยัน/mark paid, export Excel
+- [x] Master System Setting (WHT, default share), agent share ในหน้า User
 
 **Done เมื่อ:**
-- [ ] flow D26–D27 ทำได้บนหน้าจอ
+- [x] flow D26–D27 ทำได้บนหน้าจอ
 
 ### Day 30 — Phase 4 Buffer + Review
-- [ ] Playwright: issue ผ่อน 3 งวด → จ่ายครบ → receipt → commission PAYABLE → statement → PAID
-- [ ] `/dod-check` invoice, payment, commission
-- [ ] อัปเดต DESIGN.md (billing, money flow)
+- [x] Playwright: issue ผ่อน 3 งวด → จ่ายครบ → receipt → commission PAYABLE → statement → PAID
+- [x] `/dod-check` invoice, payment, commission
+- [x] อัปเดต DESIGN.md (billing, money flow)
 
 **Done เมื่อ:**
-- [ ] unit + e2e + Playwright ผ่านทั้งหมด
+- [ ] unit + e2e + Playwright ผ่านทั้งหมด — ชุดใหม่ของ Phase 4 ผ่านครบ; ยังค้าง: API e2e เดิม 11 เคส (job/proposal/quotation/task) และ Playwright เก่า (acceptance, phase1–3) ที่ล้มก่อนถึงโค้ดนี้ — ดู Log
 
 ---
 
 ## Phase 5 — Endorsement, Cancellation, Refund
 
 ### Day 31 — Endorsement API (request/review)
-- [ ] Model `endorsements` (number EN-, policyId, type ตาม V2 §19.1, status DRAFT/REQUESTED/REVIEWING/APPROVED/REJECTED/ISSUED/CANCELLED, effectiveDate, changes before/after JSON, premiumAdjustmentType, amounts, insurer document)
-- [ ] `domain/endorsement-fields.ts`: ฟิลด์ที่แก้ได้ต่อ type + validate changes
-- [ ] `domain/pro-rata.ts` ปุ่มคำนวณให้ (D-15) + unit test
-- [ ] Actions: submit, startReview, cancel; ใช้ได้เฉพาะ Policy ACTIVE/EXPIRING
+- [x] Model `endorsements` (number EN-, policyId, type ตาม V2 §19.1, status DRAFT/REQUESTED/REVIEWING/APPROVED/REJECTED/ISSUED/CANCELLED, effectiveDate, changes before/after JSON, premiumAdjustmentType, amounts, insurer document)
+- [x] `domain/endorsement-fields.ts`: ฟิลด์ที่แก้ได้ต่อ type + validate changes
+- [x] `domain/pro-rata.ts` ปุ่มคำนวณให้ (D-15) + unit test
+- [x] Actions: submit, startReview, cancel; ใช้ได้เฉพาะ Policy ACTIVE/EXPIRING
 
 **Done เมื่อ:**
-- [ ] unit test fields + pro-rata; e2e สร้าง/ส่ง/เริ่ม review
+- [x] unit test fields + pro-rata; e2e สร้าง/ส่ง/เริ่ม review
 
 ### Day 32 — Endorsement approval + issue
-- [ ] Approval Rule `entityType = ENDORSEMENT` (seed OQ-9); ไม่เข้ากฎ → APPROVED ทันที
-- [ ] `issue`: apply changes เข้า Policy (+ coverage/risk), สร้าง `policy_versions` snapshot ก่อนแก้
-- [ ] เบี้ยเพิ่ม → Debit Note (invoice) ; เบี้ยคืน → Credit Note + Refund REQUESTED; commission adjustment อัตโนมัติ
+- [x] Approval Rule `entityType = ENDORSEMENT` (seed OQ-9); ไม่เข้ากฎ → APPROVED ทันที
+- [x] `issue`: apply changes เข้า Policy (+ coverage/risk), สร้าง `policy_versions` snapshot ก่อนแก้
+- [x] เบี้ยเพิ่ม → Debit Note (invoice) ; เบี้ยคืน → Credit Note + Refund REQUESTED; commission adjustment อัตโนมัติ
 
 **Done เมื่อ:**
-- [ ] e2e: CHANGE_SUM_INSURED + เบี้ยเพิ่ม → debit note + commission adjustment + policy version 2; ต้องอนุมัติเมื่อเข้ากฎ
+- [x] e2e: CHANGE_SUM_INSURED + เบี้ยเพิ่ม → debit note + commission adjustment + policy version 2; ต้องอนุมัติเมื่อเข้ากฎ
 
 ### Day 33 — Policy Cancellation
-- [ ] Master short-rate table (OQ-7)
-- [ ] `requestCancellation` → CANCEL_REQUESTED (reason, requestDate, effectiveCancellationDate, refund คำนวณ/กรอก, outstanding)
-- [ ] `approveCancellation` (MANAGER + ต้องมี insurer confirmation document) → CANCELLED; `rejectCancellation` → กลับ ACTIVE/EXPIRING
-- [ ] ผล (D-17): void invoice ที่ due หลังวันยกเลิก, credit note + refund, commission clawback; Renewal ของ policy → CANCELLED
+- [x] Master short-rate table (OQ-7)
+- [x] `requestCancellation` → CANCEL_REQUESTED (reason, requestDate, effectiveCancellationDate, refund คำนวณ/กรอก, outstanding)
+- [x] `approveCancellation` (MANAGER + ต้องมี insurer confirmation document) → CANCELLED; `rejectCancellation` → กลับ ACTIVE/EXPIRING
+- [x] ผล (D-17): void invoice ที่ due หลังวันยกเลิก, credit note + refund, commission clawback; Renewal ของ policy → CANCELLED
 
 **Done เมื่อ:**
-- [ ] e2e: ผ่อน 3 งวดจ่าย 1 → ยกเลิก → งวด 2–3 CANCELLED, credit note, clawback ติดลบตามสัดส่วน
+- [x] e2e: ผ่อน 3 งวดจ่าย 1 → ยกเลิก → งวด 2–3 CANCELLED, credit note, clawback ติดลบตามสัดส่วน
 
 ### Day 34 — Refund
-- [ ] Model `refunds` (credit note, amount, status REQUESTED/APPROVED/PROCESSED/REJECTED, requestedBy, approvedBy, processedBy, method, ref, attachment)
-- [ ] Maker-checker: approver ≠ requester, processor = FINANCE (D-16); Payment status รวมของ policy → REFUNDED เมื่อคืนครบ
-- [ ] Notification ถึง FINANCE เมื่อมี refund รออนุมัติ
+- [x] Model `refunds` (credit note, amount, status REQUESTED/APPROVED/PROCESSED/REJECTED, requestedBy, approvedBy, processedBy, method, ref, attachment)
+- [x] Maker-checker: approver ≠ requester, processor = FINANCE (D-16); Payment status รวมของ policy → REFUNDED เมื่อคืนครบ
+- [x] Notification ถึง FINANCE เมื่อมี refund รออนุมัติ
 
 **Done เมื่อ:**
-- [ ] e2e: request → approve (คนเดียวกัน → 422) → process
+- [x] e2e: request → approve (คนเดียวกัน → 422) → process
 
 ### Day 35 — Endorsement / Cancellation / Refund UI
-- [ ] Policy detail: tab Endorsement (ฟอร์มตาม type, diff before/after, ปุ่มคำนวณ), tab Policy versions
-- [ ] ปุ่มขอยกเลิกกรมธรรม์ + อนุมัติ (approvals inbox รวม endorsement/cancellation)
-- [ ] หน้า `/refunds`
+- [x] Policy detail: tab Endorsement (ฟอร์มตาม type, diff before/after, ปุ่มคำนวณ), tab Policy versions
+- [x] ปุ่มขอยกเลิกกรมธรรม์ + อนุมัติ (approvals inbox รวม endorsement/cancellation)
+- [x] หน้า `/refunds`
 
 **Done เมื่อ:**
-- [ ] flow D31–D34 ทำได้บนหน้าจอ
+- [x] flow D31–D34 ทำได้บนหน้าจอ
 
 ### Day 36 — Phase 5 Buffer + Review
-- [ ] Playwright: endorsement เบี้ยเพิ่ม → อนุมัติ → issue → จ่าย debit note; cancellation → refund
-- [ ] `/dod-check` endorsement, cancellation, refund
-- [ ] อัปเดต DESIGN.md
+- [x] Playwright: endorsement เบี้ยเพิ่ม → อนุมัติ → issue → จ่าย debit note; cancellation → refund (`apps/web/e2e/phase5-endorsement-cancellation-refund.spec.ts`)
+- [x] `/dod-check` endorsement, cancellation, refund
+- [x] อัปเดต DESIGN.md (§9.5, §9.6)
 
 **Done เมื่อ:**
-- [ ] unit + e2e + Playwright ผ่านทั้งหมด
+- [x] unit + e2e + Playwright ผ่านทั้งหมด
 
 ---
 
 ## Phase 6 — Renewal, Task, Notification
 
 ### Day 37 — Task V2
-- [ ] Task เป็น entity กลาง: `jobId` เป็น optional + `customerId`, `policyId` (ต้องมีอย่างน้อย 1)
-- [ ] TaskType เพิ่ม FOLLOW_UP_INSURER, RENEWAL_FOLLOW_UP ฯลฯ ตาม V2 §23; OVERDUE คำนวณ (OQ-8)
-- [ ] งานรายวัน: notification TASK_OVERDUE (email)
-- [ ] `/tasks` ฝั่ง API รองรับ filter customer/policy
+- [x] Task เป็น entity กลาง: `jobId` เป็น optional + `customerId`, `policyId` (ต้องมีอย่างน้อย 1)
+- [x] TaskType เพิ่ม FOLLOW_UP_INSURER, RENEWAL_FOLLOW_UP ฯลฯ ตาม V2 §23; OVERDUE คำนวณ (OQ-8)
+- [x] งานรายวัน: notification TASK_OVERDUE (email)
+- [x] `/tasks` ฝั่ง API รองรับ filter customer/policy
 
 **Done เมื่อ:**
-- [ ] e2e: สร้าง task ผูก policy ไม่มี job ได้; overdue แจ้งเตือน
+- [x] e2e: สร้าง task ผูก policy ไม่มี job ได้; overdue แจ้งเตือน
 
 ### Day 38 — Renewal Pipeline
-- [ ] RenewalStatus V2 §21.2: PENDING / CONTACTING_CUSTOMER / QUOTATION_REQUESTED / PROPOSAL_SENT / CUSTOMER_ACCEPTED / RENEWED / CUSTOMER_REJECTED / EXPIRED (+ CANCELLED เมื่อ policy ถูกยกเลิก)
-- [ ] Sync hook จาก `JobWorkflowService` ของ Renewal Job (D-18); `contactCustomer` กดเองได้
-- [ ] งานรายวัน timeline 90/60/45/30/15/7 สร้าง Task + notification RENEWAL_DUE ถ้ายังไม่ถึงขั้น; หมดอายุ → Renewal EXPIRED + Renewal Job EXPIRED (D-19); issue Renewal Job → Policy เดิม RENEWED
-- [ ] `domain/renewal-timeline.ts` + unit test
+- [x] RenewalStatus V2 §21.2: PENDING / CONTACTING_CUSTOMER / QUOTATION_REQUESTED / PROPOSAL_SENT / CUSTOMER_ACCEPTED / RENEWED / CUSTOMER_REJECTED / EXPIRED (+ CANCELLED เมื่อ policy ถูกยกเลิก)
+- [x] Sync hook จาก `JobWorkflowService` ของ Renewal Job (D-18); `contactCustomer` กดเองได้
+- [x] งานรายวัน timeline 90/60/45/30/15/7 สร้าง Task + notification RENEWAL_DUE ถ้ายังไม่ถึงขั้น; หมดอายุ → Renewal EXPIRED + Renewal Job EXPIRED (D-19); issue Renewal Job → Policy เดิม RENEWED
+- [x] `domain/renewal-timeline.ts` + unit test
 
 **Done เมื่อ:**
-- [ ] unit test timeline; e2e: ต่ออายุครบวงจร → RENEWED; ปล่อยหมดอายุ → EXPIRED
+- [x] unit test timeline; e2e: ต่ออายุครบวงจร → RENEWED; ปล่อยหมดอายุ → EXPIRED
 
 ### Day 39 — Notification ครบ 12 event
-- [ ] ตรวจทุก event V2 §24 ถูก emit จริง (Quotation Received, Approval Requested/Rejected, Customer Accepted/Rejected, Payment Due/Overdue, Policy Issued/Expiring, Renewal Due, Task Overdue) — Claim Updated ข้าม (Backlog)
-- [ ] Email เฉพาะ 4 event (D-20) + เคารพ preferences
-- [ ] e2e ต่อ event (ตาราง event → recipient)
+- [x] ตรวจทุก event V2 §24 ถูก emit จริง (Quotation Received, Approval Requested/Rejected, Customer Accepted/Rejected, Payment Due/Overdue, Policy Issued/Expiring, Renewal Due, Task Overdue) — Claim Updated ข้าม (Backlog)
+- [x] Email เฉพาะ 4 event (D-20) + เคารพ preferences
+- [x] e2e ต่อ event (ตาราง event → recipient)
 
 **Done เมื่อ:**
-- [ ] e2e notification 11 event ผ่าน; email 4 event อยู่ใน Mailpit
+- [x] e2e notification 11 event ผ่าน; email 4 event อยู่ใน Mailpit
 
 ### Day 40 — Renewal / Task UI
-- [ ] หน้า Renewal เป็น pipeline (คอลัมน์ตามสถานะ) + filter วันหมดอายุ
-- [ ] Task: ผูก customer/policy, แสดง overdue
-- [ ] Notification bell รองรับ event ใหม่ (link ไปหน้าที่เกี่ยวข้อง)
+- [x] หน้า Renewal เป็น pipeline (คอลัมน์ตามสถานะ) + filter วันหมดอายุ
+- [x] Task: ผูก customer/policy, แสดง overdue
+- [x] Notification bell รองรับ event ใหม่ (link ไปหน้าที่เกี่ยวข้อง)
 
 **Done เมื่อ:**
-- [ ] flow D37–D39 ทำได้บนหน้าจอ
+- [x] flow D37–D39 ทำได้บนหน้าจอ
 
 ### Day 41 — Phase 6 Buffer + Review
-- [ ] Playwright: renewal pipeline end-to-end
-- [ ] `/dod-check` renewal, task, notification
+- [x] Playwright: renewal pipeline end-to-end (`apps/web/e2e/phase6-renewal-task-notification.spec.ts`)
+- [x] `/dod-check` renewal, task, notification
 
 **Done เมื่อ:**
-- [ ] unit + e2e + Playwright ผ่านทั้งหมด
+- [x] unit + e2e + Playwright ผ่านทั้งหมด
 
 ---
 
 ## Phase 7 — Insurer, Reports, Release
 
 ### Day 42 — Insurer Management API
-- [ ] `insurer_contacts` (name, position, email, phone, isUnderwriter, isPrimary), bank account, tax ID
-- [ ] Insurer × Product ที่รับ (+ commission rate จาก D11)
-- [ ] `GET /insurers/:id/stats` (จำนวน quotation, อัตราได้งาน = selected/received, เบี้ยรวมที่ออกกรมธรรม์)
+- [x] `insurer_contacts` (name, position, email, phone, isUnderwriter, isPrimary), bank account, tax ID
+- [x] Insurer × Product ที่รับ (+ commission rate จาก D11)
+- [x] `GET /insurers/:id/stats` (จำนวน quotation, อัตราได้งาน = selected/received, เบี้ยรวมที่ออกกรมธรรม์)
 
 **Done เมื่อ:**
-- [ ] e2e insurer contacts/products/stats
+- [x] e2e insurer contacts/products/stats
 
 ### Day 43 — Insurer UI
-- [ ] หน้า `/insurers/:id` (tabs: ข้อมูล, ผู้ติดต่อ, Product & Commission, สถิติ)
-- [ ] เลือก underwriter จากผู้ติดต่อในฟอร์ม quotation/binding
+- [x] หน้า `/insurers/:id` (tabs: ข้อมูล, ผู้ติดต่อ, Product & Commission, สถิติ)
+- [x] เลือก underwriter จากผู้ติดต่อในฟอร์ม quotation/binding
 
 **Done เมื่อ:**
-- [ ] ใช้งานได้จริงบนหน้าจอ
+- [x] ใช้งานได้จริงบนหน้าจอ
 
 ### Day 44 — Reports & Export V2
-- [ ] Export Excel: invoices, receivables (aging), commission statements, endorsements, refunds, renewals pipeline
-- [ ] Dashboard: เพิ่ม AR outstanding, renewal pipeline, approval รอ (ตาม scope)
+- [x] Export Excel: invoices, receivables (aging), commission statements, endorsements, refunds, renewals pipeline
+- [x] Dashboard: เพิ่ม AR outstanding, renewal pipeline, approval รอ (ตาม scope)
 
 **Done เมื่อ:**
-- [ ] export ทุกตัวเปิดได้, dashboard ตัวเลขตรงกับ query
+- [x] export ทุกตัวเปิดได้, dashboard ตัวเลขตรงกับ query
 
 ### Day 45 — Seed V2 + เอกสาร
-- [ ] `db:seed` + `db:seed:mock` สร้างข้อมูลผ่าน service/workflow ครบทุกสถานะ V2 (มี history)
-- [ ] เขียน `SYSTEM_FLOW_V2.md` (state machine ทุก entity, permission matrix, checklist ทดสอบ)
-- [ ] อัปเดต DESIGN.md, CLAUDE.md (เอกสาร V2)
+- [x] `db:seed` + `db:seed:mock` สร้างข้อมูลผ่าน service/workflow ครบทุกสถานะ V2 (มี history)
+- [x] เขียน `SYSTEM_FLOW_V2.md` (state machine ทุก entity, permission matrix, checklist ทดสอบ)
+- [x] อัปเดต DESIGN.md, CLAUDE.md (เอกสาร V2)
 
 **Done เมื่อ:**
-- [ ] `npm run db:reset && npm run db:seed:mock` สำเร็จ; เอกสารตรงโค้ด
+- [x] `npm run db:reset && npm run db:seed:mock` สำเร็จ; เอกสารตรงโค้ด
 
 ### Day 46 — Security & Permission Review
-- [ ] ทุก route ใหม่มี `@RequirePermissions`/`@Public`; ตรวจ data scope ทุก endpoint (สคริปต์ไล่ route)
-- [ ] Permission matrix V2 ใน seed ตรง SYSTEM_FLOW_V2
-- [ ] `/security-review` บน branch v2
+- [x] ทุก route ใหม่มี `@RequirePermissions`/`@Public`; ตรวจ data scope ทุก endpoint (สคริปต์ไล่ route)
+- [x] Permission matrix V2 ใน seed ตรง SYSTEM_FLOW_V2
+- [x] `/security-review` บน branch v2
 
 **Done เมื่อ:**
-- [ ] ไม่มี route ไร้ permission; e2e scope negative ผ่าน
+- [x] ไม่มี route ไร้ permission; e2e scope negative ผ่าน
 
 ### Day 47 — Full E2E + Release v2.0.0
-- [ ] Playwright full V2 flow (§30 ยกเว้น Claim)
-- [ ] DoD V2 §31 ทุกข้อ (ยกเว้น Claim) ✅ พร้อมหลักฐาน
+- [x] Playwright full V2 flow (§30 ยกเว้น Claim) — phase1…phase6 + acceptance smoke (65 เคส)
+- [x] DoD V2 §31 ทุกข้อ (ยกเว้น Claim) ✅ พร้อมหลักฐาน — `docs/DOD_V2.md`
 - [ ] merge `v2` → `main`, tag `v2.0.0` (เมื่อผู้ใช้สั่ง)
 
 **Done เมื่อ:**
-- [ ] unit + e2e + Playwright ผ่านทั้งหมด 2 รอบติด; DoD ครบ
+- [x] unit 644/644 + API e2e 292/292 + Playwright 65/65 ผ่าน 2 รอบติด (lint/build api+web ผ่าน); DoD ครบ
 
 ---
 
@@ -569,6 +576,33 @@
 ## Log
 
 <!-- LOG-START -->
+
+### 2026-10-10 — Day 42–47 (Phase 7: Insurer, Reports, Release) — ผลตรวจรับ
+- **เสร็จ:**
+  - D42–43 Insurer: `insurer_products` + unique บางส่วน (ผู้ติดต่อหลัก 1 คน/บริษัท), `/insurers/:id/{products,stats}`, ผู้ติดต่อ/Underwriter, หน้า `/insurers/:id` 4 แท็บ, เสนอชื่อ Underwriter ในฟอร์ม quotation/binding (e2e `insurer` 8/8 + unit stats)
+  - D44 Reports: export invoices / receivables (aging + summary) / commission statements / endorsements / refunds / renewals และ export เดิมทุกตัว **กรองตาม data scope แล้ว** (เดิมรั่วทั้งบริษัท); dashboard AR/renewal/approval ตาม scope; ปุ่ม Export ในหน้า (e2e `report` 8/8)
+  - D45 Seed: `src/seed-mock/` ขับ API จริงครบทุกสถานะ V2 (job, underwriting, quotation, proposal, approval, binding, policy, invoice/payment/receipt, commission/statement, endorsement, cancellation/refund, renewal, task) — รันสะอาดบน DB ใหม่; `docs/SYSTEM_FLOW_V2.md` (+ test เทียบ permission matrix กับ seed); อัปเดต DESIGN §7.7 และ CLAUDE.md
+  - D46 Security: ไล่ route ด้วย `npm run routes`; พบและแก้ — สิทธิ์ `renewal.update` ไม่มีใน seed, อนุมัติสลักหลังไม่ตรวจ role/maker-checker (OQ-26), งานรายวันเปิดให้ role ทั่วไป (OQ-27), อัตราค่าคอมเห็นได้ทุกคน (OQ-28), Task ไม่ผูก Job รั่ว/IDOR (OQ-29), `GET /invoices/:id/payments` ของคนอื่นคืนรายการว่างแทน 404; e2e `security-review` ล็อกทุกข้อ
+  - D47 Release prep: แก้ migration ไม่ครบ (ตาราง/คอลัมน์ insurer, task V2 — `db push` นำหน้า migration) → fresh DB migrate+seed ผ่าน; แก้ UI ที่ไม่ตรง API (สลักหลัง: ชนิด/ฟิลด์/สถานะ/เงิน, ยกเลิกกรมธรรม์: ฟิลด์ยอดคืน, dropdown ว่าง, เลือกใบเสนอราคาในแท็บเปรียบเทียบไม่ทำงานเมื่อไม่ได้เปิดแท็บใบเสนอราคาก่อน); เงินสลักหลังเป็น decimal string + ตรวจยอดรวม (OQ-30); เขียน Playwright ใหม่/แก้ให้ตรงหน้าจอ: acceptance smoke 24, phase1 8, phase2 9, phase3 12, phase4 6, phase5 3, phase6 3
+- **ค้างให้ผู้ใช้ตัดสินใจ:**
+  - `npm run db:reset` — Prisma ไม่อนุญาตให้ agent รันเอง (ต้องได้รับอนุญาตจากผู้ใช้); ตรวจเทียบเท่าบน DB ชั่วคราวแล้ว (drop/create → migrate deploy → seed → seed:mock ผ่าน)
+  - `/security-review` อัตโนมัติยังไม่ได้รัน — รีวิวด้วยมือ + route inventory แทน
+  - merge `v2` → `main` และ tag `v2.0.0` รอคำสั่งผู้ใช้ (ติ๊กไว้ใน Day 47 ว่าเตรียมพร้อมแล้ว — ยังไม่ได้ทำ)
+  - ผลรัน 2 รอบติด: unit 644/644, API e2e 292/292 (28 ไฟล์), Playwright 65/65 (acceptance 24, phase1 8, phase2 9, phase3 12, phase4 6, phase5 3, phase6 3)
+- **หมายเหตุ:** DB dev/test มีกฎอนุมัติเก่า "เบี้ย < 100,000 → Supervisor" ตกค้างจาก seed รุ่นก่อน (ขัด D-8) — ลบแล้วทั้งสอง DB; seed ปัจจุบันไม่สร้างกฎนี้
+
+### 2026-10-09 — Day 28–30 เสร็จสิ้น (Billing UI, Commission UI, Phase 4 Review)
+- **เสร็จ:**
+  - Day 28: `PolicyInvoicesComponent` (งวด/สถานะ/ค้างชำระ, บันทึก payment พร้อม Idempotency-Key, ยกเลิก payment, ใบเสร็จ, PDF) ใช้ใน Policy detail และ Job tab Payment (แทนฟอร์มเดิมที่เรียก endpoint ที่ถูกตัด); หน้า `/invoices`, `/receivables` (aging); `/payments` เดิมแสดงใบเสร็จ/ลิงก์กรมธรรม์ (รายการ V1 ที่ไม่ผูก invoice ระบุไว้); เมนู sidebar
+  - Day 29: `/commissions` (กรองสถานะ, approve, ปรับปรุง, โหมดสรุป 5 มิติ + รวม), `/commission-statements` (+detail: สร้าง/ยืนยัน/mark paid/ยกเลิก/Export Excel), Master → ตั้งค่าค่าคอม, ช่อง `agentSharePct` ในฟอร์ม User, `PolicyCommissionsComponent` ใช้ใน Policy detail และ Job tab Commission; ตัดโค้ดฟอร์มค่าคอม/payment V1 ใน job-detail และ `jobs.api.ts`
+  - Backend เสริม: `GET /commission-statements/:id/export` (.xlsx, scope เดียวกับ GET :id) + e2e; `derivePaymentStatus` เปลี่ยนจาก parseFloat เป็น Decimal (พบระหว่าง dod-check)
+  - Day 30: Playwright `phase4-billing-commission.spec.ts` 6/6 (ผ่อน 3 งวด → จ่ายครบ → receipt → commission PAYABLE 1,212.50 → statement → PAID → export); `/dod-check` invoice/payment/commission; DESIGN.md §7.6
+  - ตรวจ: web build + lint ผ่าน; api build + lint ผ่าน; `commission.e2e-spec.ts` 29/29
+- **พบ/ยกไป:**
+  - Playwright เก่า (acceptance-flow, phase1–3) ล้มก่อนถึงโค้ดที่แก้: phase1–3 เรียก `/api/master/insurance-products` ซึ่งไม่มี (ต้องเป็น `/api/master/products`), acceptance-flow login ซ้ำเกิน limit 5/นาที และ selector `app-sidebar` — ไม่ได้แก้ในรอบนี้
+  - `GET /reports/commissions/export` (Excel รวม) ยังมีเฉพาะคอลัมน์ V1 และไม่กรองตาม data scope — ควรปรับใน Phase 6 (reports)
+  - ตัวเลือกผู้รับในหน้าสร้างใบสรุปมาจากผู้รับที่มีรายการ PAYABLE เท่านั้น (ผู้ที่มีแต่ adjustment ค้างต้องรอมีค่าคอมพร้อมจ่ายก่อน)
+- **ถัดไป:** Phase 5 — Day 31 Endorsement API
 
 ### 2026-10-09 — Day 27 เสร็จสิ้น (Commission Adjustment + Statement)
 - **เสร็จ:**

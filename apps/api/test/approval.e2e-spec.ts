@@ -307,7 +307,7 @@ describe('Approval API (e2e)', () => {
     const adminLogin = await http().post('/api/auth/login').send({ username: `${PREFIX}admin_self`, password: PASSWORD });
     const adminToken = adminLogin.body.data.accessToken;
 
-    const { approvalId: ownApprId } = await prepareApproval('40000.00');
+    const { approvalId: ownApprId } = await prepareApproval('150000.00');
     await prisma.approval.update({
       where: { id: ownApprId },
       data: { requestedById: adminUser.id },

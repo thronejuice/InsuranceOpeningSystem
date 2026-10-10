@@ -667,6 +667,22 @@ describe('Commission V2 (Phase 4 D26)', () => {
     expect((await http().get('/api/commission-statements')).status).toBe(401);
   });
 
+  it('ST9: a statement exports to Excel; a payee can export only their own', async () => {
+    const all = await http().get('/api/commission-statements').query({ period: periodNow() }).set(auth(financeToken));
+    const own = all.body.data.items.find((s: { agentId: string }) => s.agentId === agentId);
+    const other = all.body.data.items.find((s: { agentId: string }) => s.agentId === managerId);
+
+    const res = await http().get(`/api/commission-statements/${own.id}/export`).set(auth(agentToken)).buffer(true)
+      .parse((r, cb) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks))); });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('spreadsheetml');
+    expect(res.headers['content-disposition']).toContain(`${own.statementNo}.xlsx`);
+    expect((res.body as Buffer).subarray(0, 2).toString()).toBe('PK'); // an .xlsx is a zip
+
+    expect((await http().get(`/api/commission-statements/${other.id}/export`).set(auth(agentToken))).status).toBe(404);
+    expect((await http().get(`/api/commission-statements/${own.id}/export`)).status).toBe(401);
+  });
+
   it('SM1: summary rolls commissions up by policy — gross counted once, adjustments shown separately', async () => {
     const res = await http().get('/api/commissions/summary').query({ groupBy: 'policy', insurerId: companyId }).set(auth(financeToken));
     expect(res.status).toBe(200);

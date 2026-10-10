@@ -64,6 +64,32 @@ export const routes: Routes = [
           import('./features/payments/payments.routes').then((m) => m.PAYMENTS_ROUTES),
       },
       {
+        path: 'insurers/:id',
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/master/pages/company-detail.page').then((m) => m.CompanyDetailPage),
+      },
+      {
+        path: 'invoices',
+        loadChildren: () =>
+          import('./features/billing/billing.routes').then((m) => m.INVOICES_ROUTES),
+      },
+      {
+        path: 'receivables',
+        loadChildren: () =>
+          import('./features/billing/billing.routes').then((m) => m.RECEIVABLES_ROUTES),
+      },
+      {
+        path: 'refunds',
+        loadChildren: () =>
+          import('./features/refunds/refunds.routes').then((m) => m.REFUNDS_ROUTES),
+      },
+      {
+        path: 'commission-statements',
+        loadChildren: () =>
+          import('./features/commissions/statements.routes').then((m) => m.STATEMENTS_ROUTES),
+      },
+      {
         path: 'commissions',
         loadChildren: () =>
           import('./features/commissions/commissions.routes').then((m) => m.COMMISSIONS_ROUTES),

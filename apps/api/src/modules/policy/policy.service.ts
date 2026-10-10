@@ -32,6 +32,19 @@ import {
 } from './domain/policy-status.js';
 import { calculateInstallments } from '../invoice/domain/installments.js';
 import { CommissionService } from '../commission/commission.service.js';
+import {
+  calculateCancellationRefund,
+  type CancellationCalcResult,
+} from './domain/cancellation-calc.js';
+import type {
+  CalculateCancellationRefundDto,
+  RequestCancellationDto,
+  ApproveCancellationDto,
+  RejectCancellationDto,
+} from './dto/cancel-policy.dto.js';
+import { Decimal } from 'decimal.js';
+import { InvoiceType, RefundStatus } from '../../generated/prisma/enums.js';
+import { computeAdjustment } from '../commission/domain/adjustment.js';
 
 @Injectable()
 export class PolicyService {
@@ -373,6 +386,19 @@ export class PolicyService {
     return toPolicyResponse(policy);
   }
 
+  async getPolicyVersions(id: string) {
+    const policy = await this.repo.findPolicyById(id);
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+
+    const versions = await this.txHost.tx.policyVersion.findMany({
+      where: { policyId: id },
+      orderBy: { version: 'desc' },
+    });
+
+    return versions;
+  }
+
   @Transactional()
   async createPolicy(jobId: string, dto: CreatePolicyDto): Promise<PolicyResponse> {
     const userId = this.cls.get('userId')!;
@@ -621,6 +647,312 @@ export class PolicyService {
     }
 
     return { activatedCount, expiringCount, expiredCount };
+  }
+
+  // ─── Policy Cancellation (Day 33) ──────────────────────────────────────────
+
+  async calculateCancellation(id: string, dto: CalculateCancellationRefundDto): Promise<CancellationCalcResult> {
+    const policy = await this.repo.findPolicyById(id);
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+
+    const shortRateEntries = await this.txHost.tx.shortRateTable.findMany({
+      orderBy: { daysFrom: 'asc' },
+    });
+
+    return calculateCancellationRefund({
+      effectiveDate: policy.effectiveDate,
+      expiryDate: policy.expiryDate ?? new Date(policy.effectiveDate.getTime() + 365 * 24 * 60 * 60 * 1000),
+      cancelEffectiveDate: dto.cancelEffectiveDate,
+      annualNetPremium: policy.netPremium.toString(),
+      shortRateTable: shortRateEntries,
+      method: dto.method ?? 'SHORT_RATE',
+    });
+  }
+
+  @Transactional()
+  async requestCancellation(id: string, dto: RequestCancellationDto): Promise<PolicyResponse> {
+    const userId = this.cls.get('userId')!;
+    const policy = await this.repo.findPolicyById(id);
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+
+    if (policy.status !== PolicyStatus.ACTIVE && policy.status !== PolicyStatus.EXPIRING) {
+      throw new BusinessException(
+        'POLICY_INVALID_STATUS',
+        `Cannot request cancellation for policy in status ${policy.status}. Must be ACTIVE or EXPIRING.`,
+        409,
+      );
+    }
+
+    const updated = await this.repo.updatePolicy(id, {
+      status: PolicyStatus.CANCEL_REQUESTED,
+      cancelReason: dto.cancelReason,
+      cancelRequestDate: new Date(dto.cancelRequestDate),
+      cancelEffectiveDate: new Date(dto.cancelEffectiveDate),
+      cancelRefundAmount: dto.cancelRefundAmount ? new Decimal(dto.cancelRefundAmount) : null,
+      cancelOutstandingAmount: dto.cancelOutstandingAmount ? new Decimal(dto.cancelOutstandingAmount) : null,
+      updatedById: userId,
+    });
+
+    await this.audit.log({
+      action: 'REQUEST_POLICY_CANCELLATION',
+      entityType: 'POLICY',
+      entityId: id,
+      jobId: policy.jobId,
+      before: { status: policy.status },
+      after: {
+        status: updated.status,
+        cancelReason: dto.cancelReason,
+        cancelEffectiveDate: dto.cancelEffectiveDate,
+        cancelRefundAmount: dto.cancelRefundAmount,
+      },
+    });
+
+    return toPolicyResponse(updated);
+  }
+
+  @Transactional()
+  async approveCancellation(id: string, dto: ApproveCancellationDto): Promise<PolicyResponse> {
+    const userId = this.cls.get('userId')!;
+    const roles = (this.cls.get('roles') as string[]) ?? [];
+    const isManagerOrAdmin = roles.includes('MANAGER') || roles.includes('ADMIN');
+
+    if (!isManagerOrAdmin) {
+      throw new BusinessException(
+        'FORBIDDEN',
+        'Only MANAGER or ADMIN can approve policy cancellation',
+        403,
+      );
+    }
+
+    const policy = await this.repo.findPolicyById(id);
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+
+    if (policy.status !== PolicyStatus.CANCEL_REQUESTED) {
+      throw new BusinessException(
+        'POLICY_INVALID_STATUS',
+        `Cannot approve cancellation for policy in status ${policy.status}. Must be CANCEL_REQUESTED.`,
+        409,
+      );
+    }
+
+    // Verify insurer document exists
+    await this.assertJobDocument(policy.jobId, dto.cancelInsurerDocumentId);
+
+    // 1. Update Policy status to CANCELLED
+    const cancelEffDate = policy.cancelEffectiveDate ?? new Date();
+    const updated = await this.repo.updatePolicy(id, {
+      status: PolicyStatus.CANCELLED,
+      cancelInsurerDocument: { connect: { id: dto.cancelInsurerDocumentId } },
+      cancelledAt: new Date(),
+      cancelledBy: { connect: { id: userId } },
+      updatedById: userId,
+    });
+
+    // 2. Side effect D-17: Void/Cancel unpaid invoices due after cancel effective date
+    const unpaidInvoices = await this.txHost.tx.invoice.findMany({
+      where: {
+        policyId: policy.id,
+        status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE] },
+        dueDate: { gt: cancelEffDate },
+      },
+    });
+
+    for (const inv of unpaidInvoices) {
+      await this.txHost.tx.invoice.update({
+        where: { id: inv.id },
+        data: {
+          status: InvoiceStatus.CANCELLED,
+          updatedById: userId,
+        },
+      });
+
+      await this.audit.log({
+        action: 'CANCEL_INVOICE',
+        entityType: 'INVOICE',
+        entityId: inv.id,
+        jobId: policy.jobId,
+        remark: `Cancelled due to policy cancellation (${policy.policyNo})`,
+      });
+    }
+
+    // 3. Side effect D-17: If refund due (cancelRefundAmount > 0), create Credit Note + Refund
+    const refundAmount = policy.cancelRefundAmount ? new Decimal(policy.cancelRefundAmount.toString()) : new Decimal(0);
+    if (refundAmount.gt(0)) {
+      const invNo = await this.sequence.next('INVOICE');
+      const job = await this.txHost.tx.job.findUnique({ where: { id: policy.jobId } });
+
+      // Approximate net/vat/stamp breakdown for Credit Note
+      const netAmount = refundAmount.div('1.074').toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const stampDuty = netAmount.times('0.004').ceil();
+      const vat = refundAmount.minus(netAmount).minus(stampDuty);
+
+      const creditNote = await this.txHost.tx.invoice.create({
+        data: {
+          invoiceNo: invNo,
+          policyId: policy.id,
+          customerId: job!.customerId,
+          type: InvoiceType.CREDIT_NOTE,
+          amount: refundAmount,
+          netAmount,
+          stampDuty,
+          vat,
+          dueDate: new Date(),
+          status: InvoiceStatus.PENDING,
+          createdById: userId,
+        },
+      });
+
+      const refundNo = await this.sequence.next('REFUND');
+      await this.txHost.tx.refund.create({
+        data: {
+          refundNo,
+          creditNoteId: creditNote.id,
+          amount: refundAmount,
+          status: RefundStatus.REQUESTED,
+          reason: `Policy cancellation refund (${policy.policyNo}): ${policy.cancelReason ?? ''}`,
+          requestedById: userId,
+        },
+      });
+
+      await this.audit.log({
+        action: 'CREATE_REFUND_REQUEST',
+        entityType: 'REFUND',
+        entityId: refundNo,
+        jobId: policy.jobId,
+        description: `Created Credit Note ${invNo} and Refund ${refundNo}`,
+      });
+    }
+
+    // 4. Side effect D-17: Commission clawback adjustment (proportional to refund or net premium reduction)
+    if (refundAmount.gt(0)) {
+      const originalCommission = await this.txHost.tx.commission.findFirst({
+        where: { policyId: policy.id, agentId: { not: null } },
+      });
+      if (originalCommission && originalCommission.agentId) {
+        // Calculate proportional clawback on agent's commission
+        // Proportional net refund = refundAmount / 1.074
+        const netRefund = refundAmount.div('1.074').toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        const clawbackGross = netRefund.mul(originalCommission.commissionRate).div(100).toFixed(2);
+        const whtSetting = await this.txHost.tx.systemSetting.findUnique({ where: { key: 'commission.wht_rate' } });
+        const whtRate = whtSetting?.value ?? '3';
+        const adjAmounts = computeAdjustment(`-${clawbackGross}`, whtRate);
+
+        await this.txHost.tx.commissionAdjustment.create({
+          data: {
+            commissionId: originalCommission.id,
+            policyId: policy.id,
+            agentId: originalCommission.agentId,
+            amount: new Decimal(adjAmounts.amount),
+            whtRate: new Decimal(whtRate),
+            whtAmount: new Decimal(adjAmounts.whtAmount),
+            netAmount: new Decimal(adjAmounts.netAmount),
+            reason: `Clawback from policy cancellation (${policy.policyNo})`,
+            refType: 'POLICY_CANCEL',
+            refId: policy.id,
+            createdById: userId,
+          },
+        });
+      }
+    }
+
+    // 5. Side effect D-17: Cancel any associated Renewal in pipeline
+    const pendingRenewals = await this.txHost.tx.renewal.findMany({
+      where: {
+        previousPolicyId: policy.id,
+        status: { notIn: ['RENEWED', 'LOST', 'CANCELLED'] },
+      },
+    });
+
+    for (const ren of pendingRenewals) {
+      await this.txHost.tx.renewal.update({
+        where: { id: ren.id },
+        data: {
+          status: 'CANCELLED',
+          remark: 'Original policy cancelled',
+        },
+      });
+
+      await this.audit.log({
+        action: 'CANCEL_RENEWAL',
+        entityType: 'RENEWAL',
+        entityId: ren.id,
+        jobId: policy.jobId,
+        remark: `Renewal cancelled due to policy cancellation (${policy.policyNo})`,
+      });
+    }
+
+    // Sync commission payable status if any invoice changed
+    await this.commissions?.syncPayable(policy.id);
+
+    await this.audit.log({
+      action: 'APPROVE_POLICY_CANCELLATION',
+      entityType: 'POLICY',
+      entityId: id,
+      jobId: policy.jobId,
+      before: { status: policy.status },
+      after: { status: updated.status },
+      remark: dto.remark,
+    });
+
+    return toPolicyResponse(updated);
+  }
+
+  @Transactional()
+  async rejectCancellation(id: string, dto: RejectCancellationDto): Promise<PolicyResponse> {
+    const userId = this.cls.get('userId')!;
+    const roles = (this.cls.get('roles') as string[]) ?? [];
+    const isManagerOrAdmin = roles.includes('MANAGER') || roles.includes('ADMIN');
+
+    if (!isManagerOrAdmin) {
+      throw new BusinessException(
+        'FORBIDDEN',
+        'Only MANAGER or ADMIN can reject policy cancellation',
+        403,
+      );
+    }
+
+    const policy = await this.repo.findPolicyById(id);
+    if (!policy) throw new BusinessException('POLICY_NOT_FOUND', 'Policy not found', 404);
+    await this.assertJobAccess(policy.jobId);
+
+    if (policy.status !== PolicyStatus.CANCEL_REQUESTED) {
+      throw new BusinessException(
+        'POLICY_INVALID_STATUS',
+        `Cannot reject cancellation for policy in status ${policy.status}. Must be CANCEL_REQUESTED.`,
+        409,
+      );
+    }
+
+    // Determine reverted status: check whether ACTIVE or EXPIRING
+    const dailyStatus = evaluatePolicyDailyStatus(
+      {
+        status: PolicyStatus.ACTIVE,
+        effectiveDate: policy.effectiveDate,
+        expiryDate: policy.expiryDate,
+      },
+      new Date(),
+    );
+    const revertedStatus = dailyStatus ?? PolicyStatus.ACTIVE;
+
+    const updated = await this.repo.updatePolicy(id, {
+      status: revertedStatus,
+      updatedById: userId,
+    });
+
+    await this.audit.log({
+      action: 'REJECT_POLICY_CANCELLATION',
+      entityType: 'POLICY',
+      entityId: id,
+      jobId: policy.jobId,
+      before: { status: policy.status },
+      after: { status: updated.status },
+      remark: dto.reason,
+    });
+
+    return toPolicyResponse(updated);
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────

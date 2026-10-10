@@ -52,6 +52,41 @@ export interface InsuranceProduct {
   updatedAt: string;
 }
 
+export interface InsurerContact {
+  id: string;
+  insuranceCompanyId: string;
+  name: string;
+  position?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  isUnderwriter: boolean;
+  isPrimary: boolean;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Business performance of one insurer (OQ-24). Money and percentages are strings. */
+export interface InsurerStats {
+  quotations: { total: number; received: number; selected: number };
+  winRatePct: string;
+  policies: { issued: number; cancelled: number };
+  issuedPremium: string;
+  cancelledPremium: string;
+}
+
+export interface InsurerProduct {
+  id: string;
+  insuranceCompanyId: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  insuranceTypeName: string | null;
+  remark: string | null;
+  currentRate: string | null;
+  rates: { id: string; rate: string; effectiveFrom: string; effectiveTo: string | null }[];
+}
+
 export interface InsuranceCompany {
   id: string;
   code: string;
@@ -61,7 +96,10 @@ export interface InsuranceCompany {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  bankAccount?: string | null;
   status: 'ACTIVE' | 'INACTIVE';
+  contacts?: InsurerContact[];
+  commissionRates?: CommissionRate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -166,11 +204,42 @@ export class MasterApi {
   createCompany(body: Partial<InsuranceCompany>) {
     return this.http.post<ApiResponse<InsuranceCompany>>('/api/master/companies', body);
   }
+  getCompany(id: string) {
+    return this.http.get<ApiResponse<InsuranceCompany>>(`/api/master/companies/${id}`);
+  }
   updateCompany(id: string, body: Partial<InsuranceCompany>) {
     return this.http.put<ApiResponse<InsuranceCompany>>(`/api/master/companies/${id}`, body);
   }
   deleteCompany(id: string) {
     return this.http.delete<void>(`/api/master/companies/${id}`);
+  }
+  listInsurerProducts(id: string) {
+    return this.http.get<ApiResponse<InsurerProduct[]>>(`/api/insurers/${id}/products`);
+  }
+  addInsurerProduct(id: string, body: { productId: string; remark?: string }) {
+    return this.http.post<ApiResponse<InsurerProduct>>(`/api/insurers/${id}/products`, body);
+  }
+  removeInsurerProduct(id: string, productId: string) {
+    return this.http.delete<void>(`/api/insurers/${id}/products/${productId}`);
+  }
+  /** Active underwriter contacts of an insurer — offered when filling quotation / binding forms. */
+  listUnderwriters(id: string) {
+    return this.http.get<ApiResponse<InsurerContact[]>>(`/api/master/companies/${id}/contacts`, { params: { underwriter: 'true' } });
+  }
+  getCompanyStats(id: string) {
+    return this.http.get<ApiResponse<InsurerStats>>(`/api/insurers/${id}/stats`);
+  }
+  listCompanyContacts(id: string) {
+    return this.http.get<ApiResponse<InsurerContact[]>>(`/api/master/companies/${id}/contacts`);
+  }
+  createCompanyContact(id: string, body: object) {
+    return this.http.post<ApiResponse<InsurerContact>>(`/api/master/companies/${id}/contacts`, body);
+  }
+  updateCompanyContact(contactId: string, body: object) {
+    return this.http.put<ApiResponse<InsurerContact>>(`/api/master/companies/contacts/${contactId}`, body);
+  }
+  deleteCompanyContact(contactId: string) {
+    return this.http.delete<void>(`/api/master/companies/contacts/${contactId}`);
   }
 
   // Risk Fields
