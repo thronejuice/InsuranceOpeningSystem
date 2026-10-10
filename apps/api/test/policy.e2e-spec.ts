@@ -416,6 +416,50 @@ describe('Policy API (e2e)', () => {
     expect(rejRes.body.data.status).toBe('ACTIVE');
   });
 
+  it('Security: cancellation refund is capped server-side and the requester cannot approve their own request', async () => {
+    const listRes = await http().get('/api/policies').set('Authorization', `Bearer ${agentToken}`);
+    const policyId = listRes.body.data[0].id as string;
+    await prisma.policy.update({ where: { id: policyId }, data: { status: 'ACTIVE', cancelRequestedById: null } });
+
+    const request = (cancelRefundAmount: string) =>
+      http().post(`/api/policies/${policyId}/cancel-request`).set('Authorization', `Bearer ${agentToken}`).send({
+        cancelReason: 'refund tampering test', cancelRequestDate: '2027-02-10', cancelEffectiveDate: '2027-02-15', cancelRefundAmount,
+      });
+
+    const tooMuch = await request('99999999.00');
+    expect([tooMuch.status, tooMuch.body.code]).toEqual([422, 'CANCEL_REFUND_EXCEEDS_LIMIT']);
+    const negative = await request('-1.00');
+    expect([negative.status, negative.body.code]).toEqual([422, 'CANCEL_REFUND_INVALID']);
+    expect((await prisma.policy.findUniqueOrThrow({ where: { id: policyId } })).status).toBe('ACTIVE'); // nothing changed
+
+    // a sane request goes through and records who asked
+    const ok = await request('0.00');
+    expect(ok.status).toBe(201);
+    const stored = await prisma.policy.findUniqueOrThrow({ where: { id: policyId } });
+    expect(stored.cancelRequestedById).not.toBeNull();
+
+    // the amount cannot be raised behind the system's back either: approval re-checks the ceiling
+    await prisma.policy.update({ where: { id: policyId }, data: { cancelRefundAmount: '99999999.00' } });
+    const policyRow = await prisma.policy.findUniqueOrThrow({ where: { id: policyId } });
+    const doc = await prisma.document.create({
+      data: { jobId: policyRow.jobId, documentType: 'OTHER', originalName: 'sec-cancel.pdf', storedName: 'sec-cancel.pdf', size: 1024, mimeType: 'application/pdf', storagePath: 'docs/sec-cancel.pdf', status: 'VERIFIED' },
+    });
+    {
+      const approve = await http().post(`/api/policies/${policyId}/cancel-approve`).set('Authorization', `Bearer ${managerToken}`).send({ cancelInsurerDocumentId: doc.id });
+      expect([approve.status, approve.body.code]).toEqual([422, 'CANCEL_REFUND_EXCEEDS_LIMIT']);
+    }
+
+    // maker-checker: the requester is the approver → refused (set the requester to the manager)
+    await prisma.policy.update({ where: { id: policyId }, data: { cancelRefundAmount: '0.00', cancelRequestedById: managerId } });
+    {
+      const self = await http().post(`/api/policies/${policyId}/cancel-approve`).set('Authorization', `Bearer ${managerToken}`).send({ cancelInsurerDocumentId: doc.id });
+      expect([self.status, self.body.code]).toEqual([422, 'CANCEL_SELF_APPROVE']);
+    }
+
+    // back to a clean ACTIVE policy for the tests that follow
+    await prisma.policy.update({ where: { id: policyId }, data: { status: 'ACTIVE', cancelRequestedById: null, cancelRefundAmount: null } });
+  });
+
   it('Day 33: cancel policy with 3 installments, pay 1 → void unpaid invoices, create Credit Note + Refund, clawback commission (D-17)', async () => {
     // Find or create policy with 3 installments
     const listRes = await http().get('/api/policies').set('Authorization', `Bearer ${agentToken}`);

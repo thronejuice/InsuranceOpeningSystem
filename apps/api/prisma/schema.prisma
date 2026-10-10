@@ -1322,6 +1322,7 @@ model Policy {
   cancelRequestDate  DateTime?    @map("cancel_request_date") @db.Date
   cancelEffectiveDate DateTime?   @map("cancel_effective_date") @db.Date
   cancelInsurerDocumentId String? @map("cancel_insurer_document_id") @db.Uuid
+  cancelRequestedById String?     @map("cancel_requested_by_id") @db.Uuid
   cancelRefundAmount Decimal?     @map("cancel_refund_amount") @db.Decimal(15, 2)
   cancelOutstandingAmount Decimal? @map("cancel_outstanding_amount") @db.Decimal(15, 2)
   cancelledAt        DateTime?    @map("cancelled_at") @db.Timestamptz(3)

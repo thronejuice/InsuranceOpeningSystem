@@ -670,6 +670,29 @@ export class PolicyService {
     });
   }
 
+  /** Most the customer could be refunded for cancelling on `cancelEffectiveDate` (pro-rata of the net premium + duty + VAT). */
+  private async assertRefundWithinCeiling(
+    policy: { effectiveDate: Date; expiryDate: Date | null; netPremium: { toString(): string } },
+    cancelEffectiveDate: Date | string,
+    refund: Decimal,
+  ): Promise<void> {
+    if (refund.isZero()) return;
+    const ceiling = calculateCancellationRefund({
+      effectiveDate: policy.effectiveDate,
+      expiryDate: policy.expiryDate ?? new Date(policy.effectiveDate.getTime() + 365 * 24 * 60 * 60 * 1000),
+      cancelEffectiveDate,
+      annualNetPremium: policy.netPremium.toString(),
+      method: 'PRO_RATA',
+    }).totalRefund;
+    if (refund.gt(ceiling)) {
+      throw new BusinessException(
+        'CANCEL_REFUND_EXCEEDS_LIMIT',
+        `Refund ${refund.toFixed(2)} exceeds the most that can be refunded for this cancellation date (${ceiling.toFixed(2)})`,
+        422,
+      );
+    }
+  }
+
   @Transactional()
   async requestCancellation(id: string, dto: RequestCancellationDto): Promise<PolicyResponse> {
     const userId = this.cls.get('userId')!;
@@ -685,8 +708,17 @@ export class PolicyService {
       );
     }
 
+    // The refund is money leaving the company — never trust the amount the client typed. It may be lower than the
+    // pro-rata ceiling (negotiated / short-rate) but never higher.
+    const requestedRefund = dto.cancelRefundAmount ? new Decimal(dto.cancelRefundAmount) : new Decimal(0);
+    if (requestedRefund.lt(0)) {
+      throw new BusinessException('CANCEL_REFUND_INVALID', 'Refund amount cannot be negative', 422);
+    }
+    await this.assertRefundWithinCeiling(policy, dto.cancelEffectiveDate, requestedRefund);
+
     const updated = await this.repo.updatePolicy(id, {
       status: PolicyStatus.CANCEL_REQUESTED,
+      cancelRequestedById: userId,
       cancelReason: dto.cancelReason,
       cancelRequestDate: new Date(dto.cancelRequestDate),
       cancelEffectiveDate: new Date(dto.cancelEffectiveDate),
@@ -737,6 +769,18 @@ export class PolicyService {
         409,
       );
     }
+
+    // Maker-checker: whoever asked for the cancellation cannot approve it (unless explicitly allowed, e.g. ADMIN)
+    const permissions = (this.cls.get('permissions') as string[] | undefined) ?? [];
+    if (policy.cancelRequestedById && policy.cancelRequestedById === userId && !permissions.includes('approval.approve_own')) {
+      throw new BusinessException('CANCEL_SELF_APPROVE', 'Cannot approve a cancellation you requested yourself', 422);
+    }
+    // The ceiling is checked again at approval time, in case the stored amount was changed in between
+    await this.assertRefundWithinCeiling(
+      policy,
+      policy.cancelEffectiveDate ?? new Date(),
+      policy.cancelRefundAmount ? new Decimal(policy.cancelRefundAmount.toString()) : new Decimal(0),
+    );
 
     // Verify insurer document exists
     await this.assertJobDocument(policy.jobId, dto.cancelInsurerDocumentId);

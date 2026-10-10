@@ -188,6 +188,14 @@ describe('Refund API (Day 34 e2e)', () => {
     await app.close();
   });
 
+  it('POST /refunds — rejects an amount that is zero, negative or larger than the credit note (422)', async () => {
+    for (const amount of ['0', '0.00', '-5.00', '3000.01', '999999.00']) {
+      const res = await http().post('/api/refunds').set('Authorization', `Bearer ${staffToken}`).send({ creditNoteId, amount, reason: 'tamper' });
+      expect([res.status, res.body.code], `amount ${amount}`).toEqual([422, 'REFUND_AMOUNT_INVALID']);
+    }
+    expect(await prisma.refund.count({ where: { creditNoteId } })).toBe(0); // nothing was created
+  });
+
   it('POST /refunds — creates refund in REQUESTED status', async () => {
     const res = await http()
       .post('/api/refunds')

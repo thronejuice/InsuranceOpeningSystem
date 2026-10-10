@@ -119,6 +119,7 @@
 | OQ-28 | อัตราค่าคอมของบริษัทประกัน | เห็นได้เฉพาะ `commission.rate_view` (ADMIN, FINANCE, MANAGER, SUPERVISOR, BROKER_STAFF) — AGENT/VIEWER ไม่เห็น (API ซ่อนทั้ง `/master/commission-rates` และ rate ใน `/insurers/:id/products` และ `/master/companies/:id`) | D46 |
 | OQ-29 | Task ที่ไม่ผูก Job | ผู้สร้างเป็นผู้รับผิดชอบโดยปริยาย; เห็น/แก้ได้เฉพาะผู้เกี่ยวข้อง (ผู้สร้าง, ผู้รับ, ผู้เห็น Job/Policy นั้น); ผูกกับ policy/customer ที่ตัวเองมองไม่เห็นไม่ได้ (404) | D46 |
 | OQ-30 | เงินในสลักหลัง | รับเป็น decimal string (ยังรับ number เดิมแล้วปัดเป็น 2 ตำแหน่ง); `total = net + stamp + vat` ต้องตรงเป๊ะ, NO_CHANGE ต้องเป็นศูนย์ → 422 `ENDORSEMENT_INVALID_AMOUNTS` | D47 |
+| OQ-31 | ยอดเงินที่ client ส่งมาในการคืนเงิน/ยกเลิก | ไม่เชื่อ client: คืนเงิน (`POST /refunds`) ต้อง 0 < ยอด ≤ ยอดใบลดหนี้; ยอดคืนตอนขอยกเลิกกรมธรรม์ต้อง ≥ 0 และ ≤ เพดาน pro-rata ที่ server คำนวณ (ตรวจซ้ำตอนอนุมัติ); ผู้ขอยกเลิกอนุมัติเองไม่ได้ (`approval.approve_own` ยกเว้น) | review หลัง push |
 
 ---
 

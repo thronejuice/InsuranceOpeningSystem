@@ -90,6 +90,16 @@ export class RefundService {
     }
     await this.assertPolicyAccess(creditNote.policyId);
 
+    // A refund can never be larger than the credit note it settles
+    const amount = new Decimal(dto.amount);
+    if (amount.lte(0) || amount.gt(new Decimal(creditNote.amount.toString()))) {
+      throw new BusinessException(
+        'REFUND_AMOUNT_INVALID',
+        `Refund must be greater than zero and not exceed the credit note amount (${creditNote.amount.toString()})`,
+        422,
+      );
+    }
+
     const existingRefund = await this.repo.findByCreditNoteId(dto.creditNoteId);
     if (existingRefund && existingRefund.status !== RefundStatus.REJECTED) {
       throw new BusinessException('REFUND_ALREADY_EXISTS', 'Active refund already exists for this credit note', 409);
@@ -99,7 +109,7 @@ export class RefundService {
     const created = await this.repo.create({
       refundNo,
       creditNote: { connect: { id: dto.creditNoteId } },
-      amount: new Decimal(dto.amount),
+      amount,
       status: RefundStatus.REQUESTED,
       reason: dto.reason,
       requestedBy: userId ? { connect: { id: userId } } : undefined,
